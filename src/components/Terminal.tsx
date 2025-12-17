@@ -24,6 +24,9 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+    const [hostLabel, setHostLabel] = useState('Local');
+    const [latencyMs, setLatencyMs] = useState<number | null>(null);
+    const [latencyAt, setLatencyAt] = useState<number | null>(null);
   
   // Update terminal options when settings change
   useEffect(() => {
@@ -290,6 +293,19 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         return true;
     });
 
+    term.parser.registerOscHandler(633, (data) => {
+        // Custom: 633;H;hostname
+        try {
+            const parts = data.split(';');
+            if (parts[0] === 'H' && parts[1]) {
+                setHostLabel(parts.slice(1).join(';'));
+            }
+        } catch (e) {
+            console.error('Error handling OSC 633:', e);
+        }
+        return true;
+    });
+
     // Send data to PTY
     term.onData((data) => {
       invoke('write_to_pty', { id, data });
@@ -364,6 +380,31 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       onCloseRef.current = onClose;
   }, [onClose]);
 
+  // Latency probe to backend invoke (app RTT)
+  useEffect(() => {
+      let cancelled = false;
+      const measure = async () => {
+          const start = performance.now();
+          try {
+              await invoke('ping');
+              if (cancelled) return;
+              setLatencyMs(Math.round(performance.now() - start));
+              setLatencyAt(Date.now());
+          } catch (e) {
+              if (cancelled) return;
+              setLatencyMs(null);
+              setLatencyAt(Date.now());
+          }
+      };
+
+      measure();
+      const id = setInterval(measure, 10000);
+      return () => {
+          cancelled = true;
+          clearInterval(id);
+      };
+  }, []);
+
   // Update the listener to use the ref
   useEffect(() => {
       const unlistenExitPromise = listen<void>(`pty-exit:${id}`, () => {
@@ -412,6 +453,17 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             </div>
         )}
                 <div ref={terminalRef} style={{ width: '100%', height: '100%', paddingLeft: '15px' }} />
+                <div className="terminal-status">
+                    <div className="status-host" title={hostLabel}>
+                        <span className="status-dot" />
+                        <span className="status-text">{hostLabel}</span>
+                    </div>
+                    <div className="status-latency" title={latencyAt ? `Last checked ${new Date(latencyAt).toLocaleTimeString()}` : 'Latency probe'}>
+                        <span className={`latency-pill ${latencyMs == null ? 'latency-unknown' : latencyMs < 80 ? 'latency-good' : latencyMs < 200 ? 'latency-warn' : 'latency-bad'}`}>
+                            {latencyMs == null ? 'Latency: —' : `Latency: ${latencyMs} ms`}
+                        </span>
+                    </div>
+                </div>
     </div>
   );
 };

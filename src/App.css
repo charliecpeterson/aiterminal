@@ -219,6 +219,58 @@ body, html, #root {
   cursor: grabbing;
 }
 
+.terminal-status {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e0e0e0;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.status-host, .status-latency {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5ea7ff;
+  box-shadow: 0 0 4px rgba(94, 167, 255, 0.8);
+}
+
+.status-text {
+  color: #e0e0e0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-latency .latency-pill {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  color: #0f0f0f;
+}
+
+.latency-good { background: #6ad16a; }
+.latency-warn { background: #e3c75f; }
+.latency-bad { background: #e07a7a; }
+.latency-unknown { background: #7a7a7a; color: #0f0f0f; }
+
 /* Ensure terminal content can scroll with a visible gutter on the right */
 .xterm .xterm-viewport {
   overflow-y: scroll !important; /* force a visible gutter */

@@ -75,6 +75,12 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
+fn ping() -> String {
+    // Simple health check; frontend measures round-trip latency of invoke
+    "ok".to_string()
+}
+
+#[tauri::command]
 fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, String> {
     let id = {
         let mut next_id = state.next_id.lock().unwrap();
@@ -128,6 +134,7 @@ export __AITERM_INTEGRATION_LOADED=1
 export TERM_PROGRAM=aiterminal
 
 __aiterm_emit() { printf "\033]133;%s\007" "$1"; }
+__aiterm_emit_host() { printf "\033]633;H;%s\007" "$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"; }
 __aiterm_mark_prompt() { __aiterm_emit "A"; }
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
@@ -138,6 +145,7 @@ if [ -n "$BASH_VERSION" ]; then
         local ret=$?
         __aiterm_mark_done "$ret"
         __aiterm_mark_prompt
+        __aiterm_emit_host
         if [ -n "$__aiterm_original_pc" ]; then
             eval "$__aiterm_original_pc"
         fi
@@ -154,7 +162,7 @@ if [ -n "$BASH_VERSION" ]; then
     trap '__aiterm_preexec' DEBUG
 elif [ -n "$ZSH_VERSION" ]; then
     autoload -Uz add-zsh-hook
-    __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; }
+    __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; __aiterm_emit_host; }
     __aiterm_preexec() { __aiterm_mark_output_start; }
     add-zsh-hook precmd __aiterm_precmd
     add-zsh-hook preexec __aiterm_preexec
@@ -340,6 +348,7 @@ pub fn run() {
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             greet,
+            ping,
             spawn_pty,
             write_to_pty,
             resize_pty,
