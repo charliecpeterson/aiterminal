@@ -222,14 +222,32 @@ __aiterm_ssh() {
     local helper_path="$HOME/.config/aiterminal/bash_init.sh"
     [ -f "$helper_path" ] || { command ssh "$@"; return $?; }
 
-        # Stream helper to remote; only source if shell is bash/zsh, otherwise fall back to native shell login
+        # Stream helper to remote; for bash/zsh, launch an interactive shell that sources common profiles and the helper so PROMPT_COMMAND survives
         command ssh "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && {
             remote_shell="${SHELL:-/bin/sh}";
             case "$remote_shell" in
-                */bash|*/zsh) TERM_PROGRAM=aiterminal SHELL="$remote_shell" source ~/.config/aiterminal/bash_init.sh ;;
-                *) ;; # unsupported shell, skip sourcing
+                */bash)
+                    TERM_PROGRAM=aiterminal SHELL="$remote_shell" bash -i --rcfile ~/.config/aiterminal/bash_init.sh -c "\
+                        [ -f /etc/profile ] && . /etc/profile; \
+                        [ -f ~/.profile ] && . ~/.profile; \
+                        [ -f ~/.bashrc ] && . ~/.bashrc; \
+                        . ~/.config/aiterminal/bash_init.sh; \
+                        exec bash -i"
+                    ;;
+                */zsh)
+                    TERM_PROGRAM=aiterminal SHELL="$remote_shell" zsh -i -c "\
+                        [ -f /etc/zprofile ] && . /etc/zprofile; \
+                        [ -f /etc/zshrc ] && . /etc/zshrc; \
+                        [ -f ~/.zprofile ] && . ~/.zprofile; \
+                        [ -f ~/.zshrc ] && . ~/.zshrc; \
+                        . ~/.config/aiterminal/bash_init.sh; \
+                        exec zsh -i"
+                    ;;
+                *)
+                    # unsupported shell, just exec normally
+                    exec "$remote_shell" -l
+                    ;;
             esac
-            exec "$remote_shell" -l
         }' < "$helper_path" && return $?
 
     # Fallback if anything failed
