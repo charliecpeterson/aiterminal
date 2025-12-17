@@ -10,11 +10,32 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-const Terminal = () => {
+interface TerminalProps {
+    id: number;
+    visible: boolean;
+    onClose: () => void;
+}
+
+const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  
+  const visibleRef = useRef(visible);
+  useEffect(() => {
+      visibleRef.current = visible;
+      if (visible && fitAddonRef.current && xtermRef.current) {
+          requestAnimationFrame(() => {
+              fitAddonRef.current?.fit();
+              if (xtermRef.current) {
+                  invoke('resize_pty', { id, rows: xtermRef.current.rows, cols: xtermRef.current.cols });
+                  xtermRef.current.focus();
+              }
+          });
+      }
+  }, [visible, id]);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -30,6 +51,7 @@ const Terminal = () => {
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    fitAddonRef.current = fitAddon;
     
     const searchAddon = new SearchAddon();
     term.loadAddon(searchAddon);
@@ -48,19 +70,16 @@ const Terminal = () => {
     fitAddon.fit();
     xtermRef.current = term;
 
-    // Spawn PTY
-    invoke('spawn_pty');
-
     // Source the shell integration script (Safe Injection)
     setTimeout(() => {
         // Source the config file we created in the backend
         const sourceCommand = 'source ~/.config/aiterminal/bash_init.sh\r';
-        invoke('write_to_pty', { data: sourceCommand });
+        invoke('write_to_pty', { id, data: sourceCommand });
         term.focus();
     }, 1000); // Wait 1s for shell to be fully ready
 
     // Listen for data from PTY
-    const unlistenPromise = listen<string>('pty-data', (event) => {
+    const unlistenDataPromise = listen<string>(`pty-data:${id}`, (event) => {
       term.write(event.payload);
     });
 
@@ -185,43 +204,42 @@ const Terminal = () => {
         return true;
     });
 
-    // Listen for data from PTY
-    // const unlistenPromise = listen<string>('pty-data', (event) => {
-    //   term.write(event.payload);
-    // });
-
     // Send data to PTY
     term.onData((data) => {
-      invoke('write_to_pty', { data });
+      invoke('write_to_pty', { id, data });
     });
 
     // Handle resize
     const handleResize = () => {
-        fitAddon.fit();
-        invoke('resize_pty', { rows: term.rows, cols: term.cols });
+        if (visibleRef.current) {
+            fitAddon.fit();
+            invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
+        }
     };
     window.addEventListener('resize', handleResize);
 
     // Handle Zoom and Search
     const handleKeydown = (e: KeyboardEvent) => {
+        if (!visibleRef.current) return; // Only handle keys if visible
+
         if (e.metaKey || e.ctrlKey) {
             if (e.key === '=' || e.key === '+') {
                 e.preventDefault();
                 const newSize = (term.options.fontSize || 14) + 1;
                 term.options.fontSize = newSize;
                 fitAddon.fit();
-                invoke('resize_pty', { rows: term.rows, cols: term.cols });
+                invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
             } else if (e.key === '-') {
                 e.preventDefault();
                 const newSize = Math.max(6, (term.options.fontSize || 14) - 1);
                 term.options.fontSize = newSize;
                 fitAddon.fit();
-                invoke('resize_pty', { rows: term.rows, cols: term.cols });
+                invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
             } else if (e.key === '0') {
                 e.preventDefault();
                 term.options.fontSize = 14;
                 fitAddon.fit();
-                invoke('resize_pty', { rows: term.rows, cols: term.cols });
+                invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
             } else if (e.key === 'f') {
                 e.preventDefault();
                 setShowSearch(prev => !prev);
@@ -240,11 +258,28 @@ const Terminal = () => {
 
     return () => {
       term.dispose();
-      unlistenPromise.then(f => f());
+      unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]); // Only re-run if ID changes. onClose is handled via ref.
+
+  // Keep onClose ref up to date
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+      onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Update the listener to use the ref
+  useEffect(() => {
+      const unlistenExitPromise = listen<void>(`pty-exit:${id}`, () => {
+          onCloseRef.current();
+      });
+      return () => {
+          unlistenExitPromise.then(f => f());
+      };
+  }, [id]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh' }}>

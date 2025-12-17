@@ -23,99 +23,95 @@ body, html, #root {
   background-color: #1e1e1e;
 }
 
-.container {
+.app-container {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
 }
-  color: #646cff;
-  text-decoration: inherit;
+
+.tabs-header {
+  display: flex;
+  background-color: #252526;
+  height: 35px;
+  align-items: center;
+  padding-left: 10px;
+  user-select: none;
+  -webkit-app-region: drag; /* Allow dragging window by tabs header */
 }
 
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
+.tab {
+  padding: 5px 10px;
+  margin-right: 2px;
+  background-color: #2d2d2d;
+  color: #969696;
   cursor: pointer;
+  border-radius: 5px 5px 0 0;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag; /* Tabs themselves should be clickable */
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+.tab:hover {
+  background-color: #3e3e3e;
 }
 
-input,
-button {
-  outline: none;
+.tab.active {
+  background-color: #1e1e1e;
+  color: #ffffff;
 }
 
-#greet-input {
-  margin-right: 5px;
+.close-tab {
+  margin-left: 8px;
+  font-size: 14px;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+.close-tab:hover {
+  background-color: #4e4e4e;
+  color: #ffffff;
 }
 
-.xterm-decoration-container .terminal-marker {
-  width: 6px;
-  height: 100%;
-  background-color: #555;
-  border-radius: 2px;
-  margin-left: -10px; /* Pull it out to the gutter */
+.new-tab-button {
+  padding: 5px 10px;
+  cursor: pointer;
+  color: #969696;
+  font-size: 18px;
+  -webkit-app-region: no-drag;
+}
+
+.new-tab-button:hover {
+  color: #ffffff;
+}
+
+.terminal-container {
+  flex: 1;
+  overflow: hidden;
   position: relative;
-  pointer-events: auto;
-  cursor: pointer;
-  z-index: 10;
 }
 
-.xterm-decoration-container .terminal-marker.success {
-  background-color: #4caf50;
+.terminal-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+  z-index: 0;
 }
 
-.xterm-decoration-container .terminal-marker.error {
-  background-color: #f44336;
+.terminal-wrapper.active {
+  visibility: visible;
+  z-index: 1;
 }
 
+/* Search Bar Styles */
 .search-bar {
   position: absolute;
   top: 10px;
@@ -158,4 +154,25 @@ button {
 
 .search-bar button:hover {
   background: #3e3e42;
+}
+
+/* Marker Styles */
+.xterm-decoration-container .terminal-marker {
+  width: 6px;
+  height: 100%;
+  background-color: #555;
+  border-radius: 2px;
+  margin-left: -10px; /* Pull it out to the gutter */
+  position: relative;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.xterm-decoration-container .terminal-marker.success {
+  background-color: #4caf50;
+}
+
+.xterm-decoration-container .terminal-marker.error {
+  background-color: #f44336;
 }

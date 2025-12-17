@@ -31,10 +31,19 @@ URLs in the terminal are automatically detected.
 - **Hover**: The link will be underlined.
 - **Click**: Opens the link in your default browser.
 
+### 6. Tabs
+Manage multiple terminal sessions in a single window.
+- **New Tab**: Press `Cmd + T` to open a new tab.
+- **Close Tab**: Press `Cmd + W` or click the `×` icon on the tab.
+- **Exit**: Typing `exit` in the shell will close the current tab.
+- **Close App**: Closing the last tab will close the application.
+
 ## Keyboard Shortcuts
 
 | Action | Shortcut (macOS) | Shortcut (Windows/Linux) |
 |--------|------------------|--------------------------|
+| **New Tab** | `Cmd` + `T` | `Ctrl` + `T` |
+| **Close Tab** | `Cmd` + `W` | `Ctrl` + `W` |
 | **Zoom In** | `Cmd` + `+` (or `=`) | `Ctrl` + `+` (or `=`) |
 | **Zoom Out** | `Cmd` + `-` | `Ctrl` + `-` |
 | **Reset Zoom** | `Cmd` + `0` | `Ctrl` + `0` |
