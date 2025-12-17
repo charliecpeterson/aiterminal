@@ -162,7 +162,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     // Source the shell integration script (Safe Injection)
     setTimeout(() => {
         // Source the config file we created in the backend
-        const sourceCommand = 'source ~/.config/aiterminal/bash_init.sh\r';
+        const sourceCommand = 'source ~/.config/aiterminal/bash_init.sh; if [ -n "$BASH_VERSION" ]; then source ~/.bashrc 2>/dev/null; elif [ -n "$ZSH_VERSION" ]; then source ~/.zshrc 2>/dev/null; fi\r';
         invoke('write_to_pty', { id, data: sourceCommand });
         term.focus();
     }, 1000); // Wait 1s for shell to be fully ready
