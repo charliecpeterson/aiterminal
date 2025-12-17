@@ -191,6 +191,31 @@ const Terminal = () => {
         invoke('resize_pty', { rows: term.rows, cols: term.cols });
     };
     window.addEventListener('resize', handleResize);
+
+    // Handle Zoom
+    const handleZoom = (e: KeyboardEvent) => {
+        if (e.metaKey || e.ctrlKey) {
+            if (e.key === '=' || e.key === '+') {
+                e.preventDefault();
+                const newSize = (term.options.fontSize || 14) + 1;
+                term.options.fontSize = newSize;
+                fitAddon.fit();
+                invoke('resize_pty', { rows: term.rows, cols: term.cols });
+            } else if (e.key === '-') {
+                e.preventDefault();
+                const newSize = Math.max(6, (term.options.fontSize || 14) - 1);
+                term.options.fontSize = newSize;
+                fitAddon.fit();
+                invoke('resize_pty', { rows: term.rows, cols: term.cols });
+            } else if (e.key === '0') {
+                e.preventDefault();
+                term.options.fontSize = 14;
+                fitAddon.fit();
+                invoke('resize_pty', { rows: term.rows, cols: term.cols });
+            }
+        }
+    };
+    window.addEventListener('keydown', handleZoom);
     
     // Initial resize
     setTimeout(handleResize, 100); // Delay slightly to ensure container is ready
@@ -199,6 +224,7 @@ const Terminal = () => {
       term.dispose();
       unlistenPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleZoom);
     };
   }, []);
 
