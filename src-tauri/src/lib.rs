@@ -173,56 +173,13 @@ if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
     echo "AI Terminal OSC 133 shell integration active ($(basename "$SHELL"))"
 fi
 
-# Optional ssh wrapper to auto-provision OSC markers on remote shells
-__aiterm_ssh_wrap_enabled() {
-    [ -z "$AITERM_DISABLE_SSH_WRAP" ] && [ "$TERM_PROGRAM" = "aiterminal" ]
-}
-
-__aiterm_has_remote_command() {
-    # Detect if a non-flag argument appears after the host
-    local seen_host=""
-    for arg in "$@"; do
-        if [ -z "$seen_host" ]; then
-            case "$arg" in
-                -*) ;; # still parsing flags
-                *) seen_host=1; continue ;;
-            esac
-        else
-            case "$arg" in
-                -*) ;;
-                *) return 0 ;; # found a command
-            esac
-        fi
-    done
-    return 1
-}
-
-__aiterm_find_host_arg() {
-    for arg in "$@"; do
-        case "$arg" in
-            -*) ;;  # flag
-            *) printf '%s' "$arg"; return 0 ;;
-        esac
-    done
-    return 1
-}
-
-__aiterm_ssh() {
-    if ! __aiterm_ssh_wrap_enabled; then command ssh "$@"; return $?; fi
-
-    # If user passed a remote command, tunneling, or control options, do not modify
-    if __aiterm_has_remote_command "$@"; then command ssh "$@"; return $?; fi
-    case "$*" in
-        *" -N "*|-N|*-W*|*-w*) command ssh "$@"; return $? ;;
-    esac
-
-    local host
-    host="$(__aiterm_find_host_arg "$@")" || { command ssh "$@"; return $?; }
+aiterm_ssh() {
+    # Explicit helper: only run when user calls aiterm_ssh, leave ssh untouched
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then command ssh "$@"; return $?; fi
 
     local helper_path="$HOME/.config/aiterminal/bash_init.sh"
     [ -f "$helper_path" ] || { command ssh "$@"; return $?; }
 
-    # Minimal wrapper: only bash/zsh get the helper; others fall back untouched
     command ssh -tt "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && {
         remote_shell="${SHELL:-/bin/sh}";
         case "$remote_shell" in
@@ -236,13 +193,8 @@ __aiterm_ssh() {
                 exec "$remote_shell" -l
                 ;;
         esac
-    }' < "$helper_path" && return $?
-
-    # Unsupported shell or injection failed: plain ssh without helper
-    command ssh "$@"
+    }' < "$helper_path"
 }
-
-alias ssh='__aiterm_ssh'
 "#;
             let _ = std::fs::write(&bash_init_path, bash_script);
         }
