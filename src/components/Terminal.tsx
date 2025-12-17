@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -11,6 +12,8 @@ import { listen } from '@tauri-apps/api/event';
 const Terminal = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -26,6 +29,10 @@ const Terminal = () => {
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    
+    const searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+    searchAddonRef.current = searchAddon;
     
     try {
         const webglAddon = new WebglAddon();
@@ -192,8 +199,8 @@ const Terminal = () => {
     };
     window.addEventListener('resize', handleResize);
 
-    // Handle Zoom
-    const handleZoom = (e: KeyboardEvent) => {
+    // Handle Zoom and Search
+    const handleKeydown = (e: KeyboardEvent) => {
         if (e.metaKey || e.ctrlKey) {
             if (e.key === '=' || e.key === '+') {
                 e.preventDefault();
@@ -212,10 +219,18 @@ const Terminal = () => {
                 term.options.fontSize = 14;
                 fitAddon.fit();
                 invoke('resize_pty', { rows: term.rows, cols: term.cols });
+            } else if (e.key === 'f') {
+                e.preventDefault();
+                setShowSearch(prev => !prev);
             }
         }
+        // Hide search on Escape
+        if (e.key === 'Escape') {
+            setShowSearch(false);
+            term.focus();
+        }
     };
-    window.addEventListener('keydown', handleZoom);
+    window.addEventListener('keydown', handleKeydown);
     
     // Initial resize
     setTimeout(handleResize, 100); // Delay slightly to ensure container is ready
@@ -224,11 +239,48 @@ const Terminal = () => {
       term.dispose();
       unlistenPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('keydown', handleZoom);
+      window.removeEventListener('keydown', handleKeydown);
     };
   }, []);
 
-  return <div ref={terminalRef} style={{ width: '100%', height: '100vh', overflow: 'hidden', paddingLeft: '15px' }} />;
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+        {showSearch && (
+            <div className="search-bar">
+                <input 
+                    type="text" 
+                    placeholder="Find..." 
+                    autoFocus
+                    onChange={(e) => {
+                        searchAddonRef.current?.findNext(e.target.value, { incremental: true });
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            if (e.shiftKey) {
+                                searchAddonRef.current?.findPrevious((e.target as HTMLInputElement).value);
+                            } else {
+                                searchAddonRef.current?.findNext((e.target as HTMLInputElement).value);
+                            }
+                        }
+                    }}
+                />
+                <button onClick={() => {
+                    const input = document.querySelector('.search-bar input') as HTMLInputElement;
+                    if (input) searchAddonRef.current?.findPrevious(input.value);
+                }}>↑</button>
+                <button onClick={() => {
+                    const input = document.querySelector('.search-bar input') as HTMLInputElement;
+                    if (input) searchAddonRef.current?.findNext(input.value);
+                }}>↓</button>
+                <button onClick={() => {
+                    setShowSearch(false);
+                    xtermRef.current?.focus();
+                }}>✕</button>
+            </div>
+        )}
+        <div ref={terminalRef} style={{ width: '100%', height: '100%', overflow: 'hidden', paddingLeft: '15px' }} />
+    </div>
+  );
 };
 
 export default Terminal;

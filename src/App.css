@@ -115,3 +115,47 @@ button {
 .xterm-decoration-container .terminal-marker.error {
   background-color: #f44336;
 }
+
+.search-bar {
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  background: #252526;
+  padding: 6px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #3e3e42;
+}
+
+.search-bar input {
+  background: #3c3c3c;
+  border: 1px solid #3e3e42;
+  color: #cccccc;
+  padding: 4px 8px;
+  border-radius: 2px;
+  outline: none;
+  font-size: 12px;
+  width: 200px;
+}
+
+.search-bar input:focus {
+  border-color: #007fd4;
+}
+
+.search-bar button {
+  background: transparent;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 14px;
+}
+
+.search-bar button:hover {
+  background: #3e3e42;
+}
