@@ -222,8 +222,15 @@ __aiterm_ssh() {
     local helper_path="$HOME/.config/aiterminal/bash_init.sh"
     [ -f "$helper_path" ] || { command ssh "$@"; return $?; }
 
-    # Stream helper to remote and start a login shell with markers enabled
-    command ssh "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && TERM_PROGRAM=aiterminal source ~/.config/aiterminal/bash_init.sh && exec $SHELL -l' < "$helper_path" && return $?
+        # Stream helper to remote; only source if shell is bash/zsh, otherwise fall back to native shell login
+        command ssh "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && {
+            remote_shell="${SHELL:-/bin/sh}";
+            case "$remote_shell" in
+                */bash|*/zsh) TERM_PROGRAM=aiterminal SHELL="$remote_shell" source ~/.config/aiterminal/bash_init.sh ;;
+                *) ;; # unsupported shell, skip sourcing
+            esac
+            exec "$remote_shell" -l
+        }' < "$helper_path" && return $?
 
     # Fallback if anything failed
     command ssh "$@"
