@@ -227,16 +227,19 @@ __aiterm_ssh() {
             remote_shell="${SHELL:-/bin/sh}";
             case "$remote_shell" in
                 */bash)
-                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i --rcfile ~/.config/aiterminal/bash_init.sh
+                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" --rcfile ~/.config/aiterminal/bash_init.sh -i
                     ;;
                 */zsh)
-                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i -c "source ~/.config/aiterminal/bash_init.sh; exec $remote_shell -i"
+                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i -c "source ~/.config/aiterminal/bash_init.sh; exec \"$remote_shell\" -i"
                     ;;
                 *)
                     exec "$remote_shell" -l
                     ;;
             esac
         }' < "$helper_path" && return $?
+
+        # If helper path failed (bad shell, permissions, etc.), fall back to plain ssh
+        command ssh "$@"
 
     # Fallback if anything failed
     command ssh "$@"
