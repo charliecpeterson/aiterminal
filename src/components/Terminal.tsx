@@ -3,6 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { SearchAddon } from '@xterm/addon-search';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -34,6 +35,8 @@ const Terminal = () => {
     term.loadAddon(searchAddon);
     searchAddonRef.current = searchAddon;
     
+    term.loadAddon(new WebLinksAddon());
+
     try {
         const webglAddon = new WebglAddon();
         term.loadAddon(webglAddon);

@@ -26,6 +26,11 @@ Find text within your terminal buffer.
 - Type to highlight matches.
 - Press `Enter` for next match, `Shift + Enter` for previous.
 
+### 5. Clickable Links
+URLs in the terminal are automatically detected.
+- **Hover**: The link will be underlined.
+- **Click**: Opens the link in your default browser.
+
 ## Keyboard Shortcuts
 
 | Action | Shortcut (macOS) | Shortcut (Windows/Linux) |
