@@ -219,11 +219,24 @@ body, html, #root {
   cursor: grabbing;
 }
 
+.terminal-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-body {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding-left: 15px;
+}
+
 .terminal-status {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  position: relative;
   height: 24px;
   display: flex;
   align-items: center;
@@ -233,7 +246,7 @@ body, html, #root {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   color: #e0e0e0;
   font-size: 12px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .status-host, .status-latency {

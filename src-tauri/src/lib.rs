@@ -227,24 +227,12 @@ __aiterm_ssh() {
             remote_shell="${SHELL:-/bin/sh}";
             case "$remote_shell" in
                 */bash)
-                    TERM_PROGRAM=aiterminal SHELL="$remote_shell" bash -i --rcfile ~/.config/aiterminal/bash_init.sh -c "\
-                        [ -f /etc/profile ] && . /etc/profile; \
-                        [ -f ~/.profile ] && . ~/.profile; \
-                        [ -f ~/.bashrc ] && . ~/.bashrc; \
-                        . ~/.config/aiterminal/bash_init.sh; \
-                        exec bash -i"
+                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i --rcfile ~/.config/aiterminal/bash_init.sh
                     ;;
                 */zsh)
-                    TERM_PROGRAM=aiterminal SHELL="$remote_shell" zsh -i -c "\
-                        [ -f /etc/zprofile ] && . /etc/zprofile; \
-                        [ -f /etc/zshrc ] && . /etc/zshrc; \
-                        [ -f ~/.zprofile ] && . ~/.zprofile; \
-                        [ -f ~/.zshrc ] && . ~/.zshrc; \
-                        . ~/.config/aiterminal/bash_init.sh; \
-                        exec zsh -i"
+                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i -c "source ~/.config/aiterminal/bash_init.sh; exec $remote_shell -i"
                     ;;
                 *)
-                    # unsupported shell, just exec normally
                     exec "$remote_shell" -l
                     ;;
             esac

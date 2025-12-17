@@ -418,7 +418,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   if (loading) return null;
 
   return (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div className="terminal-shell">
         {showSearch && (
             <div className="search-bar">
                 <input 
@@ -452,18 +452,18 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                 }}>✕</button>
             </div>
         )}
-                <div ref={terminalRef} style={{ width: '100%', height: '100%', paddingLeft: '15px' }} />
-                <div className="terminal-status">
-                    <div className="status-host" title={hostLabel}>
-                        <span className="status-dot" />
-                        <span className="status-text">{hostLabel}</span>
-                    </div>
-                    <div className="status-latency" title={latencyAt ? `Last checked ${new Date(latencyAt).toLocaleTimeString()}` : 'Latency probe'}>
-                        <span className={`latency-pill ${latencyMs == null ? 'latency-unknown' : latencyMs < 80 ? 'latency-good' : latencyMs < 200 ? 'latency-warn' : 'latency-bad'}`}>
-                            {latencyMs == null ? 'Latency: —' : `Latency: ${latencyMs} ms`}
-                        </span>
-                    </div>
+            <div className="terminal-body" ref={terminalRef} />
+            <div className="terminal-status">
+                <div className="status-host" title={hostLabel}>
+                    <span className="status-dot" />
+                    <span className="status-text">{hostLabel}</span>
                 </div>
+                <div className="status-latency" title={latencyAt ? `Last checked ${new Date(latencyAt).toLocaleTimeString()}` : 'Latency probe'}>
+                    <span className={`latency-pill ${latencyMs == null ? 'latency-unknown' : latencyMs < 80 ? 'latency-good' : latencyMs < 200 ? 'latency-warn' : 'latency-bad'}`}>
+                        {latencyMs == null ? 'Latency: —' : `Latency: ${latencyMs} ms`}
+                    </span>
+                </div>
+            </div>
     </div>
   );
 };
