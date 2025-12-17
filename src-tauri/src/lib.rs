@@ -201,10 +201,10 @@ aiterm_ssh() {
     command ssh -tt "${ssh_opts[@]}" "$@" 'remote_shell="${SHELL:-/bin/sh}";
         case "$remote_shell" in
             */bash)
-                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" --rcfile ~/.config/aiterminal/bash_init.sh -i
+                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i --rcfile <(cat ~/.config/aiterminal/bash_init.sh ~/.bashrc ~/.bash_profile ~/.profile 2>/dev/null)
                 ;;
             */zsh)
-                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i -c "source ~/.config/aiterminal/bash_init.sh; exec \"$remote_shell\" -i"
+                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i -c "source ~/.zprofile 2>/dev/null; source ~/.zshrc 2>/dev/null; source ~/.config/aiterminal/bash_init.sh; exec \"$remote_shell\" -i"
                 ;;
             *)
                 exec "$remote_shell" -l
