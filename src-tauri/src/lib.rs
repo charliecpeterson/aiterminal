@@ -222,7 +222,7 @@ __aiterm_ssh() {
     local helper_path="$HOME/.config/aiterminal/bash_init.sh"
     [ -f "$helper_path" ] || { command ssh "$@"; return $?; }
 
-    # Stream helper to remote; force PTY (-tt) so bash/zsh stay interactive with job control and markers
+    # Minimal wrapper: only bash/zsh get the helper; others fall back untouched
     command ssh -tt "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && {
         remote_shell="${SHELL:-/bin/sh}";
         case "$remote_shell" in
@@ -238,7 +238,7 @@ __aiterm_ssh() {
         esac
     }' < "$helper_path" && return $?
 
-    # If we got here, helper injection failed; fall back only for unsupported shells or errors
+    # Unsupported shell or injection failed: plain ssh without helper
     command ssh "$@"
 }
 
