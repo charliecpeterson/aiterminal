@@ -38,7 +38,7 @@ fn spawn_pty(window: tauri::Window, state: State<AppState>) {
     });
 
     let mut cmd = CommandBuilder::new(&shell);
-    
+
     // Start as a login shell to ensure user config (.bash_profile/.zshrc) is loaded
     if !cfg!(target_os = "windows") {
         cmd.args(&["-l"]);
@@ -73,6 +73,15 @@ __aiterm_wrapper() {
 
 # 3. Replace PROMPT_COMMAND with our wrapper
 PROMPT_COMMAND="__aiterm_wrapper"
+
+# 4. Pre-exec trap for Output Start (C)
+# This runs before every command to mark the start of output
+__aiterm_preexec() {
+    if [ -n "$COMP_LINE" ]; then return; fi  # Don't run during completion
+    if [[ "$BASH_COMMAND" == "__aiterm_wrapper" ]]; then return; fi # Don't run for our own wrapper
+    builtin printf "\033]133;C\007"
+}
+trap '__aiterm_preexec' DEBUG
 
 echo "AI Terminal Shell Integration Loaded"
 "#;
@@ -134,6 +143,8 @@ fn resize_pty(rows: u16, cols: u16, state: State<AppState>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             pty_master: Arc::new(Mutex::new(None)),

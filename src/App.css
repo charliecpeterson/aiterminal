@@ -103,6 +103,9 @@ button {
   border-radius: 2px;
   margin-left: -10px; /* Pull it out to the gutter */
   position: relative;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 10;
 }
 
 .xterm-decoration-container .terminal-marker.success {

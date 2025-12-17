@@ -3,6 +3,8 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
+import { ask } from '@tauri-apps/plugin-dialog';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
@@ -59,6 +61,75 @@ const Terminal = () => {
 
     let currentMarker: any = null;
     const markers: any[] = [];
+    const markerOutputStarts = new Map<any, number>();
+
+    const setupMarkerElement = (marker: any, element: HTMLElement, exitCode?: number) => {
+        element.classList.add('terminal-marker');
+        element.style.cursor = 'pointer';
+        element.title = 'Click to copy command output';
+        
+        if (exitCode !== undefined) {
+            if (exitCode === 0) {
+                element.classList.add('success');
+            } else {
+                element.classList.add('error');
+            }
+        }
+
+        // Prevent duplicate listeners if onRender is called multiple times
+        if (element.dataset.listenerAttached) return;
+        element.dataset.listenerAttached = 'true';
+
+        element.addEventListener('mousedown', async (e) => {
+            e.stopPropagation(); // Prevent other clicks
+            console.log('Marker clicked!');
+            
+            const startLine = marker.marker.line;
+            let endLine = term.buffer.active.length - 1;
+            
+            // Find next marker to define range
+            const index = markers.indexOf(marker);
+            if (index !== -1 && index < markers.length - 1) {
+                endLine = markers[index + 1].marker.line - 1;
+            }
+
+            const outputStartLine = Math.max(
+                markerOutputStarts.get(marker) || (startLine + 1),
+                startLine + 1
+            );
+            console.log(`Range: ${startLine} -> ${outputStartLine} -> ${endLine}`);
+            
+            // Simple Context Menu Logic (Native confirm for now to test)
+            const choice = await ask(
+                "Copy Options:",
+                {
+                    title: "Copy",
+                    kind: 'info',
+                    okLabel: 'Copy Command Only',
+                    cancelLabel: 'Copy Output Only'
+                }
+            );
+
+            if (choice) {
+                // Copy Command (Start -> Output Start)
+                const cmdEnd = Math.max(startLine, outputStartLine - 1);
+                term.selectLines(startLine, cmdEnd);
+            } else {
+                // Copy Output (Output Start -> End)
+                term.selectLines(outputStartLine, endLine);
+            }
+
+            const text = term.getSelection();
+            console.log('Copying text:', text);
+            try {
+                await writeText(text);
+                console.log('Text copied to clipboard via Tauri plugin');
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
+            term.clearSelection();
+        });
+    };
 
     term.parser.registerOscHandler(133, (data) => {
         try {
@@ -76,52 +147,26 @@ const Terminal = () => {
                 });
                 
                 if (marker) {
-                    marker.onRender((element) => {
-                        element.classList.add('terminal-marker');
-                        element.style.cursor = 'pointer';
-                        element.title = 'Click to copy command output';
-                        
-                        element.addEventListener('click', () => {
-                            const startLine = marker.marker.line;
-                            let endLine = term.buffer.active.length - 1;
-                            
-                            // Find next marker to define range
-                            const index = markers.indexOf(marker);
-                            if (index !== -1 && index < markers.length - 1) {
-                                endLine = markers[index + 1].marker.line - 1;
-                            }
-
-                            // Select and copy
-                            console.log(`Copying lines ${startLine} to ${endLine}`);
-                            term.selectLines(startLine, endLine);
-                            const text = term.getSelection();
-                            navigator.clipboard.writeText(text).then(() => {
-                                // Visual feedback
-                                element.style.backgroundColor = '#fff';
-                                setTimeout(() => {
-                                    element.style.backgroundColor = ''; // Revert to class style
-                                }, 200);
-                            });
-                            term.clearSelection();
-                        });
-                    });
+                    marker.onRender((element) => setupMarkerElement(marker, element));
                     currentMarker = marker;
                     markers.push(marker);
                 }
             } else if (type === 'C') {
-                 // Command Output Start - We could mark this to separate command from output
+                 // Command Output Start
+                 // Only set if not already set for this marker (First 'C' wins)
+                 if (currentMarker && !markerOutputStarts.has(currentMarker)) {
+                     // Store the line number where output starts
+                     const outputLine = term.buffer.active.baseY + term.buffer.active.cursorY;
+                     markerOutputStarts.set(currentMarker, outputLine);
+                     console.log('Output started at line', outputLine);
+                 }
             } else if (type === 'D') {
                 // Command Finished
                 const exitCode = parseInt(parts[1] || '0');
                 if (currentMarker) {
-                    currentMarker.onRender((element: HTMLElement) => {
-                        // Keep the base class so it stays visible
-                        if (exitCode === 0) {
-                            element.classList.add('success');
-                        } else {
-                            element.classList.add('error');
-                        }
-                    });
+                    currentMarker.onRender((element: HTMLElement) => setupMarkerElement(currentMarker, element, exitCode));
+                    // Clear currentMarker so subsequent 'C' events (e.g. from PROMPT_COMMAND) don't overwrite our output start
+                    currentMarker = null;
                 }
             }
         } catch (e) {
