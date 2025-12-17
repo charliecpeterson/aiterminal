@@ -27,6 +27,10 @@ Find text within your terminal buffer.
 - Type to highlight matches.
 - Press `Enter` for next match, `Shift + Enter` for previous.
 
+### 4.5 Scrolling & Scrollbar
+- Mouse wheel/trackpad scrolling is supported. A visible right-hand scrollbar overlay appears; you can click or drag it to move through the buffer.
+- If system scrollbars are hidden (e.g., macOS auto-hide), the overlay ensures you still see position and can drag to scroll.
+
 ### 5. Clickable Links
 URLs in the terminal are automatically detected.
 - **Hover**: The link will be underlined.
@@ -59,3 +63,4 @@ The terminal creates a configuration directory at `~/.config/aiterminal/`.
 ## Troubleshooting
 - **Markers not showing?** Open a fresh tab to regenerate the helper. Bash and zsh are supported. For SSH sessions, disable the wrapper with `AITERM_DISABLE_SSH_WRAP=1 ssh host` if a remote policy blocks sourcing.
 - **Copy not working?** The app uses the system clipboard. Ensure you have granted permission if prompted.
+- **Scrollbar missing?** The app renders its own overlay. If you still don’t see it, ensure you’re in the terminal area and the buffer is longer than the viewport; try scrolling once to reveal it.

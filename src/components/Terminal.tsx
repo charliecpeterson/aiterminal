@@ -89,6 +89,73 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     fitAddon.fit();
     xtermRef.current = term;
 
+    // Custom always-visible scrollbar overlay synced to xterm viewport
+    const viewport = term.element?.querySelector('.xterm-viewport') as HTMLElement | null;
+    const track = document.createElement('div');
+    const thumb = document.createElement('div');
+    track.className = 'aiterm-scroll-track';
+    thumb.className = 'aiterm-scroll-thumb';
+    track.appendChild(thumb);
+    terminalRef.current.appendChild(track);
+
+    let lastThumbHeight = 24;
+    const maxScroll = () => (viewport ? viewport.scrollHeight - viewport.clientHeight : 0);
+
+    const updateThumb = () => {
+        if (!viewport) return;
+        const { scrollTop, scrollHeight, clientHeight } = viewport;
+        const trackHeight = track.clientHeight || clientHeight;
+        const thumbHeight = Math.max(24, (clientHeight / scrollHeight) * trackHeight);
+        lastThumbHeight = thumbHeight;
+        const maxTop = trackHeight - thumbHeight;
+        const top = scrollHeight > clientHeight ? (scrollTop / (scrollHeight - clientHeight)) * maxTop : 0;
+        thumb.style.height = `${thumbHeight}px`;
+        thumb.style.transform = `translateY(${top}px)`;
+        thumb.style.opacity = scrollHeight > clientHeight ? '1' : '0';
+    };
+
+    const scrollToThumbPosition = (clientY: number) => {
+        if (!viewport) return;
+        const rect = track.getBoundingClientRect();
+        const maxTop = rect.height - lastThumbHeight;
+        const offset = Math.min(Math.max(clientY - rect.top - lastThumbHeight / 2, 0), Math.max(maxTop, 0));
+        const ratio = maxTop > 0 ? offset / maxTop : 0;
+        viewport.scrollTop = ratio * maxScroll();
+    };
+
+    let dragging = false;
+    const onThumbMouseDown = (e: MouseEvent) => {
+        dragging = true;
+        thumb.classList.add('dragging');
+        e.preventDefault();
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+        if (!dragging) return;
+        scrollToThumbPosition(e.clientY);
+    };
+
+    const onMouseUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        thumb.classList.remove('dragging');
+    };
+
+    const onTrackMouseDown = (e: MouseEvent) => {
+        if (e.target === thumb) return; // thumb handler covers drag
+        scrollToThumbPosition(e.clientY);
+    };
+
+    thumb.addEventListener('mousedown', onThumbMouseDown);
+    track.addEventListener('mousedown', onTrackMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    const refreshThumb = () => requestAnimationFrame(updateThumb);
+    viewport?.addEventListener('scroll', refreshThumb);
+    window.addEventListener('resize', refreshThumb);
+    refreshThumb();
+
     // Source the shell integration script (Safe Injection)
     setTimeout(() => {
         // Source the config file we created in the backend
@@ -277,6 +344,13 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
     return () => {
       term.dispose();
+        viewport?.removeEventListener('scroll', refreshThumb);
+        window.removeEventListener('resize', refreshThumb);
+        thumb.removeEventListener('mousedown', onThumbMouseDown);
+        track.removeEventListener('mousedown', onTrackMouseDown);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        track.remove();
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
@@ -303,7 +377,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   if (loading) return null;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {showSearch && (
             <div className="search-bar">
                 <input 
@@ -337,7 +411,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                 }}>✕</button>
             </div>
         )}
-        <div ref={terminalRef} style={{ width: '100%', height: '100%', overflow: 'hidden', paddingLeft: '15px' }} />
+                <div ref={terminalRef} style={{ width: '100%', height: '100%', paddingLeft: '15px' }} />
     </div>
   );
 };
