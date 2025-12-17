@@ -222,26 +222,23 @@ __aiterm_ssh() {
     local helper_path="$HOME/.config/aiterminal/bash_init.sh"
     [ -f "$helper_path" ] || { command ssh "$@"; return $?; }
 
-        # Stream helper to remote; for bash/zsh, launch an interactive shell that sources common profiles and the helper so PROMPT_COMMAND survives
-        command ssh "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && {
-            remote_shell="${SHELL:-/bin/sh}";
-            case "$remote_shell" in
-                */bash)
-                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" --rcfile ~/.config/aiterminal/bash_init.sh -i
-                    ;;
-                */zsh)
-                    exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i -c "source ~/.config/aiterminal/bash_init.sh; exec \"$remote_shell\" -i"
-                    ;;
-                *)
-                    exec "$remote_shell" -l
-                    ;;
-            esac
-        }' < "$helper_path" && return $?
+    # Stream helper to remote; force PTY (-tt) so bash/zsh stay interactive with job control and markers
+    command ssh -tt "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && {
+        remote_shell="${SHELL:-/bin/sh}";
+        case "$remote_shell" in
+            */bash)
+                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" --rcfile ~/.config/aiterminal/bash_init.sh -i
+                ;;
+            */zsh)
+                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -i -c "source ~/.config/aiterminal/bash_init.sh; exec \"$remote_shell\" -i"
+                ;;
+            *)
+                exec "$remote_shell" -l
+                ;;
+        esac
+    }' < "$helper_path" && return $?
 
-        # If helper path failed (bad shell, permissions, etc.), fall back to plain ssh
-        command ssh "$@"
-
-    # Fallback if anything failed
+    # If we got here, helper injection failed; fall back only for unsupported shells or errors
     command ssh "$@"
 }
 
