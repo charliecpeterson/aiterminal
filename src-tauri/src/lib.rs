@@ -1,9 +1,53 @@
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{Emitter, State};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AppearanceSettings {
+    theme: String,
+    font_size: u16,
+    font_family: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AiSettings {
+    provider: String,
+    model: String,
+    api_key: String,
+    embedding_model: Option<String>,
+    url: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AppSettings {
+    appearance: AppearanceSettings,
+    ai: AiSettings,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            appearance: AppearanceSettings {
+                theme: "dark".to_string(),
+                font_size: 14,
+                font_family: "Menlo, Monaco, \"Courier New\", monospace".to_string(),
+            },
+            ai: AiSettings {
+                provider: "openai".to_string(),
+                model: "gpt-4o".to_string(),
+                api_key: "".to_string(),
+                embedding_model: None,
+                url: None,
+            },
+        }
+    }
+}
 
 struct PtySession {
     master: Box<dyn portable_pty::MasterPty + Send>,
@@ -152,6 +196,44 @@ echo "AI Terminal Shell Integration Loaded"
     Ok(id)
 }
 
+fn get_config_path() -> Option<PathBuf> {
+    std::env::var("HOME").ok().map(|home| {
+        std::path::Path::new(&home).join(".config/aiterminal/settings.json")
+    })
+}
+
+#[tauri::command]
+fn load_settings() -> Result<AppSettings, String> {
+    let config_path = get_config_path().ok_or("Could not determine config path")?;
+    
+    if !config_path.exists() {
+        let default_settings = AppSettings::default();
+        let json = serde_json::to_string_pretty(&default_settings).map_err(|e| e.to_string())?;
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        fs::write(&config_path, json).map_err(|e| e.to_string())?;
+        return Ok(default_settings);
+    }
+
+    let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let settings: AppSettings = serde_json::from_str(&content).unwrap_or_else(|_| {
+        AppSettings::default()
+    });
+    Ok(settings)
+}
+
+#[tauri::command]
+fn save_settings(settings: AppSettings) -> Result<(), String> {
+    let config_path = get_config_path().ok_or("Could not determine config path")?;
+    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(config_path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn write_to_pty(id: u32, data: String, state: State<AppState>) {
     let mut ptys = state.ptys.lock().unwrap();
@@ -195,7 +277,9 @@ pub fn run() {
             spawn_pty,
             write_to_pty,
             resize_pty,
-            close_pty
+            close_pty,
+            load_settings,
+            save_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

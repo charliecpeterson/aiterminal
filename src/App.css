@@ -90,6 +90,19 @@ body, html, #root {
   color: #ffffff;
 }
 
+.settings-button {
+  padding: 5px 10px;
+  cursor: pointer;
+  color: #969696;
+  font-size: 16px;
+  -webkit-app-region: no-drag;
+  margin-right: 10px;
+}
+
+.settings-button:hover {
+  color: #ffffff;
+}
+
 .terminal-container {
   flex: 1;
   overflow: hidden;

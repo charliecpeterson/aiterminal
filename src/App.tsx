@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import Terminal from "./components/Terminal";
+import SettingsModal from "./components/SettingsModal";
+import { SettingsProvider } from "./context/SettingsContext";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
@@ -9,10 +11,11 @@ interface Tab {
   title: string;
 }
 
-function App() {
+function AppContent() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const createTab = async () => {
     try {
@@ -48,14 +51,18 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "t") {
-        e.preventDefault();
-        createTab();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "w") {
-        e.preventDefault();
-        if (activeTabId !== null) {
-            closeTab(activeTabId);
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "t") {
+          e.preventDefault();
+          createTab();
+        } else if (e.key === "w") {
+          e.preventDefault();
+          if (activeTabId !== null) {
+              closeTab(activeTabId);
+          }
+        } else if (e.key === ",") {
+          e.preventDefault();
+          setIsSettingsOpen(true);
         }
       }
     };
@@ -66,6 +73,7 @@ function App() {
 
   return (
     <div className="app-container">
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       <div className="tabs-header">
         {tabs.map((tab) => (
           <div
@@ -88,6 +96,14 @@ function App() {
         <div className="new-tab-button" onClick={createTab}>
           +
         </div>
+        <div style={{ flex: 1 }} /> {/* Spacer */}
+        <div 
+            className="settings-button" 
+            onClick={() => setIsSettingsOpen(true)}
+            title="Settings (Cmd+,)"
+        >
+            ⚙️
+        </div>
       </div>
       <div className="terminal-container">
         {tabs.map((tab) => (
@@ -105,6 +121,14 @@ function App() {
       </div>
     </div>
   );
+}
+
+function App() {
+    return (
+        <SettingsProvider>
+            <AppContent />
+        </SettingsProvider>
+    );
 }
 
 export default App;

@@ -1,0 +1,143 @@
+.settings-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.settings-modal {
+    background-color: #252526;
+    width: 600px;
+    height: 500px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid #3e3e42;
+}
+
+.settings-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #3e3e42;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.settings-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: #cccccc;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    color: #cccccc;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.settings-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.settings-sidebar {
+    width: 150px;
+    background-color: #1e1e1e;
+    border-right: 1px solid #3e3e42;
+    padding: 10px 0;
+}
+
+.settings-tab {
+    padding: 10px 20px;
+    cursor: pointer;
+    color: #969696;
+    font-size: 14px;
+}
+
+.settings-tab:hover {
+    background-color: #2a2d2e;
+    color: #cccccc;
+}
+
+.settings-tab.active {
+    background-color: #37373d;
+    color: #ffffff;
+    border-left: 2px solid #007fd4;
+}
+
+.settings-panel {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #cccccc;
+    font-size: 14px;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px;
+    background-color: #3c3c3c;
+    border: 1px solid #3e3e42;
+    color: #cccccc;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    border-color: #007fd4;
+    outline: none;
+}
+
+.settings-footer {
+    padding: 15px 20px;
+    border-top: 1px solid #3e3e42;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.btn {
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    border: 1px solid transparent;
+}
+
+.btn-secondary {
+    background-color: #3c3c3c;
+    color: #cccccc;
+}
+
+.btn-primary {
+    background-color: #007fd4;
+    color: #ffffff;
+}
+
+.btn:hover {
+    opacity: 0.9;
+}

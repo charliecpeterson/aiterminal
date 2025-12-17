@@ -9,6 +9,7 @@ import { ask } from '@tauri-apps/plugin-dialog';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { useSettings } from '../context/SettingsContext';
 
 interface TerminalProps {
     id: number;
@@ -17,12 +18,28 @@ interface TerminalProps {
 }
 
 const Terminal = ({ id, visible, onClose }: TerminalProps) => {
+  const { settings, loading } = useSettings();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   
+  // Update terminal options when settings change
+  useEffect(() => {
+      if (xtermRef.current && settings) {
+          xtermRef.current.options.fontSize = settings.appearance.font_size;
+          xtermRef.current.options.fontFamily = settings.appearance.font_family;
+          xtermRef.current.options.theme = {
+              ...xtermRef.current.options.theme,
+              background: settings.appearance.theme === 'light' ? '#ffffff' : '#1e1e1e',
+              foreground: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
+              cursor: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
+          };
+          fitAddonRef.current?.fit();
+      }
+  }, [settings]);
+
   const visibleRef = useRef(visible);
   useEffect(() => {
       visibleRef.current = visible;
@@ -38,16 +55,18 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   }, [visible, id]);
 
   useEffect(() => {
-    if (!terminalRef.current) return;
+    if (!terminalRef.current || loading || !settings) return;
 
     const term = new XTerm({
       cursorBlink: true,
       theme: {
-        background: '#1e1e1e',
+        background: settings.appearance.theme === 'light' ? '#ffffff' : '#1e1e1e',
+        foreground: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
+        cursor: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
       },
       allowProposedApi: true,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      fontSize: 14,
+      fontFamily: settings.appearance.font_family,
+      fontSize: settings.appearance.font_size,
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
@@ -263,7 +282,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       window.removeEventListener('keydown', handleKeydown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]); // Only re-run if ID changes. onClose is handled via ref.
+  }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.
 
   // Keep onClose ref up to date
   const onCloseRef = useRef(onClose);
@@ -280,6 +299,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
           unlistenExitPromise.then(f => f());
       };
   }, [id]);
+
+  if (loading) return null;
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh' }}>

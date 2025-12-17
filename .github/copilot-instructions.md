@@ -1,21 +1,28 @@
-- [x] Verify that the copilot-instructions.md file in the .github directory is created.
+# AI Terminal Project Instructions
 
-- [x] Clarify Project Requirements
+## Project Overview
+AI Terminal is a modern terminal emulator built with Tauri (Rust) and React (TypeScript). It features multi-tab support, shell integration, and a persistent configuration system.
 
-- [x] Scaffold the Project
+## Architecture
+- **Frontend**: React, TypeScript, Vite.
+  - `src/components/Terminal.tsx`: Wraps `xterm.js` and handles PTY interaction.
+  - `src/context/SettingsContext.tsx`: Manages global application settings.
+  - `src/App.tsx`: Main layout and tab management.
+- **Backend**: Rust (Tauri).
+  - `src-tauri/src/lib.rs`: Main entry point, command definitions, and PTY management.
+  - `src-tauri/Cargo.toml`: Rust dependencies.
 
-- [x] Customize the Project
+## Configuration
+Settings are stored in `~/.config/aiterminal/settings.json`.
+- **Appearance**: Theme, Font Size, Font Family.
+- **AI**: Provider, Model, API Key, Embedding Model, URL.
 
-- [x] Install Required Extensions
+## Development
+- Run `npm run tauri dev` to start the development server.
+- Run `npm run build` to build the frontend.
+- Run `cargo check` in `src-tauri` to check Rust code.
 
-- [x] Compile the Project
-
-- [x] Create and Run Task
-
-- [x] Launch the Project
-
-- [x] Ensure Documentation is Complete
-	Verify that all previous steps have been completed.
-	Verify that README.md and the copilot-instructions.md file in the .github directory exists and contains current project information.
-	Clean up the copilot-instructions.md file in the .github directory by removing all HTML comments.
-	 -->
+## Conventions
+- Use `xterm.js` for terminal rendering.
+- Use `portable-pty` for cross-platform PTY management.
+- Use `serde` for serialization between Rust and TypeScript.
