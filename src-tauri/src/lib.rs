@@ -180,8 +180,21 @@ aiterm_ssh() {
     local helper_path="$HOME/.config/aiterminal/bash_init.sh"
     [ -f "$helper_path" ] || { command ssh "$@"; return $?; }
 
-    command ssh -tt "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && {
-        remote_shell="${SHELL:-/bin/sh}";
+    # Find host (first non-flag arg) for scp target
+    local target=""
+    for arg in "$@"; do
+        case "$arg" in
+            -*) ;; # skip flags
+            *) target="$arg"; break ;;
+        esac
+    done
+    [ -z "$target" ] && { command ssh "$@"; return $?; }
+
+    # Copy helper via scp to avoid inline cat noise
+    command scp -q "$helper_path" "$target:~/.config/aiterminal/bash_init.sh" || { command ssh "$@"; return $?; }
+
+    # Start remote shell with helper for bash/zsh only
+    command ssh -tt "$@" 'remote_shell="${SHELL:-/bin/sh}";
         case "$remote_shell" in
             */bash)
                 exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" --rcfile ~/.config/aiterminal/bash_init.sh -i
@@ -192,8 +205,7 @@ aiterm_ssh() {
             *)
                 exec "$remote_shell" -l
                 ;;
-        esac
-    }' < "$helper_path"
+        esac'
 }
 "#;
             let _ = std::fs::write(&bash_init_path, bash_script);
