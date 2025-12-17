@@ -5,11 +5,12 @@ Welcome to AI Terminal! This guide documents the features and shortcuts availabl
 ## Features
 
 ### 1. Shell Integration & Markers
-The terminal automatically detects when commands start and finish.
+The terminal automatically detects when commands start and finish (bash and zsh supported).
 - **Markers**: A visual indicator appears in the gutter (left side) for every command.
   - **Grey**: Command is running.
   - **Green**: Command finished successfully (Exit Code 0).
   - **Red**: Command failed (Non-zero Exit Code).
+- **SSH auto-provisioning**: Inside AI Terminal, `ssh` is wrapped to stream the integration helper to the remote host and start a login shell with markers enabled. It skips remote-command/tunneling/control uses (`ssh host cmd`, `-N`, `-W`, `-w`) and falls back to normal `ssh` if anything fails. Opt-out with `AITERM_DISABLE_SSH_WRAP=1`.
 
 ### 2. Smart Copy
 You can easily copy commands and their outputs without manually selecting text.
@@ -56,5 +57,5 @@ The terminal creates a configuration directory at `~/.config/aiterminal/`.
 - **`bash_init.sh`**: This script is automatically generated and sourced to provide the shell integration features.
 
 ## Troubleshooting
-- **Markers not showing?** Ensure you are using `bash` as your shell. The integration script is currently optimized for Bash.
+- **Markers not showing?** Open a fresh tab to regenerate the helper. Bash and zsh are supported. For SSH sessions, disable the wrapper with `AITERM_DISABLE_SSH_WRAP=1 ssh host` if a remote policy blocks sourcing.
 - **Copy not working?** The app uses the system clipboard. Ensure you have granted permission if prompted.

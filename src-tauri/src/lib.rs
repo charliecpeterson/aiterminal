@@ -116,7 +116,7 @@ fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, Strin
         if std::fs::create_dir_all(&config_dir).is_ok() {
             let bash_init_path = config_dir.join("bash_init.sh");
             let bash_script = r#"
-# OSC 133 Shell Integration (VS Code Style Wrapper)
+# AI Terminal OSC 133 Shell Integration
 
 # Guard to prevent multiple sourcing
 if [ -n "$__AITERM_INTEGRATION_LOADED" ]; then
@@ -124,38 +124,104 @@ if [ -n "$__AITERM_INTEGRATION_LOADED" ]; then
 fi
 export __AITERM_INTEGRATION_LOADED=1
 
-# 1. Save the original PROMPT_COMMAND
-__aiterm_original_pc="${PROMPT_COMMAND:-}"
+# Advertise to downstream shells
+export TERM_PROGRAM=aiterminal
 
-# 2. Define our wrapper function
-__aiterm_wrapper() {
-    local RET=$?
-    
-    # Emit Command Finished (D) with exit code
-    builtin printf "\033]133;D;%s\007" "$RET"
-    
-    # Emit Prompt Start (A)
-    builtin printf "\033]133;A\007"
-    
-    # Run the original PROMPT_COMMAND if it existed
-    if [ -n "$__aiterm_original_pc" ]; then
-        eval "$__aiterm_original_pc"
-    fi
+__aiterm_emit() { printf "\033]133;%s\007" "$1"; }
+__aiterm_mark_prompt() { __aiterm_emit "A"; }
+__aiterm_mark_output_start() { __aiterm_emit "C"; }
+__aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
+
+if [ -n "$BASH_VERSION" ]; then
+    __aiterm_original_pc="${PROMPT_COMMAND:-}"
+    __aiterm_prompt_wrapper() {
+        local ret=$?
+        __aiterm_mark_done "$ret"
+        __aiterm_mark_prompt
+        if [ -n "$__aiterm_original_pc" ]; then
+            eval "$__aiterm_original_pc"
+        fi
+    }
+    PROMPT_COMMAND="__aiterm_prompt_wrapper"
+
+    __aiterm_preexec() {
+        if [ -n "$COMP_LINE" ]; then return; fi  # skip completion
+        case "$BASH_COMMAND" in
+            __aiterm_prompt_wrapper*|__aiterm_preexec*) return ;;
+        esac
+        __aiterm_mark_output_start
+    }
+    trap '__aiterm_preexec' DEBUG
+elif [ -n "$ZSH_VERSION" ]; then
+    autoload -Uz add-zsh-hook
+    __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; }
+    __aiterm_preexec() { __aiterm_mark_output_start; }
+    add-zsh-hook precmd __aiterm_precmd
+    add-zsh-hook preexec __aiterm_preexec
+fi
+
+if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
+    export __AITERM_OSC133_BANNER_SHOWN=1
+    echo "AI Terminal OSC 133 shell integration active ($(basename "$SHELL"))"
+fi
+
+# Optional ssh wrapper to auto-provision OSC markers on remote shells
+__aiterm_ssh_wrap_enabled() {
+    [ -z "$AITERM_DISABLE_SSH_WRAP" ] && [ "$TERM_PROGRAM" = "aiterminal" ]
 }
 
-# 3. Replace PROMPT_COMMAND with our wrapper
-PROMPT_COMMAND="__aiterm_wrapper"
-
-# 4. Pre-exec trap for Output Start (C)
-# This runs before every command to mark the start of output
-__aiterm_preexec() {
-    if [ -n "$COMP_LINE" ]; then return; fi  # Don't run during completion
-    if [[ "$BASH_COMMAND" == "__aiterm_wrapper" ]]; then return; fi # Don't run for our own wrapper
-    builtin printf "\033]133;C\007"
+__aiterm_has_remote_command() {
+    # Detect if a non-flag argument appears after the host
+    local seen_host=""
+    for arg in "$@"; do
+        if [ -z "$seen_host" ]; then
+            case "$arg" in
+                -*) ;; # still parsing flags
+                *) seen_host=1; continue ;;
+            esac
+        else
+            case "$arg" in
+                -*) ;;
+                *) return 0 ;; # found a command
+            esac
+        fi
+    done
+    return 1
 }
-trap '__aiterm_preexec' DEBUG
 
-echo "AI Terminal Shell Integration Loaded"
+__aiterm_find_host_arg() {
+    for arg in "$@"; do
+        case "$arg" in
+            -*) ;;  # flag
+            *) printf '%s' "$arg"; return 0 ;;
+        esac
+    done
+    return 1
+}
+
+__aiterm_ssh() {
+    if ! __aiterm_ssh_wrap_enabled; then command ssh "$@"; return $?; fi
+
+    # If user passed a remote command, tunneling, or control options, do not modify
+    if __aiterm_has_remote_command "$@"; then command ssh "$@"; return $?; fi
+    case "$*" in
+        *" -N "*|-N|*-W*|*-w*) command ssh "$@"; return $? ;;
+    esac
+
+    local host
+    host="$(__aiterm_find_host_arg "$@")" || { command ssh "$@"; return $?; }
+
+    local helper_path="$HOME/.config/aiterminal/bash_init.sh"
+    [ -f "$helper_path" ] || { command ssh "$@"; return $?; }
+
+    # Stream helper to remote and start a login shell with markers enabled
+    command ssh "$@" 'mkdir -p ~/.config/aiterminal && cat > ~/.config/aiterminal/bash_init.sh && TERM_PROGRAM=aiterminal source ~/.config/aiterminal/bash_init.sh && exec $SHELL -l' < "$helper_path" && return $?
+
+    # Fallback if anything failed
+    command ssh "$@"
+}
+
+alias ssh='__aiterm_ssh'
 "#;
             let _ = std::fs::write(&bash_init_path, bash_script);
         }
