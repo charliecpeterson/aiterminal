@@ -190,11 +190,15 @@ aiterm_ssh() {
     done
     [ -z "$target" ] && { command ssh "$@"; return $?; }
 
+    # Reuse connection (ControlMaster) to avoid double password prompts
+    local ctrl_path="$HOME/.ssh/aiterm-%r@%h:%p"
+    local ssh_opts=(-o ControlMaster=auto -o ControlPath="$ctrl_path" -o ControlPersist=30s)
+
     # Copy helper via scp to avoid inline cat noise
-    command scp -q "$helper_path" "$target:~/.config/aiterminal/bash_init.sh" || { command ssh "$@"; return $?; }
+    command scp -q "${ssh_opts[@]}" "$helper_path" "$target:~/.config/aiterminal/bash_init.sh" || { command ssh "$@"; return $?; }
 
     # Start remote shell with helper for bash/zsh only
-    command ssh -tt "$@" 'remote_shell="${SHELL:-/bin/sh}";
+    command ssh -tt "${ssh_opts[@]}" "$@" 'remote_shell="${SHELL:-/bin/sh}";
         case "$remote_shell" in
             */bash)
                 exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" --rcfile ~/.config/aiterminal/bash_init.sh -i
