@@ -5,12 +5,12 @@ Welcome to AI Terminal! This guide documents the features and shortcuts availabl
 ## Features
 
 ### 1. Shell Integration & Markers
-The terminal automatically detects when commands start and finish (bash and zsh supported).
+The terminal detects when commands start and finish (bash and zsh supported).
 - **Markers**: A visual indicator appears in the gutter (left side) for every command.
   - **Grey**: Command is running.
   - **Green**: Command finished successfully (Exit Code 0).
   - **Red**: Command failed (Non-zero Exit Code).
-- **SSH auto-provisioning**: Inside AI Terminal, `ssh` is wrapped to stream the integration helper to the remote host and start a login shell with markers enabled. It skips remote-command/tunneling/control uses (`ssh host cmd`, `-N`, `-W`, `-w`) and falls back to normal `ssh` if anything fails. Opt-out with `AITERM_DISABLE_SSH_WRAP=1`.
+- **Remote sessions**: By default inside AI Terminal, `ssh` is aliased to `aiterm_ssh` so markers are enabled automatically. To opt out for a single command, run `\ssh <host>` (backslash avoids the alias) or start a new tab and remove the alias.
 
 ### 2. Smart Copy
 You can easily copy commands and their outputs without manually selecting text.
@@ -61,6 +61,7 @@ The terminal creates a configuration directory at `~/.config/aiterminal/`.
 - **`bash_init.sh`**: This script is automatically generated and sourced to provide the shell integration features.
 
 ## Troubleshooting
-- **Markers not showing?** Open a fresh tab to regenerate the helper. Bash and zsh are supported. For SSH sessions, disable the wrapper with `AITERM_DISABLE_SSH_WRAP=1 ssh host` if a remote policy blocks sourcing.
+- **Markers not showing (local)?** Open a fresh tab so the helper re-sources; bash and zsh are supported.
+- **Markers not showing (remote)?** Use `aiterm_ssh <user@host>` (or plain `ssh` is already aliased to it inside AI Terminal). If the remote blocks sourcing, bypass with `\ssh` to avoid the alias.
 - **Copy not working?** The app uses the system clipboard. Ensure you have granted permission if prompted.
 - **Scrollbar missing?** The app renders its own overlay. If you still don’t see it, ensure you’re in the terminal area and the buffer is longer than the viewport; try scrolling once to reveal it.

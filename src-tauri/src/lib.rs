@@ -110,8 +110,12 @@ fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, Strin
     });
 
     let mut cmd = CommandBuilder::new(&shell);
+    // Ensure color-capable terminal for downstream commands
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env("CLICOLOR", "1");
 
-    // Start as a login shell to ensure user config (.bash_profile/.zshrc) is loaded
+    // Start as a login shell to load user config; helper will be sourced from frontend after shell is ready
     if !cfg!(target_os = "windows") {
         cmd.args(&["-l"]);
     }
@@ -124,20 +128,32 @@ fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, Strin
             let bash_script = r#"
 # AI Terminal OSC 133 Shell Integration
 
-# Guard to prevent multiple sourcing
+# Guard to prevent multiple sourcing (do not export so child shells can still init)
 if [ -n "$__AITERM_INTEGRATION_LOADED" ]; then
     return
 fi
-export __AITERM_INTEGRATION_LOADED=1
+__AITERM_INTEGRATION_LOADED=1
 
 # Advertise to downstream shells
 export TERM_PROGRAM=aiterminal
+
+# Ensure user rc is loaded once (for colors/aliases) before installing hooks
+if [ -z "$__AITERM_USER_RC_DONE" ]; then
+    __AITERM_USER_RC_DONE=1
+    if [ -n "$BASH_VERSION" ] && [ -f ~/.bashrc ]; then source ~/.bashrc 2>/dev/null; fi
+    if [ -n "$ZSH_VERSION" ] && [ -f ~/.zshrc ]; then source ~/.zshrc 2>/dev/null; fi
+fi
 
 __aiterm_emit() { printf "\033]133;%s\007" "$1"; }
 __aiterm_emit_host() { printf "\033]633;H;%s\007" "$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"; }
 __aiterm_mark_prompt() { __aiterm_emit "A"; }
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
+
+# Prefer aiterm_ssh automatically inside AI Terminal
+if [ "$TERM_PROGRAM" = "aiterminal" ]; then
+    alias ssh='aiterm_ssh'
+fi
 
 if [ -n "$BASH_VERSION" ]; then
     __aiterm_original_pc="${PROMPT_COMMAND:-}"
@@ -197,11 +213,11 @@ aiterm_ssh() {
     # Copy helper via scp to avoid inline cat noise
     command scp -q "${ssh_opts[@]}" "$helper_path" "$target:~/.config/aiterminal/bash_init.sh" || { command ssh "$@"; return $?; }
 
-    # Start remote shell with helper for bash/zsh only
+    # Start remote shell with helper for bash/zsh, ensuring hooks survive the final interactive shell
     command ssh -tt "${ssh_opts[@]}" "$@" 'remote_shell="${SHELL:-/bin/sh}";
         case "$remote_shell" in
             */bash)
-                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -l -c "source ~/.config/aiterminal/bash_init.sh; exec $remote_shell -l"
+                exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" --rcfile ~/.config/aiterminal/bash_init.sh -i
                 ;;
             */zsh)
                 exec env TERM_PROGRAM=aiterminal SHELL="$remote_shell" "$remote_shell" -l -c "source ~/.config/aiterminal/bash_init.sh; exec $remote_shell -l"

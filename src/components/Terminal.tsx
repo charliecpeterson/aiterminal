@@ -159,13 +159,17 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     window.addEventListener('resize', refreshThumb);
     refreshThumb();
 
-    // Source the shell integration script (Safe Injection)
+    // Source the shell integration script (client-side) so markers/functions are available
     setTimeout(() => {
-        // Source the config file we created in the backend
-        const sourceCommand = 'source ~/.config/aiterminal/bash_init.sh; if [ -n "$BASH_VERSION" ]; then source ~/.bashrc 2>/dev/null; elif [ -n "$ZSH_VERSION" ]; then source ~/.zshrc 2>/dev/null; fi\r';
+            const sourceCommand = [
+                'stty -echo >/dev/null 2>&1',
+                'source ~/.config/aiterminal/bash_init.sh >/dev/null 2>&1',
+                'stty echo >/dev/null 2>&1',
+                'printf "\\r\\033[K"'
+            ].join('; ') + '\r';
         invoke('write_to_pty', { id, data: sourceCommand });
         term.focus();
-    }, 1000); // Wait 1s for shell to be fully ready
+    }, 600);
 
     // Listen for data from PTY
     const unlistenDataPromise = listen<string>(`pty-data:${id}`, (event) => {
