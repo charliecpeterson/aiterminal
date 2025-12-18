@@ -28,13 +28,29 @@ function AppContent() {
   };
 
   const closeTab = (id: number) => {
-    invoke("close_pty", { id });
+    invoke("close_pty", { id }).catch((e) => {
+      console.error("Failed to close PTY", e);
+    });
     setTabs((prev) => {
       const newTabs = prev.filter((t) => t.id !== id);
-      // If we closed the active tab, switch to the last one
-      if (activeTabId === id && newTabs.length > 0) {
-        setActiveTabId(newTabs[newTabs.length - 1].id);
+
+      setActiveTabId((prevActive) => {
+        if (newTabs.length === 0) {
+          return null;
+        }
+        if (prevActive === id) {
+          return newTabs[newTabs.length - 1].id;
+        }
+        return prevActive;
+      });
+
+      if (isInitialized && newTabs.length === 0) {
+        const currentWindow = getCurrentWindow();
+        currentWindow.close().catch((err) => {
+          console.error("Failed to close window", err);
+        });
       }
+
       return newTabs;
     });
   };
@@ -42,12 +58,6 @@ function AppContent() {
   useEffect(() => {
     createTab().then(() => setIsInitialized(true));
   }, []);
-
-  useEffect(() => {
-    if (isInitialized && tabs.length === 0) {
-        getCurrentWindow().close();
-    }
-  }, [tabs, isInitialized]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

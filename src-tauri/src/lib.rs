@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::Mutex;
+use std::thread::{self, JoinHandle};
 use tauri::{Emitter, State};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -52,6 +52,8 @@ impl Default for AppSettings {
 struct PtySession {
     master: Box<dyn portable_pty::MasterPty + Send>,
     writer: Box<dyn Write + Send>,
+    child: Option<Box<dyn portable_pty::Child + Send + Sync>>,
+    reader_handle: Option<JoinHandle<()>>,
 }
 
 struct AppState {
@@ -232,20 +234,15 @@ aiterm_ssh() {
         }
     }
 
-    let _child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+    let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
 
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let master = pair.master;
     let writer = master.take_writer().map_err(|e| e.to_string())?;
 
     // Store session in state
-    {
-        let mut ptys = state.ptys.lock().unwrap();
-        ptys.insert(id, PtySession { master, writer });
-    }
-
     // Spawn thread to read
-    thread::spawn(move || {
+    let reader_handle = thread::spawn(move || {
         let mut buf = [0u8; 1024];
         loop {
             match reader.read(&mut buf) {
@@ -263,6 +260,19 @@ aiterm_ssh() {
             }
         }
     });
+
+    {
+        let mut ptys = state.ptys.lock().unwrap();
+        ptys.insert(
+            id,
+            PtySession {
+                master,
+                writer,
+                child: Some(child),
+                reader_handle: Some(reader_handle),
+            },
+        );
+    }
 
     Ok(id)
 }
@@ -332,8 +342,39 @@ fn resize_pty(id: u32, rows: u16, cols: u16, state: State<AppState>) {
 
 #[tauri::command]
 fn close_pty(id: u32, state: State<AppState>) {
-    let mut ptys = state.ptys.lock().unwrap();
-    ptys.remove(&id);
+    let session = {
+        let mut ptys = state.ptys.lock().unwrap();
+        ptys.remove(&id)
+    };
+
+    if let Some(mut session) = session {
+        if let Some(mut child) = session.child.take() {
+            let should_kill = match child.try_wait() {
+                Ok(Some(_)) => false,
+                Ok(None) => true,
+                Err(e) => {
+                    eprintln!("Failed to poll PTY child {id}: {e}");
+                    true
+                }
+            };
+
+            if should_kill {
+                if let Err(e) = child.kill() {
+                    eprintln!("Failed to kill PTY child {id}: {e}");
+                }
+            }
+
+            if let Err(e) = child.wait() {
+                eprintln!("Failed to wait for PTY child {id}: {e}");
+            }
+        }
+
+        if let Some(handle) = session.reader_handle.take() {
+            if let Err(e) = handle.join() {
+                eprintln!("Failed to join reader thread for {id}: {e:?}");
+            }
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
