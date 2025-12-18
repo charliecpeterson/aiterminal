@@ -169,6 +169,35 @@ body, html, #root {
   background: #3e3e42;
 }
 
+.marker-copy-menu {
+  position: fixed;
+  background: #1f1f1f;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 200;
+  min-width: 160px;
+}
+
+.marker-copy-menu button {
+  background: transparent;
+  border: none;
+  color: #dddddd;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.marker-copy-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* Marker Styles */
 .xterm-decoration-container .terminal-marker {
   width: 6px;

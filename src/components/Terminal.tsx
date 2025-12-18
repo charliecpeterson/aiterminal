@@ -5,7 +5,6 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
-import { ask } from '@tauri-apps/plugin-dialog';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -15,6 +14,13 @@ interface TerminalProps {
     id: number;
     visible: boolean;
     onClose: () => void;
+}
+
+interface CopyMenuState {
+    x: number;
+    y: number;
+    commandRange: [number, number];
+    outputRange: [number, number];
 }
 
 const Terminal = ({ id, visible, onClose }: TerminalProps) => {
@@ -27,6 +33,26 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const [hostLabel, setHostLabel] = useState('Local');
     const [latencyMs, setLatencyMs] = useState<number | null>(null);
     const [latencyAt, setLatencyAt] = useState<number | null>(null);
+    const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
+    const copyMenuRef = useRef<HTMLDivElement | null>(null);
+
+    const hideCopyMenu = () => setCopyMenu(null);
+    const copyRange = async (range: [number, number]) => {
+        if (!xtermRef.current) return;
+        const [start, end] = range;
+        const safeStart = Math.max(0, start);
+        const safeEnd = Math.max(safeStart, end);
+        xtermRef.current.selectLines(safeStart, safeEnd);
+        const text = xtermRef.current.getSelection();
+        try {
+            await writeText(text);
+        } catch (err) {
+            console.error('Failed to copy:', err);
+        }
+        xtermRef.current.clearSelection();
+        hideCopyMenu();
+        xtermRef.current.focus();
+    };
   
   // Update terminal options when settings change
   useEffect(() => {
@@ -188,7 +214,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const setupMarkerElement = (marker: any, element: HTMLElement, exitCode?: number) => {
         element.classList.add('terminal-marker');
         element.style.cursor = 'pointer';
-        element.title = 'Click to copy command output';
+        element.title = 'Click to copy';
         
         if (exitCode !== undefined) {
             if (exitCode === 0) {
@@ -202,7 +228,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         if (element.dataset.listenerAttached) return;
         element.dataset.listenerAttached = 'true';
 
-        element.addEventListener('mousedown', async (e) => {
+        element.addEventListener('mousedown', (e) => {
+            e.preventDefault();
             e.stopPropagation(); // Prevent other clicks
             console.log('Marker clicked!');
             
@@ -220,36 +247,14 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                 startLine + 1
             );
             console.log(`Range: ${startLine} -> ${outputStartLine} -> ${endLine}`);
-            
-            // Simple Context Menu Logic (Native confirm for now to test)
-            const choice = await ask(
-                "Copy Options:",
-                {
-                    title: "Copy",
-                    kind: 'info',
-                    okLabel: 'Copy Command Only',
-                    cancelLabel: 'Copy Output Only'
-                }
-            );
 
-            if (choice) {
-                // Copy Command (Start -> Output Start)
-                const cmdEnd = Math.max(startLine, outputStartLine - 1);
-                term.selectLines(startLine, cmdEnd);
-            } else {
-                // Copy Output (Output Start -> End)
-                term.selectLines(outputStartLine, endLine);
-            }
-
-            const text = term.getSelection();
-            console.log('Copying text:', text);
-            try {
-                await writeText(text);
-                console.log('Text copied to clipboard via Tauri plugin');
-            } catch (err) {
-                console.error('Failed to copy:', err);
-            }
-            term.clearSelection();
+            const cmdEnd = Math.max(startLine, outputStartLine - 1);
+            setCopyMenu({
+                x: e.clientX + 8,
+                y: e.clientY + 8,
+                commandRange: [startLine, cmdEnd],
+                outputRange: [outputStartLine, Math.max(outputStartLine, endLine)],
+            });
         });
     };
 
@@ -354,6 +359,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         // Hide search on Escape
         if (e.key === 'Escape') {
             setShowSearch(false);
+            hideCopyMenu();
             term.focus();
         }
     };
@@ -374,6 +380,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
+      hideCopyMenu();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.
@@ -419,6 +426,18 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       };
   }, [id]);
 
+  useEffect(() => {
+      if (!copyMenu) return;
+      const handleGlobalMouseDown = (event: MouseEvent) => {
+          if (!copyMenuRef.current) return;
+          if (!copyMenuRef.current.contains(event.target as Node)) {
+              hideCopyMenu();
+          }
+      };
+      window.addEventListener('mousedown', handleGlobalMouseDown);
+      return () => window.removeEventListener('mousedown', handleGlobalMouseDown);
+  }, [copyMenu]);
+
   if (loading) return null;
 
   return (
@@ -457,6 +476,16 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             </div>
         )}
             <div className="terminal-body" ref={terminalRef} />
+            {copyMenu && (
+                <div
+                    className="marker-copy-menu"
+                    style={{ top: copyMenu.y, left: copyMenu.x }}
+                    ref={copyMenuRef}
+                >
+                    <button onClick={() => copyRange(copyMenu.commandRange)}>Copy Command</button>
+                    <button onClick={() => copyRange(copyMenu.outputRange)}>Copy Output</button>
+                </div>
+            )}
             <div className="terminal-status">
                 <div className="status-host" title={hostLabel}>
                     <span className="status-dot" />
