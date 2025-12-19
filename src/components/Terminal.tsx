@@ -19,6 +19,8 @@ import { useLatencyProbe } from '../terminal/useLatencyProbe';
 import { attachTerminalHotkeys } from '../terminal/keyboardShortcuts';
 import { attachWindowResize, fitAndResizePty } from '../terminal/resize';
 import { useFloatingMenu } from '../terminal/useFloatingMenu';
+import { attachAiRunCommandListener } from '../terminal/aiRunCommand';
+import { attachPtyDataListener, attachPtyExitListener } from '../terminal/ptyListeners';
 
 interface TerminalProps {
     id: number;
@@ -208,10 +210,11 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const scrollbar = attachScrollbarOverlay(terminalRef.current, term.element ?? null);
 
 
-    // Listen for data from PTY
-    const unlistenDataPromise = listen<string>(`pty-data:${id}`, (event) => {
-      term.write(event.payload);
-    });
+        // Listen for data from PTY
+        const ptyDataListener = attachPtyDataListener({
+                id,
+                onData: (data) => term.write(data),
+        });
 
     // Focus terminal
     setTimeout(() => {
@@ -276,7 +279,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         markerManager.cleanup();
         onDataDisposable?.dispose?.();
         hostLabelHandle.cleanup();
-      unlistenDataPromise.then(f => f());
+    ptyDataListener.cleanup();
     windowResize.cleanup();
             hotkeys.cleanup();
             fileCaptureListener.cleanup();
@@ -293,27 +296,21 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       onCloseRef.current = onClose;
   }, [onClose]);
 
-  // Update the listener to use the ref
   useEffect(() => {
-      const unlistenExitPromise = listen<void>(`pty-exit:${id}`, () => {
-          onCloseRef.current();
+      const handle = attachPtyExitListener({
+          id,
+          onExit: () => onCloseRef.current(),
       });
-      return () => {
-          unlistenExitPromise.then(f => f());
-      };
+      return () => handle.cleanup();
   }, [id]);
 
   useEffect(() => {
-      const unlistenRunPromise = listen<{ command: string }>('ai-run-command', (event) => {
-          if (!visibleRef.current) return;
-          const command = event.payload.command;
-          if (!command || !xtermRef.current) return;
-          invoke('write_to_pty', { id, data: `${command}\n` });
-          xtermRef.current.focus();
+      const handle = attachAiRunCommandListener({
+          id,
+          visibleRef,
+          focusTerminal: () => xtermRef.current?.focus(),
       });
-      return () => {
-          unlistenRunPromise.then(f => f());
-      };
+      return () => handle.cleanup();
   }, [id]);
 
   useFloatingMenu(copyMenu, setCopyMenu, copyMenuRef);
