@@ -191,28 +191,10 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     window.addEventListener('resize', refreshThumb);
     refreshThumb();
 
-    const sourceIntegration = () => {
-        if (sourceIntegrationDone) return;
-        sourceIntegrationDone = true;
-        const sourceCommand = [
-            'stty -echo >/dev/null 2>&1',
-            'source ~/.config/aiterminal/bash_init.sh >/dev/null 2>&1',
-            'stty echo >/dev/null 2>&1',
-            'printf "\\r\\033[K"'
-        ].join('; ') + '\r';
-        invoke('write_to_pty', { id, data: sourceCommand });
-        term.focus();
-    };
-
-    let sourceIntegrationDone = false;
-    const sourceFallbackTimer = window.setTimeout(sourceIntegration, 1500);
 
     // Listen for data from PTY
     const unlistenDataPromise = listen<string>(`pty-data:${id}`, (event) => {
       term.write(event.payload);
-      if (!sourceIntegrationDone && event.payload.length > 0) {
-          sourceIntegration();
-      }
     });
 
     // Focus terminal
@@ -309,6 +291,24 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             } else if (type === 'C') {
                  // Command Output Start
                  // Only set if not already set for this marker (First 'C' wins)
+                 if (!currentMarker) {
+                    const marker = term.registerDecoration({
+                        marker: term.registerMarker(-1),
+                        x: 0,
+                        width: 1,
+                        height: 1,
+                    });
+                     if (marker) {
+                         marker.onRender((element) => setupMarkerElement(marker, element));
+                         currentMarker = marker;
+                         markers.push(marker);
+                         if (markers.length > maxMarkers) {
+                             const oldest = markers[0];
+                             removeMarker(oldest);
+                             oldest?.dispose?.();
+                         }
+                     }
+                 }
                  if (currentMarker && !markerOutputStarts.has(currentMarker)) {
                      // Store the line number where output starts
                      const outputLine = term.buffer.active.baseY + term.buffer.active.cursorY;
@@ -398,7 +398,6 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
       return () => {
       term.dispose();
-        window.clearTimeout(sourceFallbackTimer);
         viewport?.removeEventListener('scroll', refreshThumb);
         window.removeEventListener('resize', refreshThumb);
         thumb.removeEventListener('mousedown', onThumbMouseDown);

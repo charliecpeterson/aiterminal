@@ -77,6 +77,75 @@ impl AppState {
     }
 }
 
+fn resolve_shell() -> String {
+    if let Ok(shell) = std::env::var("AITERM_SHELL") {
+        if !shell.trim().is_empty() {
+            return shell;
+        }
+    }
+
+    if cfg!(target_os = "macos") {
+        let user = std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .unwrap_or_else(|_| "root".to_string());
+        let user_path = format!("/Users/{}", user);
+        if let Ok(output) = std::process::Command::new("dscl")
+            .args(["/Local/Default", "-read", &user_path, "UserShell"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Some(shell) = line.strip_prefix("UserShell:") {
+                    let shell = shell.trim();
+                    if !shell.is_empty() {
+                        return shell.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    if let Ok(shell) = std::env::var("SHELL") {
+        if !shell.trim().is_empty() {
+            return shell;
+        }
+    }
+
+    if !cfg!(target_os = "macos") {
+        let user = std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .or_else(|_| {
+                std::process::Command::new("/usr/bin/id")
+                    .arg("-un")
+                    .output()
+                    .ok()
+                    .and_then(|output| String::from_utf8(output.stdout).ok())
+                    .map(|s| s.trim().to_string())
+                    .ok_or_else(|| std::env::VarError::NotPresent)
+            });
+
+        if let Ok(user) = user {
+            if let Ok(passwd) = std::fs::read_to_string("/etc/passwd") {
+                let needle = format!("{}:", user);
+                for line in passwd.lines() {
+                    if line.starts_with(&needle) {
+                        let parts: Vec<&str> = line.split(':').collect();
+                        if parts.len() >= 7 && !parts[6].trim().is_empty() {
+                            return parts[6].trim().to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if cfg!(target_os = "macos") {
+        "/bin/zsh".to_string()
+    } else {
+        "/bin/bash".to_string()
+    }
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -110,13 +179,11 @@ fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, Strin
         .map_err(|e| e.to_string())?;
 
     // Detect user's preferred shell
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| {
-        if cfg!(target_os = "windows") {
-            "powershell.exe".to_string()
-        } else {
-            "/bin/bash".to_string()
-        }
-    });
+    let shell = if cfg!(target_os = "windows") {
+        std::env::var("SHELL").unwrap_or_else(|_| "powershell.exe".to_string())
+    } else {
+        resolve_shell()
+    };
 
     let mut cmd = CommandBuilder::new(&shell);
     // Ensure color-capable terminal for downstream commands
@@ -124,16 +191,13 @@ fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, Strin
     cmd.env("COLORTERM", "truecolor");
     cmd.env("CLICOLOR", "1");
 
-    // Start as a login shell to load user config; helper will be sourced from frontend after shell is ready
-    if !cfg!(target_os = "windows") {
-        cmd.args(&["-l"]);
-    }
-
     // Setup configuration directory (Safe Mode: Create file but don't force load)
+    let mut config_dir_opt: Option<PathBuf> = None;
     if let Ok(home) = std::env::var("HOME") {
         let config_dir = std::path::Path::new(&home).join(".config/aiterminal");
         if std::fs::create_dir_all(&config_dir).is_ok() {
             let bash_init_path = config_dir.join("bash_init.sh");
+            let zsh_rc_path = config_dir.join(".zshrc");
             let bash_script = r#"
 # AI Terminal OSC 133 Shell Integration
 
@@ -156,7 +220,20 @@ export TERM_PROGRAM=aiterminal
 if [ -z "$__AITERM_USER_RC_DONE" ]; then
     __AITERM_USER_RC_DONE=1
     if [ -n "$BASH_VERSION" ] && [ -f ~/.bashrc ]; then source ~/.bashrc 2>/dev/null; fi
+    if [ -n "$BASH_VERSION" ] && [ -f ~/.bash_profile ] && [ -z "$__AITERM_BASH_PROFILE_DONE" ]; then
+        __AITERM_BASH_PROFILE_DONE=1
+        source ~/.bash_profile 2>/dev/null
+    fi
     if [ -n "$ZSH_VERSION" ] && [ -f ~/.zshrc ]; then source ~/.zshrc 2>/dev/null; fi
+fi
+
+# Restore login profile on remote bootstrap (so MOTD appears)
+if [ -n "$AITERM_REMOTE_BOOTSTRAP" ] && [ -z "$__AITERM_LOGIN_SOURCED" ]; then
+    __AITERM_LOGIN_SOURCED=1
+    if [ -f /etc/profile ]; then source /etc/profile 2>/dev/null; fi
+    if [ -r /etc/motd ]; then cat /etc/motd; fi
+    if [ -r /run/motd ]; then cat /run/motd; fi
+    if [ -r /run/motd.dynamic ]; then cat /run/motd.dynamic; fi
 fi
 
 __aiterm_emit() { printf "\033]133;%s\007" "$1"; }
@@ -243,9 +320,18 @@ elif [ -n "$ZSH_VERSION" ]; then
     fi
 fi
 
+if [ -n "$PS1" ] && [ -z "$__AITERM_BOOTSTRAP_PROMPT" ]; then
+    __AITERM_BOOTSTRAP_PROMPT=1
+    __aiterm_mark_done 0
+    __aiterm_mark_prompt
+    __aiterm_emit_host
+fi
+
 if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
     export __AITERM_OSC133_BANNER_SHOWN=1
-    echo "AI Terminal OSC 133 shell integration active ($(basename "$SHELL"))"
+    if [ -n "$AITERM_HOOK_DEBUG" ] || [ -n "$AITERM_SSH_DEBUG" ]; then
+        echo "AI Terminal OSC 133 shell integration active ($(basename "$SHELL"))"
+    fi
 fi
 
 aiterm_ssh() {
@@ -332,13 +418,41 @@ aiterm_ssh() {
     fi
 
     local remote_cmd_str
-    remote_cmd_str='remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "__AITERM_B64__" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "__AITERM_B64__" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; if ! grep -q "AI Terminal OSC 133 Shell Integration" "$tmpfile"; then exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile"; export __AITERM_INLINE_CACHE="$(cat "$tmpfile")"; export TERM_PROGRAM=aiterminal SHELL="$remote_shell"; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -l -c "source \"$tmpfile\"; exec \"$remote_shell\" -l" ;; *) exec "$remote_shell" -l ;; esac'
+    remote_cmd_str='remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "__AITERM_B64__" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "__AITERM_B64__" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; if ! grep -q "AI Terminal OSC 133 Shell Integration" "$tmpfile"; then exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile"; export __AITERM_INLINE_CACHE="$(cat "$tmpfile")"; export TERM_PROGRAM=aiterminal SHELL="$remote_shell"; export AITERM_REMOTE_BOOTSTRAP=1; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -l -c "source \"$tmpfile\"; exec \"$remote_shell\" -l" ;; *) exec "$remote_shell" -l ;; esac'
     remote_cmd_str="${remote_cmd_str//__AITERM_B64__/$inline_b64}"
 
     command ssh -tt "${orig_args[@]}" "$remote_cmd_str"
 }
 "#;
             let _ = std::fs::write(&bash_init_path, bash_script);
+            let zsh_rc = r#"
+# AI Terminal zsh bootstrap
+if [ -f ~/.zshrc ]; then source ~/.zshrc 2>/dev/null; fi
+if [ -f ~/.config/aiterminal/bash_init.sh ]; then source ~/.config/aiterminal/bash_init.sh 2>/dev/null; fi
+"#;
+            let _ = std::fs::write(&zsh_rc_path, zsh_rc);
+            config_dir_opt = Some(config_dir);
+        }
+    }
+
+    // Start shell with integration loaded without injecting a visible command
+    if !cfg!(target_os = "windows") {
+        if let Some(config_dir) = &config_dir_opt {
+            if shell.ends_with("bash") {
+                let bash_init_path = config_dir.join("bash_init.sh");
+                cmd.args(&[
+                    "--rcfile",
+                    bash_init_path.to_string_lossy().as_ref(),
+                    "-i",
+                ]);
+            } else if shell.ends_with("zsh") {
+                cmd.env("ZDOTDIR", config_dir.to_string_lossy().as_ref());
+                cmd.args(&["-i"]);
+            } else {
+                cmd.args(&["-l"]);
+            }
+        } else {
+            cmd.args(&["-l"]);
         }
     }
 
