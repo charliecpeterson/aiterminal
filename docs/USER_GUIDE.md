@@ -11,6 +11,7 @@ The terminal detects when commands start and finish (bash and zsh supported).
   - **Green**: Command finished successfully (Exit Code 0).
   - **Red**: Command failed (Non-zero Exit Code).
 - **Remote sessions**: By default inside AI Terminal, `ssh` is aliased to `aiterm_ssh` so markers are enabled automatically. To opt out for a single command, run `\ssh <host>` (backslash avoids the alias) or start a new tab and remove the alias. `aiterm_ssh` injects the shell integration on the remote side without leaving a permanent file. For non-interactive `ssh host command`, it falls back to plain `ssh` (single marker on the local command).
+- **Remote bootstrap safety**: The SSH helper is sent as a base64 payload; if it fails to decode or validate, the session falls back to a normal login shell without markers.
 - **Debugging hooks**: Set `AITERM_HOOK_DEBUG=1` before launching a shell to print which hook path is used (bash `PROMPT_COMMAND` array vs string, zsh hook install).
 
 ### 2. Smart Copy
