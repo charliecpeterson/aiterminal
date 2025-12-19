@@ -320,12 +320,6 @@ elif [ -n "$ZSH_VERSION" ]; then
     fi
 fi
 
-if [ -n "$PS1" ] && [ -z "$__AITERM_BOOTSTRAP_PROMPT" ]; then
-    __AITERM_BOOTSTRAP_PROMPT=1
-    __aiterm_mark_done 0
-    __aiterm_mark_prompt
-    __aiterm_emit_host
-fi
 
 if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
     export __AITERM_OSC133_BANNER_SHOWN=1

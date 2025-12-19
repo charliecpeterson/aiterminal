@@ -198,6 +198,12 @@ body, html, #root {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.marker-copy-menu button:disabled {
+  color: #666666;
+  cursor: not-allowed;
+  background: transparent;
+}
+
 /* Marker Styles */
 .xterm-decoration-container .terminal-marker {
   width: 6px;

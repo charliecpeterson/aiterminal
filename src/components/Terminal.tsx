@@ -21,6 +21,7 @@ interface CopyMenuState {
     y: number;
     commandRange: [number, number];
     outputRange: [number, number];
+    disabled?: boolean;
 }
 
 const Terminal = ({ id, visible, onClose }: TerminalProps) => {
@@ -254,11 +255,13 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
             const cmdEnd = Math.max(startLine, outputStartLine - 1);
             const rect = element.getBoundingClientRect();
+            const isBootstrapMarker = marker.marker.line <= 1;
             setCopyMenu({
                 x: rect.right + 8,
                 y: rect.top - 4,
                 commandRange: [startLine, cmdEnd],
                 outputRange: [outputStartLine, Math.max(outputStartLine, endLine)],
+                disabled: isBootstrapMarker,
             });
         });
     };
@@ -523,11 +526,18 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     style={{ top: copyMenu.y, left: copyMenu.x }}
                     ref={copyMenuRef}
                 >
-                    <button onClick={() => copyRange(copyMenu.commandRange)}>Copy Command</button>
-                    <button onClick={() => copyCombined(copyMenu.commandRange, copyMenu.outputRange)}>
+                    <button disabled={copyMenu.disabled} onClick={() => copyRange(copyMenu.commandRange)}>
+                        Copy Command
+                    </button>
+                    <button
+                        disabled={copyMenu.disabled}
+                        onClick={() => copyCombined(copyMenu.commandRange, copyMenu.outputRange)}
+                    >
                         Copy Command + Output
                     </button>
-                    <button onClick={() => copyRange(copyMenu.outputRange)}>Copy Output</button>
+                    <button disabled={copyMenu.disabled} onClick={() => copyRange(copyMenu.outputRange)}>
+                        Copy Output
+                    </button>
                 </div>
             )}
             <div className="terminal-status">
