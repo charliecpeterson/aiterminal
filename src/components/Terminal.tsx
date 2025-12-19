@@ -191,21 +191,28 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     window.addEventListener('resize', refreshThumb);
     refreshThumb();
 
-    // Source the shell integration script (client-side) so markers/functions are available
-    setTimeout(() => {
-            const sourceCommand = [
-                'stty -echo >/dev/null 2>&1',
-                'source ~/.config/aiterminal/bash_init.sh >/dev/null 2>&1',
-                'stty echo >/dev/null 2>&1',
-                'printf "\\r\\033[K"'
-            ].join('; ') + '\r';
+    const sourceIntegration = () => {
+        if (sourceIntegrationDone) return;
+        sourceIntegrationDone = true;
+        const sourceCommand = [
+            'stty -echo >/dev/null 2>&1',
+            'source ~/.config/aiterminal/bash_init.sh >/dev/null 2>&1',
+            'stty echo >/dev/null 2>&1',
+            'printf "\\r\\033[K"'
+        ].join('; ') + '\r';
         invoke('write_to_pty', { id, data: sourceCommand });
         term.focus();
-    }, 600);
+    };
+
+    let sourceIntegrationDone = false;
+    const sourceFallbackTimer = window.setTimeout(sourceIntegration, 1500);
 
     // Listen for data from PTY
     const unlistenDataPromise = listen<string>(`pty-data:${id}`, (event) => {
       term.write(event.payload);
+      if (!sourceIntegrationDone && event.payload.length > 0) {
+          sourceIntegration();
+      }
     });
 
     // Focus terminal
@@ -389,8 +396,9 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     // Initial resize
     setTimeout(handleResize, 100); // Delay slightly to ensure container is ready
 
-    return () => {
+      return () => {
       term.dispose();
+        window.clearTimeout(sourceFallbackTimer);
         viewport?.removeEventListener('scroll', refreshThumb);
         window.removeEventListener('resize', refreshThumb);
         thumb.removeEventListener('mousedown', onThumbMouseDown);
