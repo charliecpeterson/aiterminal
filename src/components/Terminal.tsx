@@ -597,8 +597,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             const maxBytes = Math.max(1024, Math.min(2 * 1024 * 1024, event.payload.maxBytes || 0));
             if (!path || !maxBytes) return;
             pendingFileCaptureRef.current = { path, maxBytes };
-            const command = `head -c ${maxBytes} ${shellQuote(path)}`;
-            invoke('write_to_pty', { id, data: `${command}\n` });
+            const command = `HISTCONTROL=ignorespace HIST_IGNORE_SPACE=1 head -c ${maxBytes} ${shellQuote(path)}`;
+            invoke('write_to_pty', { id, data: ` ${command}\n` });
             xtermRef.current.focus();
         }
     );
