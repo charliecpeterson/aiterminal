@@ -25,9 +25,15 @@ struct AiSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+struct TerminalSettings {
+    max_markers: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct AppSettings {
     appearance: AppearanceSettings,
     ai: AiSettings,
+    terminal: TerminalSettings,
 }
 
 impl Default for AppSettings {
@@ -45,6 +51,7 @@ impl Default for AppSettings {
                 embedding_model: None,
                 url: None,
             },
+            terminal: TerminalSettings { max_markers: 200 },
         }
     }
 }
@@ -153,7 +160,12 @@ if [ -z "$__AITERM_USER_RC_DONE" ]; then
 fi
 
 __aiterm_emit() { printf "\033]133;%s\007" "$1"; }
-__aiterm_emit_host() { printf "\033]633;H;%s\007" "$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"; }
+__aiterm_emit_host() {
+    if [ -z "$__AITERM_HOSTNAME" ]; then
+        __AITERM_HOSTNAME="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+    fi
+    printf "\033]633;H;%s\007" "$__AITERM_HOSTNAME"
+}
 __aiterm_mark_prompt() { __aiterm_emit "A"; }
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
@@ -360,6 +372,10 @@ fn get_config_path() -> Option<PathBuf> {
     })
 }
 
+fn clamp_max_markers(value: u16) -> u16 {
+    value.clamp(20, 2000)
+}
+
 #[tauri::command]
 fn load_settings() -> Result<AppSettings, String> {
     let config_path = get_config_path().ok_or("Could not determine config path")?;
@@ -375,14 +391,17 @@ fn load_settings() -> Result<AppSettings, String> {
     }
 
     let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
-    let settings: AppSettings = serde_json::from_str(&content).unwrap_or_else(|_| {
+    let mut settings: AppSettings = serde_json::from_str(&content).unwrap_or_else(|_| {
         AppSettings::default()
     });
+    settings.terminal.max_markers = clamp_max_markers(settings.terminal.max_markers);
     Ok(settings)
 }
 
 #[tauri::command]
 fn save_settings(settings: AppSettings) -> Result<(), String> {
+    let mut settings = settings;
+    settings.terminal.max_markers = clamp_max_markers(settings.terminal.max_markers);
     let config_path = get_config_path().ok_or("Could not determine config path")?;
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     if let Some(parent) = config_path.parent() {

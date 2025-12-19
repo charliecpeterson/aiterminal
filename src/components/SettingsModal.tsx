@@ -10,7 +10,7 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { settings, updateSettings } = useSettings();
     const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
-    const [activeTab, setActiveTab] = useState<'appearance' | 'ai'>('appearance');
+    const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai'>('appearance');
 
     useEffect(() => {
         if (settings) {
@@ -27,7 +27,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         }
     };
 
-    const handleChange = (section: 'appearance' | 'ai', key: string, value: any) => {
+    const handleChange = (section: 'appearance' | 'terminal' | 'ai', key: string, value: any) => {
         setLocalSettings(prev => {
             if (!prev) return null;
             return {
@@ -62,6 +62,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                         >
                             AI
                         </div>
+                        <div 
+                            className={`settings-tab ${activeTab === 'terminal' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('terminal')}
+                        >
+                            Terminal
+                        </div>
                     </div>
 
                     <div className="settings-panel">
@@ -92,6 +98,27 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         <option value="dark">Dark</option>
                                         <option value="light">Light</option>
                                     </select>
+                                </div>
+                            </>
+                        )}
+
+                        {activeTab === 'terminal' && (
+                            <>
+                                <div className="form-group">
+                                    <label>Max Markers</label>
+                                    <input 
+                                        type="number" 
+                                        min={20}
+                                        max={2000}
+                                        value={localSettings.terminal.max_markers}
+                                        onChange={(e) => {
+                                            const parsed = Number.parseInt(e.target.value, 10);
+                                            const clamped = Number.isFinite(parsed)
+                                                ? Math.min(2000, Math.max(20, parsed))
+                                                : 200;
+                                            handleChange('terminal', 'max_markers', clamped);
+                                        }}
+                                    />
                                 </div>
                             </>
                         )}

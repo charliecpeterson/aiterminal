@@ -210,6 +210,15 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     let currentMarker: any = null;
     const markers: any[] = [];
     const markerOutputStarts = new Map<any, number>();
+    const maxMarkers = settings?.terminal?.max_markers ?? 200;
+
+    const removeMarker = (marker: any) => {
+        const index = markers.indexOf(marker);
+        if (index !== -1) {
+            markers.splice(index, 1);
+        }
+        markerOutputStarts.delete(marker);
+    };
 
     const setupMarkerElement = (marker: any, element: HTMLElement, exitCode?: number) => {
         element.classList.add('terminal-marker');
@@ -277,6 +286,11 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     marker.onRender((element) => setupMarkerElement(marker, element));
                     currentMarker = marker;
                     markers.push(marker);
+                    if (markers.length > maxMarkers) {
+                        const oldest = markers[0];
+                        removeMarker(oldest);
+                        oldest?.dispose?.();
+                    }
                 }
             } else if (type === 'C') {
                  // Command Output Start

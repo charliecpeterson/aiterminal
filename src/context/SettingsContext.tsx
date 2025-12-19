@@ -15,9 +15,14 @@ export interface AiSettings {
     url?: string;
 }
 
+export interface TerminalSettings {
+    max_markers: number;
+}
+
 export interface AppSettings {
     appearance: AppearanceSettings;
     ai: AiSettings;
+    terminal: TerminalSettings;
 }
 
 interface SettingsContextType {
