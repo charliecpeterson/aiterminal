@@ -12,6 +12,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
 import { attachScrollbarOverlay } from '../terminal/scrollbarOverlay';
 import { attachSelectionMenu } from '../terminal/selectionMenu';
+import { createMarkerManager } from '../terminal/markers';
 
 interface TerminalProps {
     id: number;
@@ -221,177 +222,13 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         setSelectionMenu,
     });
 
-    let currentMarker: any = null;
-    const markers: any[] = [];
-    const markerMeta = new WeakMap<any, { outputStartMarker?: any; isBootstrap?: boolean }>();
-    const maxMarkers = settings?.terminal?.max_markers ?? 200;
-
-    const removeMarker = (marker: any) => {
-        const index = markers.indexOf(marker);
-        if (index !== -1) {
-            markers.splice(index, 1);
-        }
-        const meta = markerMeta.get(marker);
-        if (meta?.outputStartMarker?.dispose) {
-            meta.outputStartMarker.dispose();
-        }
-        markerMeta.delete(marker);
-    };
-
-    const setupMarkerElement = (marker: any, element: HTMLElement, exitCode?: number) => {
-        element.classList.add('terminal-marker');
-        element.style.cursor = 'pointer';
-        element.title = 'Click to copy';
-        
-        if (exitCode !== undefined) {
-            if (exitCode === 0) {
-                element.classList.add('success');
-            } else {
-                element.classList.add('error');
-            }
-        }
-
-        // Prevent duplicate listeners if onRender is called multiple times
-        if (element.dataset.listenerAttached) return;
-        element.dataset.listenerAttached = 'true';
-
-        element.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            e.stopPropagation(); // Prevent other clicks
-            
-            const startLine = marker.marker.line;
-            let endLine = term.buffer.active.length - 1;
-            
-            // Find next marker to define range
-            const index = markers.indexOf(marker);
-            if (index !== -1 && index < markers.length - 1) {
-                endLine = markers[index + 1].marker.line - 1;
-            }
-
-            const meta = markerMeta.get(marker);
-            const outputStartLine = meta?.outputStartMarker?.line ?? null;
-            const hasOutput = outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
-            const safeOutputStart = hasOutput ? Math.max(outputStartLine, startLine + 1) : startLine + 1;
-            const cmdEnd = Math.max(startLine, (hasOutput ? safeOutputStart : startLine + 1) - 1);
-
-            const rect = element.getBoundingClientRect();
-            const isBootstrapMarker = Boolean(meta?.isBootstrap);
-            setCopyMenu({
-                x: rect.right + 8,
-                y: rect.top - 4,
-                commandRange: [startLine, cmdEnd],
-                outputRange: hasOutput ? [safeOutputStart, Math.max(safeOutputStart, endLine)] : null,
-                disabled: isBootstrapMarker,
-                outputDisabled: !hasOutput || isBootstrapMarker,
-            });
-        });
-    };
-
-    term.parser.registerOscHandler(133, (data) => {
-        try {
-            const parts = data.split(';');
-            const type = parts[0];
-
-            if (type === 'A') {
-                // Prompt Start - Create Marker
-                const marker = term.registerDecoration({
-                    marker: term.registerMarker(0),
-                    x: 0, // Anchor to first column
-                    width: 1,
-                    height: 1,
-                });
-                
-                if (marker) {
-                    marker.onRender((element) => setupMarkerElement(marker, element));
-                    marker.onDispose?.(() => removeMarker(marker));
-                    currentMarker = marker;
-                    markers.push(marker);
-                    markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
-                    if (markers.length > maxMarkers) {
-                        const oldest = markers[0];
-                        removeMarker(oldest);
-                        oldest?.dispose?.();
-                    }
-                }
-            } else if (type === 'C') {
-                 // Command Output Start
-                 // Only set if not already set for this marker (First 'C' wins)
-                 if (!currentMarker) {
-                    const marker = term.registerDecoration({
-                        marker: term.registerMarker(-1),
-                        x: 0,
-                        width: 1,
-                        height: 1,
-                    });
-                     if (marker) {
-                         marker.onRender((element) => setupMarkerElement(marker, element));
-                         marker.onDispose?.(() => removeMarker(marker));
-                         currentMarker = marker;
-                         markers.push(marker);
-                         markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
-                         if (markers.length > maxMarkers) {
-                             const oldest = markers[0];
-                             removeMarker(oldest);
-                             oldest?.dispose?.();
-                         }
-                     }
-                 }
-                 if (currentMarker) {
-                     const meta = markerMeta.get(currentMarker) || {};
-                     if (!meta.outputStartMarker) {
-                         meta.outputStartMarker = term.registerMarker(0);
-                         markerMeta.set(currentMarker, meta);
-                     }
-                 }
-            } else if (type === 'D') {
-                // Command Finished
-                const exitCode = parseInt(parts[1] || '0');
-                if (currentMarker) {
-                    currentMarker.onRender((element: HTMLElement) => setupMarkerElement(currentMarker, element, exitCode));
-                    if (pendingFileCaptureRef.current) {
-                        const { path, maxBytes } = pendingFileCaptureRef.current;
-                        const startLine = currentMarker.marker.line;
-                        let endLine = term.buffer.active.length - 1;
-                        const markerIndex = markers.indexOf(currentMarker);
-                        if (markerIndex !== -1 && markerIndex < markers.length - 1) {
-                            endLine = markers[markerIndex + 1].marker.line - 1;
-                        }
-                        const meta = markerMeta.get(currentMarker);
-                        const outputStartLine = meta?.outputStartMarker?.line ?? null;
-                        const hasOutput =
-                            outputStartLine !== null &&
-                            outputStartLine > startLine &&
-                            outputStartLine <= endLine;
-                        if (hasOutput) {
-                            const safeOutputStart = Math.max(outputStartLine, startLine + 1);
-                            const outputText = getRangeText([
-                                safeOutputStart,
-                                Math.max(safeOutputStart, endLine),
-                            ]).trim();
-                            if (outputText) {
-                                addContextItem({
-                                    id: crypto.randomUUID(),
-                                    type: 'file',
-                                    content: outputText,
-                                    timestamp: Date.now(),
-                                    metadata: {
-                                        path,
-                                        truncated: outputText.length >= maxBytes,
-                                        byte_count: outputText.length,
-                                    },
-                                });
-                            }
-                        }
-                        pendingFileCaptureRef.current = null;
-                    }
-                    // Clear currentMarker so subsequent 'C' events (e.g. from PROMPT_COMMAND) don't overwrite our output start
-                    currentMarker = null;
-                }
-            }
-        } catch (e) {
-            console.error('Error handling OSC 133:', e);
-        }
-        return true;
+    const markerManager = createMarkerManager({
+        term,
+        maxMarkers: settings?.terminal?.max_markers ?? 200,
+        setCopyMenu,
+        getRangeText,
+        addContextItem,
+        pendingFileCaptureRef,
     });
 
     term.parser.registerOscHandler(633, (data) => {
@@ -408,7 +245,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     });
 
     // Send data to PTY
-    term.onData((data) => {
+        const onDataDisposable = term.onData((data) => {
       invoke('write_to_pty', { id, data });
     });
 
@@ -463,47 +300,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const unlistenCapturePromise = listen<{ count: number }>('ai-context:capture-last', (event) => {
         if (!visibleRef.current) return;
         const count = Math.max(1, Math.min(50, event.payload.count || 1));
-        if (!xtermRef.current || markers.length === 0) return;
-        const eligibleMarkers = markers.filter((marker) => {
-            const meta = markerMeta.get(marker);
-            return Boolean(meta?.outputStartMarker);
-        });
-        const slice = eligibleMarkers.slice(-count);
-        slice.forEach((marker, index) => {
-            const startLine = marker.marker.line;
-            let endLine = term.buffer.active.length - 1;
-            const markerIndex = eligibleMarkers.indexOf(marker);
-            if (markerIndex !== -1 && markerIndex < eligibleMarkers.length - 1) {
-                endLine = eligibleMarkers[markerIndex + 1].marker.line - 1;
-            }
-            const meta = markerMeta.get(marker);
-            const outputStartLine = meta?.outputStartMarker?.line ?? null;
-            const hasOutput = outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
-            const safeOutputStart = hasOutput ? Math.max(outputStartLine, startLine + 1) : startLine + 1;
-            const cmdEnd = Math.max(startLine, (hasOutput ? safeOutputStart : startLine + 1) - 1);
-            const commandText = getRangeText([startLine, cmdEnd]).trim();
-            const outputText = hasOutput ? getRangeText([safeOutputStart, Math.max(safeOutputStart, endLine)]).trim() : "";
-            if (!commandText && !outputText) return;
-            if (outputText) {
-                addContextItem({
-                    id: crypto.randomUUID(),
-                    type: 'command_output',
-                    content: outputText,
-                    timestamp: Date.now() + index,
-                    metadata: {
-                        command: commandText || undefined,
-                        output: outputText,
-                    },
-                });
-            } else if (commandText) {
-                addContextItem({
-                    id: crypto.randomUUID(),
-                    type: 'command',
-                    content: commandText,
-                    timestamp: Date.now() + index,
-                });
-            }
-        });
+        if (!xtermRef.current) return;
+        markerManager.captureLast(count);
     });
 
     const unlistenCaptureFilePromise = listen<{ path: string; maxBytes: number }>(
@@ -525,6 +323,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       term.dispose();
             selectionMenuHandle.cleanup();
             scrollbar.cleanup();
+        markerManager.cleanup();
+        onDataDisposable?.dispose?.();
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
