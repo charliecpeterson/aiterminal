@@ -19,6 +19,7 @@ interface Tab {
 function AppContent() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
+  const [mainActiveTabId, setMainActiveTabId] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(true);
@@ -154,11 +155,28 @@ function AppContent() {
     };
   }, [isAiWindow]);
 
+  useEffect(() => {
+    if (!isAiWindow) return;
+    const unlistenPromise = listen<{ id: number | null }>("ai-panel:active-terminal", (event) => {
+      setMainActiveTabId(event.payload?.id ?? null);
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [isAiWindow]);
+
+  useEffect(() => {
+    if (isAiWindow) return;
+    // Best-effort: keep detached AI panel aware of the current active terminal.
+    emitTo("ai-panel", "ai-panel:active-terminal", { id: activeTabId }).catch(() => {});
+  }, [activeTabId, isAiWindow]);
+
   if (isAiWindow) {
     return (
       <div className="ai-window">
         <AIPanel
           mode="detached"
+          activeTerminalId={mainActiveTabId}
           onAttach={async () => {
             if (isAiAttaching) {
               return;
@@ -224,6 +242,7 @@ function AppContent() {
     });
     panelWindow.once("tauri://created", () => {
       panelWindow.setFocus().catch(() => {});
+      emitTo("ai-panel", "ai-panel:active-terminal", { id: activeTabId }).catch(() => {});
     });
     panelWindow.once("tauri://error", (event) => {
       console.error("AI panel window error:", event);
@@ -313,6 +332,7 @@ function AppContent() {
               <AIPanel
                 onClose={() => setIsAiOpen(false)}
                 onDetach={detachPanel}
+                activeTerminalId={activeTabId}
               />
             </div>
           </>

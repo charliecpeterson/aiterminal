@@ -118,7 +118,13 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   useAiRunCommandListener({
       id,
       visibleRef,
-      focusTerminal: () => xtermRef.current?.focus(),
+            focusTerminal: () => xtermRef.current?.focus(),
+            auditToTerminal: (line) => {
+                const term = xtermRef.current;
+                if (!term) return;
+                // Write as terminal output (audit in scrollback). Keep it on one line.
+                term.write(`\r\n${line}\r\n`);
+            },
   });
 
   useFloatingMenu(copyMenu, setCopyMenu, copyMenuRef);
