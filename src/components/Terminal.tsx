@@ -18,6 +18,7 @@ import { attachHostLabelOsc } from '../terminal/hostLabel';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
 import { attachTerminalHotkeys } from '../terminal/keyboardShortcuts';
 import { attachWindowResize, fitAndResizePty } from '../terminal/resize';
+import { useFloatingMenu } from '../terminal/useFloatingMenu';
 
 interface TerminalProps {
     id: number;
@@ -315,55 +316,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       };
   }, [id]);
 
-    useEffect(() => {
-        if (!copyMenu) return;
-        const clampMenuPosition = () => {
-            if (!copyMenuRef.current) return;
-          const menuRect = copyMenuRef.current.getBoundingClientRect();
-          const margin = 8;
-          const maxX = window.innerWidth - menuRect.width - margin;
-          const maxY = window.innerHeight - menuRect.height - margin;
-          const nextX = Math.min(Math.max(margin, copyMenu.x), Math.max(margin, maxX));
-          const nextY = Math.min(Math.max(margin, copyMenu.y), Math.max(margin, maxY));
-          if (nextX !== copyMenu.x || nextY !== copyMenu.y) {
-              setCopyMenu(prev => prev ? { ...prev, x: nextX, y: nextY } : prev);
-          }
-      };
-      requestAnimationFrame(clampMenuPosition);
-      const handleGlobalMouseDown = (event: MouseEvent) => {
-          if (!copyMenuRef.current) return;
-          if (!copyMenuRef.current.contains(event.target as Node)) {
-              hideCopyMenu();
-          }
-      };
-      window.addEventListener('mousedown', handleGlobalMouseDown);
-      return () => window.removeEventListener('mousedown', handleGlobalMouseDown);
-  }, [copyMenu]);
-
-  useEffect(() => {
-      if (!selectionMenu) return;
-      const clampMenuPosition = () => {
-          if (!selectionMenuRef.current) return;
-          const menuRect = selectionMenuRef.current.getBoundingClientRect();
-          const margin = 8;
-          const maxX = window.innerWidth - menuRect.width - margin;
-          const maxY = window.innerHeight - menuRect.height - margin;
-          const nextX = Math.min(Math.max(margin, selectionMenu.x), Math.max(margin, maxX));
-          const nextY = Math.min(Math.max(margin, selectionMenu.y), Math.max(margin, maxY));
-          if (nextX !== selectionMenu.x || nextY !== selectionMenu.y) {
-              setSelectionMenu(prev => prev ? { ...prev, x: nextX, y: nextY } : prev);
-          }
-      };
-      requestAnimationFrame(clampMenuPosition);
-      const handleGlobalMouseDown = (event: MouseEvent) => {
-          if (!selectionMenuRef.current) return;
-          if (!selectionMenuRef.current.contains(event.target as Node)) {
-              hideSelectionMenu();
-          }
-      };
-      window.addEventListener('mousedown', handleGlobalMouseDown);
-      return () => window.removeEventListener('mousedown', handleGlobalMouseDown);
-  }, [selectionMenu]);
+  useFloatingMenu(copyMenu, setCopyMenu, copyMenuRef);
+  useFloatingMenu(selectionMenu, setSelectionMenu, selectionMenuRef);
 
   if (loading) return null;
 
