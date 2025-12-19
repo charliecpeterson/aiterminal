@@ -16,6 +16,7 @@ import { createMarkerManager } from '../terminal/markers';
 import { attachFileCaptureListener } from '../terminal/fileCapture';
 import { attachHostLabelOsc } from '../terminal/hostLabel';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
+import { attachTerminalHotkeys } from '../terminal/keyboardShortcuts';
 
 interface TerminalProps {
     id: number;
@@ -247,41 +248,15 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     };
     window.addEventListener('resize', handleResize);
 
-    // Handle Zoom and Search
-    const handleKeydown = (e: KeyboardEvent) => {
-        if (!visibleRef.current) return; // Only handle keys if visible
-
-        if (e.metaKey || e.ctrlKey) {
-            if (e.key === '=' || e.key === '+') {
-                e.preventDefault();
-                const newSize = (term.options.fontSize || 14) + 1;
-                term.options.fontSize = newSize;
-                fitAddon.fit();
-                invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
-            } else if (e.key === '-') {
-                e.preventDefault();
-                const newSize = Math.max(6, (term.options.fontSize || 14) - 1);
-                term.options.fontSize = newSize;
-                fitAddon.fit();
-                invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
-            } else if (e.key === '0') {
-                e.preventDefault();
-                term.options.fontSize = 14;
-                fitAddon.fit();
-                invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
-            } else if (e.key === 'f') {
-                e.preventDefault();
-                setShowSearch(prev => !prev);
-            }
-        }
-        // Hide search on Escape
-        if (e.key === 'Escape') {
-            setShowSearch(false);
-            hideCopyMenu();
-            term.focus();
-        }
-    };
-    window.addEventListener('keydown', handleKeydown);
+    const hotkeys = attachTerminalHotkeys({
+        term,
+        fitAddon,
+        visibleRef,
+        setShowSearch,
+        hideCopyMenu,
+        hideSelectionMenu,
+        resizePty: (rows, cols) => invoke('resize_pty', { id, rows, cols }),
+    });
     
     // Initial resize
     setTimeout(handleResize, 100); // Delay slightly to ensure container is ready
@@ -309,7 +284,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         hostLabelHandle.cleanup();
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('keydown', handleKeydown);
+            hotkeys.cleanup();
             fileCaptureListener.cleanup();
       unlistenCapturePromise.then(f => f());
       hideCopyMenu();
