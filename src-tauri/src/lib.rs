@@ -164,17 +164,44 @@ if [ "$TERM_PROGRAM" = "aiterminal" ]; then
 fi
 
 if [ -n "$BASH_VERSION" ]; then
-    __aiterm_original_pc="${PROMPT_COMMAND:-}"
     __aiterm_prompt_wrapper() {
         local ret=$?
         __aiterm_mark_done "$ret"
         __aiterm_mark_prompt
         __aiterm_emit_host
-        if [ -n "$__aiterm_original_pc" ]; then
+        if [ -z "$__AITERM_PC_MANAGED" ] && [ -n "$__aiterm_original_pc" ]; then
             eval "$__aiterm_original_pc"
         fi
     }
-    PROMPT_COMMAND="__aiterm_prompt_wrapper"
+
+    if declare -p PROMPT_COMMAND 2>/dev/null | grep -q 'declare -a'; then
+        if [ -n "$AITERM_HOOK_DEBUG" ]; then
+            echo "AITERM hook: bash PROMPT_COMMAND is array" 1>&2
+        fi
+        __AITERM_PC_MANAGED=1
+        __aiterm_has_wrapper=0
+        for __aiterm_pc in "${PROMPT_COMMAND[@]}"; do
+            if [ "$__aiterm_pc" = "__aiterm_prompt_wrapper" ]; then
+                __aiterm_has_wrapper=1
+                break
+            fi
+        done
+        if [ $__aiterm_has_wrapper -eq 0 ]; then
+            PROMPT_COMMAND=(__aiterm_prompt_wrapper "${PROMPT_COMMAND[@]}")
+        fi
+        unset __aiterm_pc __aiterm_has_wrapper
+    else
+        if [ -n "$AITERM_HOOK_DEBUG" ]; then
+            echo "AITERM hook: bash PROMPT_COMMAND is string" 1>&2
+        fi
+        __AITERM_PC_MANAGED=
+        __aiterm_original_pc="${PROMPT_COMMAND:-}"
+        case "$__aiterm_original_pc" in
+            *__aiterm_prompt_wrapper*) ;;
+            "") PROMPT_COMMAND="__aiterm_prompt_wrapper" ;;
+            *) PROMPT_COMMAND="__aiterm_prompt_wrapper" ;;
+        esac
+    fi
 
     __aiterm_preexec() {
         if [ -n "$COMP_LINE" ]; then return; fi  # skip completion
@@ -185,11 +212,17 @@ if [ -n "$BASH_VERSION" ]; then
     }
     trap '__aiterm_preexec' DEBUG
 elif [ -n "$ZSH_VERSION" ]; then
-    autoload -Uz add-zsh-hook
-    __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; __aiterm_emit_host; }
-    __aiterm_preexec() { __aiterm_mark_output_start; }
-    add-zsh-hook precmd __aiterm_precmd
-    add-zsh-hook preexec __aiterm_preexec
+    if [ -z "$__AITERM_ZSH_HOOKS" ]; then
+        if [ -n "$AITERM_HOOK_DEBUG" ]; then
+            echo "AITERM hook: zsh add hooks" 1>&2
+        fi
+        __AITERM_ZSH_HOOKS=1
+        autoload -Uz add-zsh-hook
+        __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; __aiterm_emit_host; }
+        __aiterm_preexec() { __aiterm_mark_output_start; }
+        add-zsh-hook precmd __aiterm_precmd
+        add-zsh-hook preexec __aiterm_preexec
+    fi
 fi
 
 if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
@@ -223,9 +256,12 @@ aiterm_ssh() {
     set -- "$@"
     while [ $# -gt 0 ]; do
         case "$1" in
-            -o|-J|-F|-i|-b|-c|-D|-E|-I|-L|-l|-m|-O|-p|-Q|-R|-S|-W|-w)
+            -o|-J|-F|-i|-b|-c|-D|-E|-e|-I|-L|-l|-m|-O|-p|-P|-Q|-R|-S|-W|-w|-B)
                 shift
                 [ $# -gt 0 ] && shift
+                ;;
+            -o*|-J*|-F*|-i*|-b*|-c*|-D*|-E*|-e*|-I*|-L*|-l*|-m*|-O*|-p*|-P*|-Q*|-R*|-S*|-W*|-w*|-B*)
+                shift
                 ;;
             --)
                 shift
