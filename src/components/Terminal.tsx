@@ -13,6 +13,7 @@ import { useAIContext } from '../context/AIContext';
 import { attachScrollbarOverlay } from '../terminal/scrollbarOverlay';
 import { attachSelectionMenu } from '../terminal/selectionMenu';
 import { createMarkerManager } from '../terminal/markers';
+import { attachFileCaptureListener } from '../terminal/fileCapture';
 
 interface TerminalProps {
     id: number;
@@ -119,8 +120,6 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         hideCopyMenu();
         xtermRef.current?.focus();
     };
-
-    const shellQuote = (value: string) => `'${value.replace(/'/g, `'"'"'`)}'`;
 
     const addSelectionToContext = () => {
         if (!xtermRef.current) return;
@@ -304,20 +303,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         markerManager.captureLast(count);
     });
 
-    const unlistenCaptureFilePromise = listen<{ path: string; maxBytes: number }>(
-        'ai-context:capture-file',
-        (event) => {
-            if (!visibleRef.current) return;
-            if (!xtermRef.current) return;
-            const path = event.payload.path?.trim();
-            const maxBytes = Math.max(1024, Math.min(2 * 1024 * 1024, event.payload.maxBytes || 0));
-            if (!path || !maxBytes) return;
-            pendingFileCaptureRef.current = { path, maxBytes };
-            const command = `HISTCONTROL=ignorespace HIST_IGNORE_SPACE=1 head -c ${maxBytes} ${shellQuote(path)}`;
-            invoke('write_to_pty', { id, data: ` ${command}\n` });
-            xtermRef.current.focus();
-        }
-    );
+    const fileCaptureListener = attachFileCaptureListener({
+        id,
+        visibleRef,
+        pendingFileCaptureRef,
+        focusTerminal: () => xtermRef.current?.focus(),
+    });
 
       return () => {
       term.dispose();
@@ -328,7 +319,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
-      unlistenCaptureFilePromise.then(f => f());
+            fileCaptureListener.cleanup();
       unlistenCapturePromise.then(f => f());
       hideCopyMenu();
       hideSelectionMenu();
