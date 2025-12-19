@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
 import { attachScrollbarOverlay } from '../terminal/scrollbarOverlay';
@@ -12,12 +11,15 @@ import { attachFileCaptureListener } from '../terminal/fileCapture';
 import { attachHostLabelOsc } from '../terminal/hostLabel';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
 import { attachTerminalHotkeys } from '../terminal/keyboardShortcuts';
-import { attachWindowResize, fitAndResizePty } from '../terminal/resize';
+import { attachWindowResize } from '../terminal/resize';
 import { useFloatingMenu } from '../terminal/useFloatingMenu';
 import { attachAiRunCommandListener } from '../terminal/aiRunCommand';
 import { attachPtyDataListener, attachPtyExitListener } from '../terminal/ptyListeners';
 import { createSearchController } from '../terminal/search';
 import { createTerminalSession } from '../terminal/createTerminalSession';
+import { attachCaptureLastListener } from '../terminal/captureLast';
+import { applyTerminalAppearance } from '../terminal/appearance';
+import { handleTerminalVisibilityChange } from '../terminal/visibility';
 import {
     addContextFromCombinedRanges,
     addContextFromRange,
@@ -122,30 +124,23 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   // Update terminal options when settings change
   useEffect(() => {
       if (xtermRef.current && settings) {
-          xtermRef.current.options.fontSize = settings.appearance.font_size;
-          xtermRef.current.options.fontFamily = settings.appearance.font_family;
-          xtermRef.current.options.theme = {
-              ...xtermRef.current.options.theme,
-              background: settings.appearance.theme === 'light' ? '#ffffff' : '#1e1e1e',
-              foreground: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
-              cursor: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
-          };
-          fitAddonRef.current?.fit();
+          applyTerminalAppearance({
+              term: xtermRef.current,
+              appearance: settings.appearance,
+              fitAddon: fitAddonRef.current,
+          });
       }
   }, [settings]);
 
   const visibleRef = useRef(visible);
   useEffect(() => {
-      visibleRef.current = visible;
-      if (visible && fitAddonRef.current && xtermRef.current) {
-          requestAnimationFrame(() => {
-              if (fitAddonRef.current && xtermRef.current) {
-                  fitAndResizePty(id, xtermRef.current, fitAddonRef.current).finally(() => {
-                      xtermRef.current?.focus();
-                  });
-              }
-          });
-      }
+      handleTerminalVisibilityChange({
+          id,
+          visible,
+          visibleRef,
+          termRef: xtermRef,
+          fitAddonRef,
+      });
   }, [visible, id]);
 
   useEffect(() => {
@@ -193,6 +188,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         pendingFileCaptureRef,
     });
 
+    const markerManagerRef = { current: markerManager };
+
     const hostLabelHandle = attachHostLabelOsc(term, setHostLabel);
 
     // Send data to PTY
@@ -214,11 +211,9 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     
     // Initial resize is handled by attachWindowResize
 
-    const unlistenCapturePromise = listen<{ count: number }>('ai-context:capture-last', (event) => {
-        if (!visibleRef.current) return;
-        const count = Math.max(1, Math.min(50, event.payload.count || 1));
-        if (!xtermRef.current) return;
-        markerManager.captureLast(count);
+    const captureLastListener = attachCaptureLastListener({
+        visibleRef,
+        markerManagerRef,
     });
 
     const fileCaptureListener = attachFileCaptureListener({
@@ -239,7 +234,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     windowResize.cleanup();
             hotkeys.cleanup();
             fileCaptureListener.cleanup();
-      unlistenCapturePromise.then(f => f());
+    captureLastListener.cleanup();
       hideCopyMenu();
       hideSelectionMenu();
     };

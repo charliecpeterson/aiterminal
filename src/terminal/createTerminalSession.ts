@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { applyTerminalAppearance, type AppearanceSettings, resolveXtermTheme } from './appearance';
 
 export interface TerminalSession {
     term: XTerm;
@@ -13,21 +14,13 @@ export interface TerminalSession {
 
 export function createTerminalSession(params: {
     container: HTMLElement;
-    appearance: {
-        theme: 'light' | 'dark' | string;
-        font_family: string;
-        font_size: number;
-    };
+    appearance: AppearanceSettings;
 }): TerminalSession {
     const { container, appearance } = params;
 
     const term = new XTerm({
         cursorBlink: true,
-        theme: {
-            background: appearance.theme === 'light' ? '#ffffff' : '#1e1e1e',
-            foreground: appearance.theme === 'light' ? '#000000' : '#ffffff',
-            cursor: appearance.theme === 'light' ? '#000000' : '#ffffff',
-        },
+        theme: resolveXtermTheme(appearance.theme),
         allowProposedApi: true,
         fontFamily: appearance.font_family,
         fontSize: appearance.font_size,
@@ -50,7 +43,7 @@ export function createTerminalSession(params: {
     }
 
     term.open(container);
-    fitAddon.fit();
+    applyTerminalAppearance({ term, appearance, fitAddon });
 
     return {
         term,
