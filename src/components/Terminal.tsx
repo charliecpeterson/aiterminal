@@ -9,14 +9,14 @@ import type { CopyMenuState } from '../terminal/markers';
 import type { SelectionMenuState } from '../terminal/selectionMenu';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
 import { useFloatingMenu } from '../terminal/useFloatingMenu';
-import { attachAiRunCommandListener } from '../terminal/aiRunCommand';
-import { attachPtyExitListener } from '../terminal/ptyListeners';
 import { createSearchController } from '../terminal/search';
-import { applyTerminalAppearance } from '../terminal/appearance';
 import { handleTerminalVisibilityChange } from '../terminal/visibility';
 import { createTerminalWiring } from '../terminal/createTerminalWiring';
 import type { PendingFileCapture } from '../terminal/fileCapture';
 import { createTerminalActions } from '../terminal/terminalActions';
+import { usePtyAutoClose } from '../terminal/usePtyAutoClose';
+import { useAiRunCommandListener } from '../terminal/useAiRunCommandListener';
+import { useTerminalAppearance } from '../terminal/useTerminalAppearance';
 
 interface TerminalProps {
     id: number;
@@ -67,16 +67,11 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         focusTerminal: () => xtermRef.current?.focus(),
     });
   
-  // Update terminal options when settings change
-  useEffect(() => {
-      if (xtermRef.current && settings) {
-          applyTerminalAppearance({
-              term: xtermRef.current,
-              appearance: settings.appearance,
-              fitAddon: fitAddonRef.current,
-          });
-      }
-  }, [settings]);
+  useTerminalAppearance({
+      termRef: xtermRef,
+      fitAddonRef,
+      appearance: settings?.appearance,
+  });
 
   const visibleRef = useRef(visible);
   useEffect(() => {
@@ -118,28 +113,13 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.
 
-  // Keep onClose ref up to date
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-      onCloseRef.current = onClose;
-  }, [onClose]);
+  usePtyAutoClose({ id, onClose });
 
-  useEffect(() => {
-      const handle = attachPtyExitListener({
-          id,
-          onExit: () => onCloseRef.current(),
-      });
-      return () => handle.cleanup();
-  }, [id]);
-
-  useEffect(() => {
-      const handle = attachAiRunCommandListener({
-          id,
-          visibleRef,
-          focusTerminal: () => xtermRef.current?.focus(),
-      });
-      return () => handle.cleanup();
-  }, [id]);
+  useAiRunCommandListener({
+      id,
+      visibleRef,
+      focusTerminal: () => xtermRef.current?.focus(),
+  });
 
   useFloatingMenu(copyMenu, setCopyMenu, copyMenuRef);
   useFloatingMenu(selectionMenu, setSelectionMenu, selectionMenuRef);

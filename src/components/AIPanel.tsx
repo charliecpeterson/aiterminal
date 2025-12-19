@@ -2,11 +2,9 @@ import { useMemo, useState } from "react";
 import "./AIPanel.css";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
-import { invoke } from "@tauri-apps/api/core";
-import { emitTo, listen } from "@tauri-apps/api/event";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { emitTo } from "@tauri-apps/api/event";
+import { sendChatMessage } from "../ai/chatSend";
+import { AIMarkdown } from "./AIMarkdown";
 
 type PanelTab = "chat" | "context";
 
@@ -45,88 +43,15 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
   }, [contextItems.length]);
 
   const handleSend = () => {
-    const trimmed = prompt.trim();
-    if (!trimmed) return;
-    const payload = buildPrompt(trimmed);
-    const requestId = crypto.randomUUID();
-    const assistantId = crypto.randomUUID();
-    addMessage({
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmed,
-      timestamp: Date.now(),
-    });
-    addMessage({
-      id: assistantId,
-      role: "assistant",
-      content: "",
-      timestamp: Date.now(),
-    });
-    setPrompt("");
-    setSendError(null);
-    if (!settings?.ai) {
-      setIsSending(false);
-      addMessage({
-        id: crypto.randomUUID(),
-        role: "system",
-        content: "AI settings are missing. Open Settings to configure a provider.",
-        timestamp: Date.now(),
-      });
-      return;
-    }
-    setIsSending(true);
-    const chunkPromise = listen<{ request_id: string; content: string }>(
-      "ai-stream:chunk",
-      (event) => {
-        if (event.payload.request_id !== requestId) return;
-        appendMessage(assistantId, event.payload.content);
-      }
-    );
-    const endPromise = listen<{ request_id: string }>("ai-stream:end", (event) => {
-      if (event.payload.request_id !== requestId) return;
-      setIsSending(false);
-      chunkPromise.then((unlisten) => unlisten());
-      endPromise.then((unlisten) => unlisten());
-      errorPromise.then((unlisten) => unlisten());
-    });
-    const errorPromise = listen<{ request_id: string; error: string }>(
-      "ai-stream:error",
-      (event) => {
-        if (event.payload.request_id !== requestId) return;
-        setIsSending(false);
-        setSendError(event.payload.error);
-        addMessage({
-          id: crypto.randomUUID(),
-          role: "system",
-          content: `Request failed: ${event.payload.error}`,
-          timestamp: Date.now(),
-        });
-        chunkPromise.then((unlisten) => unlisten());
-        endPromise.then((unlisten) => unlisten());
-        errorPromise.then((unlisten) => unlisten());
-      }
-    );
-
-    invoke("ai_chat_stream", {
-      provider: settings.ai.provider,
-      apiKey: settings.ai.api_key,
-      url: settings.ai.url,
-      model: settings.ai.model,
-      prompt: payload,
-      requestId,
-    }).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      setSendError(message);
-      setIsSending(false);
-      addMessage({
-        id: crypto.randomUUID(),
-        role: "system",
-        content: `Request failed: ${message}`,
-        timestamp: Date.now(),
-      });
-      chunkPromise.then((unlisten) => unlisten());
-      endPromise.then((unlisten) => unlisten());
-      errorPromise.then((unlisten) => unlisten());
+    sendChatMessage({
+      prompt,
+      buildPrompt,
+      settingsAi: settings?.ai,
+      addMessage,
+      appendMessage,
+      setPrompt,
+      setIsSending,
+      setSendError,
     });
   };
 
@@ -139,55 +64,11 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
     return "Assistant";
   };
 
-  const handleCopyCode = async (code: string) => {
-    try {
-      await writeText(code);
-    } catch (err) {
-      console.error("Failed to copy code:", err);
-    }
-  };
-  
   const renderMarkdown = (content: string) => (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noreferrer">
-            {children}
-          </a>
-        ),
-        code: ({ className, children }) => {
-          const raw = String(children).replace(/\n$/, "");
-          const language = className?.replace("language-", "");
-          if (!language) {
-            return <code>{raw}</code>;
-          }
-          return (
-            <div className="ai-panel-code-block">
-              <div className="ai-panel-code-header">
-                <span className="ai-panel-code-lang">{language}</span>
-                <div className="ai-panel-code-actions">
-                  <button className="ai-panel-code-copy" onClick={() => handleCopyCode(raw)}>
-                    Copy
-                  </button>
-                  <button
-                    className="ai-panel-code-run"
-                    onClick={() => emitTo("main", "ai-run-command", { command: raw })}
-                  >
-                    Run
-                  </button>
-                </div>
-              </div>
-              <pre>
-                <code>{raw}</code>
-              </pre>
-            </div>
-          );
-        },
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <AIMarkdown
+      content={content}
+      onRunCommand={(command) => emitTo("main", "ai-run-command", { command })}
+    />
   );
 
   const handleCaptureLast = () => {
