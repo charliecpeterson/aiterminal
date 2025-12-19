@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Terminal as XTerm } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
 import { SearchAddon } from '@xterm/addon-search';
-import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
-import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSettings } from '../context/SettingsContext';
@@ -21,6 +16,16 @@ import { attachWindowResize, fitAndResizePty } from '../terminal/resize';
 import { useFloatingMenu } from '../terminal/useFloatingMenu';
 import { attachAiRunCommandListener } from '../terminal/aiRunCommand';
 import { attachPtyDataListener, attachPtyExitListener } from '../terminal/ptyListeners';
+import { createSearchController } from '../terminal/search';
+import { createTerminalSession } from '../terminal/createTerminalSession';
+import {
+    addContextFromCombinedRanges,
+    addContextFromRange,
+    addSelectionToContext,
+    copyCombinedToClipboard,
+    copyRangeToClipboard,
+    getRangeText,
+} from '../terminal/copyContext';
 
 interface TerminalProps {
     id: number;
@@ -46,8 +51,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   const { settings, loading } = useSettings();
   const { addContextItem } = useAIContext();
   const terminalRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<XTerm | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
+    const xtermRef = useRef<import('@xterm/xterm').Terminal | null>(null);
+    const fitAddonRef = useRef<import('@xterm/addon-fit').FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -64,83 +69,55 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const hideSelectionMenu = () => setSelectionMenu(null);
     const copyRange = async (range: [number, number]) => {
         if (!xtermRef.current) return;
-        const [start, end] = range;
-        const safeStart = Math.max(0, start);
-        const safeEnd = Math.max(safeStart, end);
-        xtermRef.current.selectLines(safeStart, safeEnd);
-        const text = xtermRef.current.getSelection();
-        try {
-            await writeText(text);
-        } catch (err) {
-            console.error('Failed to copy:', err);
-        }
-        xtermRef.current.clearSelection();
+        await copyRangeToClipboard(xtermRef.current, range);
         hideCopyMenu();
         xtermRef.current.focus();
-    };
-
-    const getRangeText = (range: [number, number]) => {
-        if (!xtermRef.current) return '';
-        const [start, end] = range;
-        const safeStart = Math.max(0, start);
-        const safeEnd = Math.max(safeStart, end);
-        xtermRef.current.selectLines(safeStart, safeEnd);
-        const text = xtermRef.current.getSelection();
-        xtermRef.current.clearSelection();
-        return text;
     };
 
     const copyCombined = async (commandRange: [number, number], outputRange: [number, number]) => {
-        const start = Math.min(commandRange[0], outputRange[0]);
-        const end = Math.max(commandRange[1], outputRange[1]);
-        await copyRange([start, end]);
+        if (!xtermRef.current) return;
+        await copyCombinedToClipboard(xtermRef.current, commandRange, outputRange);
+        hideCopyMenu();
+        xtermRef.current.focus();
     };
 
-    const addContextFromRange = (type: 'command' | 'output' | 'selection', range: [number, number]) => {
-        const content = getRangeText(range).trim();
-        if (!content) return;
-        addContextItem({
-            id: crypto.randomUUID(),
+    const addContextFromLineRange = (type: 'command' | 'output' | 'selection', range: [number, number]) => {
+        if (!xtermRef.current) return;
+        addContextFromRange({
+            term: xtermRef.current,
             type,
-            content,
-            timestamp: Date.now(),
+            range,
+            addContextItem,
         });
         hideCopyMenu();
-        xtermRef.current?.focus();
+        xtermRef.current.focus();
     };
 
     const addContextFromCombined = (commandRange: [number, number], outputRange: [number, number]) => {
-        const command = getRangeText(commandRange).trim();
-        const output = getRangeText(outputRange).trim();
-        if (!command && !output) return;
-        addContextItem({
-            id: crypto.randomUUID(),
-            type: 'command_output',
-            content: output || command,
-            timestamp: Date.now(),
-            metadata: {
-                command: command || undefined,
-                output: output || undefined,
-            },
+        if (!xtermRef.current) return;
+        addContextFromCombinedRanges({
+            term: xtermRef.current,
+            commandRange,
+            outputRange,
+            addContextItem,
         });
         hideCopyMenu();
-        xtermRef.current?.focus();
+        xtermRef.current.focus();
     };
 
-    const addSelectionToContext = () => {
+    const addSelection = () => {
         if (!xtermRef.current) return;
-        const text = xtermRef.current.getSelection().trim();
-        if (!text) return;
-        addContextItem({
-            id: crypto.randomUUID(),
-            type: 'selection',
-            content: text,
-            timestamp: Date.now(),
-        });
-        xtermRef.current.clearSelection();
+        addSelectionToContext({ term: xtermRef.current, addContextItem });
         hideSelectionMenu();
         xtermRef.current.focus();
     };
+
+    const search = createSearchController({
+        searchAddonRef,
+        searchInputRef,
+        setShowSearch,
+        focusTerminal: () => xtermRef.current?.focus(),
+    });
   
   // Update terminal options when settings change
   useEffect(() => {
@@ -174,37 +151,16 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   useEffect(() => {
     if (!terminalRef.current || loading || !settings) return;
 
-    const term = new XTerm({
-      cursorBlink: true,
-      theme: {
-        background: settings.appearance.theme === 'light' ? '#ffffff' : '#1e1e1e',
-        foreground: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
-        cursor: settings.appearance.theme === 'light' ? '#000000' : '#ffffff',
-      },
-      allowProposedApi: true,
-      fontFamily: settings.appearance.font_family,
-      fontSize: settings.appearance.font_size,
-    });
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    fitAddonRef.current = fitAddon;
-    
-    const searchAddon = new SearchAddon();
-    term.loadAddon(searchAddon);
-    searchAddonRef.current = searchAddon;
-    
-    term.loadAddon(new WebLinksAddon());
+        const session = createTerminalSession({
+                container: terminalRef.current,
+                appearance: settings.appearance,
+        });
 
-    try {
-        const webglAddon = new WebglAddon();
-        term.loadAddon(webglAddon);
-    } catch (e) {
-        console.warn("WebGL addon failed to load", e);
-    }
-
-    term.open(terminalRef.current);
-    fitAddon.fit();
-    xtermRef.current = term;
+        const term = session.term;
+        const fitAddon = session.fitAddon;
+        fitAddonRef.current = fitAddon;
+        searchAddonRef.current = session.searchAddon;
+        xtermRef.current = term;
 
     // Custom always-visible scrollbar overlay synced to xterm viewport
     const scrollbar = attachScrollbarOverlay(terminalRef.current, term.element ?? null);
@@ -232,7 +188,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         term,
         maxMarkers: settings?.terminal?.max_markers ?? 200,
         setCopyMenu,
-        getRangeText,
+        getRangeText: (range) => getRangeText(term, range),
         addContextItem,
         pendingFileCaptureRef,
     });
@@ -273,7 +229,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     });
 
       return () => {
-      term.dispose();
+    session.cleanup();
             selectionMenuHandle.cleanup();
             scrollbar.cleanup();
         markerManager.cleanup();
@@ -327,31 +283,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     type="text" 
                     placeholder="Find..." 
                     autoFocus
-                    onChange={(e) => {
-                        searchAddonRef.current?.findNext(e.target.value, { incremental: true });
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            if (e.shiftKey) {
-                                searchAddonRef.current?.findPrevious((e.target as HTMLInputElement).value);
-                            } else {
-                                searchAddonRef.current?.findNext((e.target as HTMLInputElement).value);
-                            }
-                        }
-                    }}
+                    onChange={search.onChange}
+                    onKeyDown={search.onKeyDown}
                 />
-                <button onClick={() => {
-                    const value = searchInputRef.current?.value ?? '';
-                    if (value) searchAddonRef.current?.findPrevious(value);
-                }}>↑</button>
-                <button onClick={() => {
-                    const value = searchInputRef.current?.value ?? '';
-                    if (value) searchAddonRef.current?.findNext(value);
-                }}>↓</button>
-                <button onClick={() => {
-                    setShowSearch(false);
-                    xtermRef.current?.focus();
-                }}>✕</button>
+                <button onClick={search.findPrevious}>↑</button>
+                <button onClick={search.findNext}>↓</button>
+                <button onClick={search.close}>✕</button>
             </div>
         )}
             <div className="terminal-body" ref={terminalRef} />
@@ -382,7 +319,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     <div className="marker-copy-divider" />
                     <button
                         disabled={copyMenu.disabled}
-                        onClick={() => addContextFromRange('command', copyMenu.commandRange)}
+                        onClick={() => addContextFromLineRange('command', copyMenu.commandRange)}
                     >
                         Add Command to Context
                     </button>
@@ -399,7 +336,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                         disabled={copyMenu.disabled || copyMenu.outputDisabled || !copyMenu.outputRange}
                         onClick={() =>
                             copyMenu.outputRange &&
-                            addContextFromRange('output', copyMenu.outputRange)
+                            addContextFromLineRange('output', copyMenu.outputRange)
                         }
                     >
                         Add Output to Context
@@ -412,7 +349,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     style={{ top: selectionMenu.y, left: selectionMenu.x }}
                     ref={selectionMenuRef}
                 >
-                    <button onClick={addSelectionToContext}>+ Context</button>
+                    <button onClick={addSelection}>+ Context</button>
                 </div>
             )}
             <div className="terminal-status">
