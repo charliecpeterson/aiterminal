@@ -53,6 +53,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         hideCopyMenu();
         xtermRef.current.focus();
     };
+
+    const copyCombined = async (commandRange: [number, number], outputRange: [number, number]) => {
+        const start = Math.min(commandRange[0], outputRange[0]);
+        const end = Math.max(commandRange[1], outputRange[1]);
+        await copyRange([start, end]);
+    };
   
   // Update terminal options when settings change
   useEffect(() => {
@@ -258,9 +264,10 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             console.log(`Range: ${startLine} -> ${outputStartLine} -> ${endLine}`);
 
             const cmdEnd = Math.max(startLine, outputStartLine - 1);
+            const rect = element.getBoundingClientRect();
             setCopyMenu({
-                x: e.clientX + 8,
-                y: e.clientY + 8,
+                x: rect.right + 8,
+                y: rect.top - 4,
                 commandRange: [startLine, cmdEnd],
                 outputRange: [outputStartLine, Math.max(outputStartLine, endLine)],
             });
@@ -442,6 +449,19 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
   useEffect(() => {
       if (!copyMenu) return;
+      const clampMenuPosition = () => {
+          if (!copyMenuRef.current) return;
+          const menuRect = copyMenuRef.current.getBoundingClientRect();
+          const margin = 8;
+          const maxX = window.innerWidth - menuRect.width - margin;
+          const maxY = window.innerHeight - menuRect.height - margin;
+          const nextX = Math.min(Math.max(margin, copyMenu.x), Math.max(margin, maxX));
+          const nextY = Math.min(Math.max(margin, copyMenu.y), Math.max(margin, maxY));
+          if (nextX !== copyMenu.x || nextY !== copyMenu.y) {
+              setCopyMenu(prev => prev ? { ...prev, x: nextX, y: nextY } : prev);
+          }
+      };
+      requestAnimationFrame(clampMenuPosition);
       const handleGlobalMouseDown = (event: MouseEvent) => {
           if (!copyMenuRef.current) return;
           if (!copyMenuRef.current.contains(event.target as Node)) {
@@ -497,6 +517,9 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     ref={copyMenuRef}
                 >
                     <button onClick={() => copyRange(copyMenu.commandRange)}>Copy Command</button>
+                    <button onClick={() => copyCombined(copyMenu.commandRange, copyMenu.outputRange)}>
+                        Copy Command + Output
+                    </button>
                     <button onClick={() => copyRange(copyMenu.outputRange)}>Copy Output</button>
                 </div>
             )}

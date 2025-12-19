@@ -178,9 +178,12 @@ fi
 if [ -n "$BASH_VERSION" ]; then
     __aiterm_prompt_wrapper() {
         local ret=$?
+        __AITERM_IN_PROMPT=1
         __aiterm_mark_done "$ret"
         __aiterm_mark_prompt
         __aiterm_emit_host
+        __AITERM_COMMAND_STARTED=
+        __AITERM_IN_PROMPT=
     }
 
     if declare -p PROMPT_COMMAND 2>/dev/null | grep -q 'declare -a'; then
@@ -213,9 +216,12 @@ if [ -n "$BASH_VERSION" ]; then
 
     __aiterm_preexec() {
         if [ -n "$COMP_LINE" ]; then return; fi  # skip completion
+        if [ -n "$__AITERM_IN_PROMPT" ]; then return; fi
+        if [ -n "$__AITERM_COMMAND_STARTED" ]; then return; fi
         case "$BASH_COMMAND" in
             __aiterm_prompt_wrapper*|__aiterm_preexec*) return ;;
         esac
+        __AITERM_COMMAND_STARTED=1
         __aiterm_mark_output_start
     }
     trap '__aiterm_preexec' DEBUG
@@ -226,8 +232,12 @@ elif [ -n "$ZSH_VERSION" ]; then
         fi
         __AITERM_ZSH_HOOKS=1
         autoload -Uz add-zsh-hook
-        __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; __aiterm_emit_host; }
-        __aiterm_preexec() { __aiterm_mark_output_start; }
+        __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; __aiterm_emit_host; __AITERM_COMMAND_STARTED=; }
+        __aiterm_preexec() {
+            if [ -n "$__AITERM_COMMAND_STARTED" ]; then return; fi
+            __AITERM_COMMAND_STARTED=1
+            __aiterm_mark_output_start
+        }
         add-zsh-hook precmd __aiterm_precmd
         add-zsh-hook preexec __aiterm_preexec
     fi
@@ -310,6 +320,15 @@ aiterm_ssh() {
 
     if [ ${#inline_b64} -gt 4096 ]; then
         inline_b64="$(printf '%s' "$inline_b64" | fold -w 1000)"
+    fi
+    local inline_b64_env
+    inline_b64_env="$(printf '%s' "$inline_b64" | tr -d '\n')"
+
+    if [ -n "$AITERM_SSH_HIDE_PAYLOAD" ]; then
+        local remote_cmd_str
+        remote_cmd_str='remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; payload="${AITERM_B64:-}"; [ -n "$payload" ] || exec "$remote_shell" -l; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "$payload" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "$payload" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; if ! grep -q "AI Terminal OSC 133 Shell Integration" "$tmpfile"; then exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile"; export __AITERM_INLINE_CACHE="$(cat "$tmpfile")"; export TERM_PROGRAM=aiterminal SHELL="$remote_shell"; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -l -c "source \"$tmpfile\"; exec \"$remote_shell\" -l" ;; *) exec "$remote_shell" -l ;; esac'
+        command env AITERM_B64="$inline_b64_env" ssh -tt -o SendEnv=AITERM_B64 "${orig_args[@]}" "$remote_cmd_str"
+        return $?
     fi
 
     local remote_cmd_str
