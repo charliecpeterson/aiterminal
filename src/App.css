@@ -103,6 +103,22 @@ body, html, #root {
   color: #ffffff;
 }
 
+.ai-panel-button {
+  padding: 5px 12px;
+  cursor: pointer;
+  color: #c9c9c9;
+  font-size: 12px;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  margin-right: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.ai-panel-button:hover {
+  color: #ffffff;
+  border-color: #5a5a5a;
+}
+
 .terminal-container {
   flex: 1;
   overflow: hidden;
