@@ -141,3 +141,31 @@
 .btn:hover {
     opacity: 0.9;
 }
+
+.ai-connection-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ai-connection-status {
+    font-size: 12px;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ai-connection-status.success {
+    color: #7fd48a;
+}
+
+.ai-connection-status.error {
+    color: #f08c8c;
+}
+
+.ai-connection-error {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #f08c8c;
+    word-break: break-word;
+}

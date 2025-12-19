@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Avenir Next", Avenir, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;
@@ -32,21 +32,22 @@ body, html, #root {
 
 .tabs-header {
   display: flex;
-  background-color: #252526;
-  height: 35px;
+  background-color: #1b1c21;
+  height: 32px;
   align-items: center;
   padding-left: 10px;
   user-select: none;
   -webkit-app-region: drag; /* Allow dragging window by tabs header */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .tab {
-  padding: 5px 10px;
+  padding: 4px 10px;
   margin-right: 2px;
-  background-color: #2d2d2d;
-  color: #969696;
+  background-color: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.55);
   cursor: pointer;
-  border-radius: 5px 5px 0 0;
+  border-radius: 6px 6px 0 0;
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -54,11 +55,11 @@ body, html, #root {
 }
 
 .tab:hover {
-  background-color: #3e3e3e;
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .tab.active {
-  background-color: #1e1e1e;
+  background-color: #14151a;
   color: #ffffff;
 }
 
@@ -74,14 +75,14 @@ body, html, #root {
 }
 
 .close-tab:hover {
-  background-color: #4e4e4e;
+  background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
 
 .new-tab-button {
-  padding: 5px 10px;
+  padding: 4px 8px;
   cursor: pointer;
-  color: #969696;
+  color: rgba(255, 255, 255, 0.55);
   font-size: 18px;
   -webkit-app-region: no-drag;
 }
@@ -90,33 +91,42 @@ body, html, #root {
   color: #ffffff;
 }
 
-.settings-button {
-  padding: 5px 10px;
-  cursor: pointer;
-  color: #969696;
-  font-size: 16px;
-  -webkit-app-region: no-drag;
-  margin-right: 10px;
-}
-
-.settings-button:hover {
-  color: #ffffff;
-}
-
 .ai-panel-button {
-  padding: 5px 12px;
+  padding: 4px 12px;
   cursor: pointer;
-  color: #c9c9c9;
-  font-size: 12px;
-  border: 1px solid #3a3a3a;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   margin-right: 8px;
   -webkit-app-region: no-drag;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .ai-panel-button:hover {
   color: #ffffff;
-  border-color: #5a5a5a;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.settings-button {
+  padding: 4px 12px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  margin-right: 10px;
+  -webkit-app-region: no-drag;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-button:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .terminal-container {
@@ -197,6 +207,16 @@ body, html, #root {
   gap: 4px;
   z-index: 200;
   min-width: 160px;
+}
+
+.marker-copy-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+.selection-menu {
+  min-width: 190px;
 }
 
 .marker-copy-menu button {

@@ -9,6 +9,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSettings } from '../context/SettingsContext';
+import { useAIContext } from '../context/AIContext';
 
 interface TerminalProps {
     id: number;
@@ -20,12 +21,19 @@ interface CopyMenuState {
     x: number;
     y: number;
     commandRange: [number, number];
-    outputRange: [number, number];
+    outputRange: [number, number] | null;
     disabled?: boolean;
+    outputDisabled?: boolean;
+}
+
+interface SelectionMenuState {
+    x: number;
+    y: number;
 }
 
 const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   const { settings, loading } = useSettings();
+  const { addContextItem } = useAIContext();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -36,8 +44,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const [latencyAt, setLatencyAt] = useState<number | null>(null);
     const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
     const copyMenuRef = useRef<HTMLDivElement | null>(null);
+    const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
+    const selectionMenuRef = useRef<HTMLDivElement | null>(null);
+    const selectionPointRef = useRef<{ x: number; y: number } | null>(null);
 
     const hideCopyMenu = () => setCopyMenu(null);
+    const hideSelectionMenu = () => setSelectionMenu(null);
     const copyRange = async (range: [number, number]) => {
         if (!xtermRef.current) return;
         const [start, end] = range;
@@ -55,10 +67,67 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         xtermRef.current.focus();
     };
 
+    const getRangeText = (range: [number, number]) => {
+        if (!xtermRef.current) return '';
+        const [start, end] = range;
+        const safeStart = Math.max(0, start);
+        const safeEnd = Math.max(safeStart, end);
+        xtermRef.current.selectLines(safeStart, safeEnd);
+        const text = xtermRef.current.getSelection();
+        xtermRef.current.clearSelection();
+        return text;
+    };
+
     const copyCombined = async (commandRange: [number, number], outputRange: [number, number]) => {
         const start = Math.min(commandRange[0], outputRange[0]);
         const end = Math.max(commandRange[1], outputRange[1]);
         await copyRange([start, end]);
+    };
+
+    const addContextFromRange = (type: 'command' | 'output' | 'selection', range: [number, number]) => {
+        const content = getRangeText(range).trim();
+        if (!content) return;
+        addContextItem({
+            id: crypto.randomUUID(),
+            type,
+            content,
+            timestamp: Date.now(),
+        });
+        hideCopyMenu();
+        xtermRef.current?.focus();
+    };
+
+    const addContextFromCombined = (commandRange: [number, number], outputRange: [number, number]) => {
+        const command = getRangeText(commandRange).trim();
+        const output = getRangeText(outputRange).trim();
+        if (!command && !output) return;
+        addContextItem({
+            id: crypto.randomUUID(),
+            type: 'command_output',
+            content: output || command,
+            timestamp: Date.now(),
+            metadata: {
+                command: command || undefined,
+                output: output || undefined,
+            },
+        });
+        hideCopyMenu();
+        xtermRef.current?.focus();
+    };
+
+    const addSelectionToContext = () => {
+        if (!xtermRef.current) return;
+        const text = xtermRef.current.getSelection().trim();
+        if (!text) return;
+        addContextItem({
+            id: crypto.randomUUID(),
+            type: 'selection',
+            content: text,
+            timestamp: Date.now(),
+        });
+        xtermRef.current.clearSelection();
+        hideSelectionMenu();
+        xtermRef.current.focus();
     };
   
   // Update terminal options when settings change
@@ -203,9 +272,31 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         term.focus();
     }, 100);
 
+    const handleSelectionChange = () => {
+        if (!term.hasSelection()) {
+            hideSelectionMenu();
+            return;
+        }
+        const point = selectionPointRef.current;
+        if (point) {
+            setSelectionMenu({ x: point.x + 8, y: point.y + 8 });
+        } else if (terminalRef.current) {
+            const rect = terminalRef.current.getBoundingClientRect();
+            setSelectionMenu({ x: rect.left + 16, y: rect.top + 16 });
+        }
+    };
+
+    const handleMouseUpSelection = (event: MouseEvent) => {
+        selectionPointRef.current = { x: event.clientX, y: event.clientY };
+        requestAnimationFrame(handleSelectionChange);
+    };
+
+    term.onSelectionChange(handleSelectionChange);
+    terminalRef.current.addEventListener('mouseup', handleMouseUpSelection);
+
     let currentMarker: any = null;
     const markers: any[] = [];
-    const markerOutputStarts = new Map<any, number>();
+    const markerMeta = new WeakMap<any, { outputStartMarker?: any; isBootstrap?: boolean }>();
     const maxMarkers = settings?.terminal?.max_markers ?? 200;
 
     const removeMarker = (marker: any) => {
@@ -213,7 +304,11 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         if (index !== -1) {
             markers.splice(index, 1);
         }
-        markerOutputStarts.delete(marker);
+        const meta = markerMeta.get(marker);
+        if (meta?.outputStartMarker?.dispose) {
+            meta.outputStartMarker.dispose();
+        }
+        markerMeta.delete(marker);
     };
 
     const setupMarkerElement = (marker: any, element: HTMLElement, exitCode?: number) => {
@@ -247,21 +342,21 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                 endLine = markers[index + 1].marker.line - 1;
             }
 
-            const outputStartLine = Math.max(
-                markerOutputStarts.get(marker) || (startLine + 1),
-                startLine + 1
-            );
-            console.log(`Range: ${startLine} -> ${outputStartLine} -> ${endLine}`);
+            const meta = markerMeta.get(marker);
+            const outputStartLine = meta?.outputStartMarker?.line ?? null;
+            const hasOutput = outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
+            const safeOutputStart = hasOutput ? Math.max(outputStartLine, startLine + 1) : startLine + 1;
+            const cmdEnd = Math.max(startLine, (hasOutput ? safeOutputStart : startLine + 1) - 1);
 
-            const cmdEnd = Math.max(startLine, outputStartLine - 1);
             const rect = element.getBoundingClientRect();
-            const isBootstrapMarker = marker.marker.line <= 1;
+            const isBootstrapMarker = Boolean(meta?.isBootstrap);
             setCopyMenu({
                 x: rect.right + 8,
                 y: rect.top - 4,
                 commandRange: [startLine, cmdEnd],
-                outputRange: [outputStartLine, Math.max(outputStartLine, endLine)],
+                outputRange: hasOutput ? [safeOutputStart, Math.max(safeOutputStart, endLine)] : null,
                 disabled: isBootstrapMarker,
+                outputDisabled: !hasOutput || isBootstrapMarker,
             });
         });
     };
@@ -283,8 +378,10 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                 
                 if (marker) {
                     marker.onRender((element) => setupMarkerElement(marker, element));
+                    marker.onDispose?.(() => removeMarker(marker));
                     currentMarker = marker;
                     markers.push(marker);
+                    markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
                     if (markers.length > maxMarkers) {
                         const oldest = markers[0];
                         removeMarker(oldest);
@@ -303,8 +400,10 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     });
                      if (marker) {
                          marker.onRender((element) => setupMarkerElement(marker, element));
+                         marker.onDispose?.(() => removeMarker(marker));
                          currentMarker = marker;
                          markers.push(marker);
+                         markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
                          if (markers.length > maxMarkers) {
                              const oldest = markers[0];
                              removeMarker(oldest);
@@ -312,11 +411,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                          }
                      }
                  }
-                 if (currentMarker && !markerOutputStarts.has(currentMarker)) {
-                     // Store the line number where output starts
-                     const outputLine = term.buffer.active.baseY + term.buffer.active.cursorY;
-                     markerOutputStarts.set(currentMarker, outputLine);
-                     console.log('Output started at line', outputLine);
+                 if (currentMarker) {
+                     const meta = markerMeta.get(currentMarker) || {};
+                     if (!meta.outputStartMarker) {
+                         meta.outputStartMarker = term.registerMarker(0);
+                         markerMeta.set(currentMarker, meta);
+                     }
                  }
             } else if (type === 'D') {
                 // Command Finished
@@ -408,10 +508,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
         track.remove();
+      terminalRef.current?.removeEventListener('mouseup', handleMouseUpSelection);
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
       hideCopyMenu();
+      hideSelectionMenu();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.
@@ -457,10 +559,10 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       };
   }, [id]);
 
-  useEffect(() => {
-      if (!copyMenu) return;
-      const clampMenuPosition = () => {
-          if (!copyMenuRef.current) return;
+    useEffect(() => {
+        if (!copyMenu) return;
+        const clampMenuPosition = () => {
+            if (!copyMenuRef.current) return;
           const menuRect = copyMenuRef.current.getBoundingClientRect();
           const margin = 8;
           const maxX = window.innerWidth - menuRect.width - margin;
@@ -481,6 +583,31 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       window.addEventListener('mousedown', handleGlobalMouseDown);
       return () => window.removeEventListener('mousedown', handleGlobalMouseDown);
   }, [copyMenu]);
+
+  useEffect(() => {
+      if (!selectionMenu) return;
+      const clampMenuPosition = () => {
+          if (!selectionMenuRef.current) return;
+          const menuRect = selectionMenuRef.current.getBoundingClientRect();
+          const margin = 8;
+          const maxX = window.innerWidth - menuRect.width - margin;
+          const maxY = window.innerHeight - menuRect.height - margin;
+          const nextX = Math.min(Math.max(margin, selectionMenu.x), Math.max(margin, maxX));
+          const nextY = Math.min(Math.max(margin, selectionMenu.y), Math.max(margin, maxY));
+          if (nextX !== selectionMenu.x || nextY !== selectionMenu.y) {
+              setSelectionMenu(prev => prev ? { ...prev, x: nextX, y: nextY } : prev);
+          }
+      };
+      requestAnimationFrame(clampMenuPosition);
+      const handleGlobalMouseDown = (event: MouseEvent) => {
+          if (!selectionMenuRef.current) return;
+          if (!selectionMenuRef.current.contains(event.target as Node)) {
+              hideSelectionMenu();
+          }
+      };
+      window.addEventListener('mousedown', handleGlobalMouseDown);
+      return () => window.removeEventListener('mousedown', handleGlobalMouseDown);
+  }, [selectionMenu]);
 
   if (loading) return null;
 
@@ -530,14 +657,54 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                         Copy Command
                     </button>
                     <button
-                        disabled={copyMenu.disabled}
-                        onClick={() => copyCombined(copyMenu.commandRange, copyMenu.outputRange)}
+                        disabled={copyMenu.disabled || copyMenu.outputDisabled || !copyMenu.outputRange}
+                        onClick={() =>
+                            copyMenu.outputRange &&
+                            copyCombined(copyMenu.commandRange, copyMenu.outputRange)
+                        }
                     >
                         Copy Command + Output
                     </button>
-                    <button disabled={copyMenu.disabled} onClick={() => copyRange(copyMenu.outputRange)}>
+                    <button
+                        disabled={copyMenu.disabled || copyMenu.outputDisabled || !copyMenu.outputRange}
+                        onClick={() => copyMenu.outputRange && copyRange(copyMenu.outputRange)}
+                    >
                         Copy Output
                     </button>
+                    <div className="marker-copy-divider" />
+                    <button
+                        disabled={copyMenu.disabled}
+                        onClick={() => addContextFromRange('command', copyMenu.commandRange)}
+                    >
+                        Add Command to Context
+                    </button>
+                    <button
+                        disabled={copyMenu.disabled || copyMenu.outputDisabled || !copyMenu.outputRange}
+                        onClick={() =>
+                            copyMenu.outputRange &&
+                            addContextFromCombined(copyMenu.commandRange, copyMenu.outputRange)
+                        }
+                    >
+                        Add Command + Output
+                    </button>
+                    <button
+                        disabled={copyMenu.disabled || copyMenu.outputDisabled || !copyMenu.outputRange}
+                        onClick={() =>
+                            copyMenu.outputRange &&
+                            addContextFromRange('output', copyMenu.outputRange)
+                        }
+                    >
+                        Add Output to Context
+                    </button>
+                </div>
+            )}
+            {selectionMenu && (
+                <div
+                    className="marker-copy-menu selection-menu"
+                    style={{ top: selectionMenu.y, left: selectionMenu.x }}
+                    ref={selectionMenuRef}
+                >
+                    <button onClick={addSelectionToContext}>Add Selection to Context</button>
                 </div>
             )}
             <div className="terminal-status">

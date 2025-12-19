@@ -3,10 +3,15 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": [
-    "main"
+    "main",
+    "ai-panel"
   ],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-create",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
     "opener:default",
     "dialog:default",
     "clipboard-manager:default",

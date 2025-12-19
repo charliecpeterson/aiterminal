@@ -3,8 +3,11 @@ import Terminal from "./components/Terminal";
 import AIPanel from "./components/AIPanel";
 import SettingsModal from "./components/SettingsModal";
 import { SettingsProvider } from "./context/SettingsContext";
+import { AIProvider } from "./context/AIContext";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import "./App.css";
 import "./components/AIPanel.css";
 
@@ -19,8 +22,16 @@ function AppContent() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(true);
+  const [isAiDetached, setIsAiDetached] = useState(false);
+  const [isAiAttaching, setIsAiAttaching] = useState(false);
   const [aiWidth, setAiWidth] = useState(360);
   const [isResizing, setIsResizing] = useState(false);
+  let isAiWindow = false;
+  try {
+    isAiWindow = window.location.hash.startsWith("#/ai-panel");
+  } catch {
+    isAiWindow = false;
+  }
 
   const createTab = async () => {
     try {
@@ -123,6 +134,114 @@ function AppContent() {
     return () => document.body.classList.remove("ai-resizing");
   }, [isResizing]);
 
+  useEffect(() => {
+    if (isAiDetached && isAiOpen) {
+      setIsAiOpen(false);
+    }
+  }, [isAiDetached, isAiOpen]);
+
+  useEffect(() => {
+    if (isAiWindow) return;
+    const unlistenPromise = listen("ai-panel:attach-request", async () => {
+      setIsAiDetached(false);
+      setIsAiOpen(true);
+      emitTo("ai-panel", "ai-panel:attach-ack", null).catch((err) => {
+        console.error("Failed to emit attach ack:", err);
+      });
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [isAiWindow]);
+
+  if (isAiWindow) {
+    return (
+      <div className="ai-window">
+        <AIPanel
+          mode="detached"
+          onAttach={async () => {
+            if (isAiAttaching) {
+              return;
+            }
+            setIsAiAttaching(true);
+            let unlisten: (() => void) | null = null;
+            let resolveAck: (() => void) | null = null;
+            const ackPromise = new Promise<void>((resolve) => {
+              resolveAck = resolve;
+            });
+            const handler = () => {
+              if (unlisten) {
+                unlisten();
+              }
+              if (resolveAck) {
+                resolveAck();
+              }
+            };
+            try {
+              unlisten = await listen("ai-panel:attach-ack", handler);
+            } catch (err) {
+              console.error("[ai-panel] failed to listen for attach ack:", err);
+            }
+            if (!unlisten) {
+              setIsAiAttaching(false);
+              return;
+            }
+            await emit("ai-panel:attach-request", null);
+            try {
+              await ackPromise;
+              try {
+                const currentWindow = getCurrentWindow();
+                await currentWindow.destroy();
+              } catch (err) {
+                console.error("[ai-panel] failed to destroy detached window:", err);
+              }
+            } catch (err) {
+              console.error("[ai-panel] attach-ack failed:", err);
+            } finally {
+              setIsAiAttaching(false);
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
+  const detachPanel = async () => {
+    const existing = await WebviewWindow.getByLabel("ai-panel");
+    if (existing) {
+      await existing.setFocus();
+      setIsAiDetached(true);
+      setIsAiOpen(false);
+      return;
+    }
+
+    const panelWindow = new WebviewWindow("ai-panel", {
+      title: "AI Panel",
+      width: 380,
+      height: 620,
+      resizable: true,
+      url: "/#/ai-panel",
+    });
+    panelWindow.once("tauri://created", () => {
+      panelWindow.setFocus().catch(() => {});
+    });
+    panelWindow.once("tauri://error", (event) => {
+      console.error("AI panel window error:", event);
+      setIsAiDetached(false);
+      setIsAiOpen(true);
+    });
+    panelWindow.once("tauri://close-requested", () => {
+      setIsAiDetached(false);
+      setIsAiOpen(true);
+    });
+    panelWindow.once("tauri://destroyed", () => {
+      setIsAiDetached(false);
+      setIsAiOpen(true);
+    });
+    setIsAiDetached(true);
+    setIsAiOpen(false);
+  };
+
   return (
     <div className="app-container">
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
@@ -161,7 +280,7 @@ function AppContent() {
             onClick={() => setIsSettingsOpen(true)}
             title="Settings (Cmd+,)"
         >
-            ⚙️
+            Settings
         </div>
       </div>
       <div className="workbench">
@@ -181,7 +300,7 @@ function AppContent() {
             ))}
           </div>
         </div>
-        {isAiOpen && (
+        {isAiOpen && !isAiDetached && (
           <>
             <div
               className="ai-resizer"
@@ -191,7 +310,10 @@ function AppContent() {
               }}
             />
             <div className="ai-pane" style={{ width: aiWidth }}>
-              <AIPanel onClose={() => setIsAiOpen(false)} />
+              <AIPanel
+                onClose={() => setIsAiOpen(false)}
+                onDetach={detachPanel}
+              />
             </div>
           </>
         )}
@@ -203,7 +325,9 @@ function AppContent() {
 function App() {
     return (
         <SettingsProvider>
-            <AppContent />
+            <AIProvider>
+                <AppContent />
+            </AIProvider>
         </SettingsProvider>
     );
 }

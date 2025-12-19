@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useSettings, AppSettings } from '../context/SettingsContext';
 import './SettingsModal.css';
 
@@ -11,12 +12,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { settings, updateSettings } = useSettings();
     const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
     const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai'>('appearance');
+    const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+    const [aiTestError, setAiTestError] = useState<string | null>(null);
+    const [aiModelOptions, setAiModelOptions] = useState<string[]>([]);
+    const [aiEmbeddingOptions, setAiEmbeddingOptions] = useState<string[]>([]);
 
     useEffect(() => {
         if (settings) {
             setLocalSettings(JSON.parse(JSON.stringify(settings)));
         }
     }, [settings, isOpen]);
+
+    useEffect(() => {
+        if (!localSettings) return;
+        setAiTestStatus('idle');
+        setAiTestError(null);
+        setAiModelOptions([]);
+        setAiEmbeddingOptions([]);
+    }, [localSettings?.ai?.provider, localSettings?.ai?.api_key, localSettings?.ai?.url]);
 
     if (!isOpen || !localSettings) return null;
 
@@ -38,6 +51,37 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                 }
             };
         });
+    };
+
+    const handleTestConnection = async () => {
+        if (!localSettings) return;
+        setAiTestStatus('testing');
+        setAiTestError(null);
+        try {
+            const result = await invoke<{ models: string[]; embedding_models: string[] }>(
+                'test_ai_connection',
+                {
+                    provider: localSettings.ai.provider,
+                    apiKey: localSettings.ai.api_key,
+                    url: localSettings.ai.url,
+                }
+            );
+            const models = result.models || [];
+            const embeddings = result.embedding_models || [];
+            setAiModelOptions(models);
+            setAiEmbeddingOptions(embeddings);
+            if (!localSettings.ai.model && models.length > 0) {
+                handleChange('ai', 'model', models[0]);
+            }
+            if (!localSettings.ai.embedding_model && embeddings.length > 0) {
+                handleChange('ai', 'embedding_model', embeddings[0]);
+            }
+            setAiTestStatus('success');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setAiTestStatus('error');
+            setAiTestError(message);
+        }
     };
 
     return (
@@ -133,17 +177,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     >
                                         <option value="openai">OpenAI</option>
                                         <option value="anthropic">Anthropic</option>
+                                        <option value="gemini">Gemini</option>
                                         <option value="ollama">Ollama</option>
                                     </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>Model</label>
-                                    <input 
-                                        type="text" 
-                                        value={localSettings.ai.model}
-                                        onChange={(e) => handleChange('ai', 'model', e.target.value)}
-                                        placeholder="e.g. gpt-4o"
-                                    />
                                 </div>
                                 <div className="form-group">
                                     <label>API Key</label>
@@ -155,15 +191,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label>Embedding Model (Optional)</label>
-                                    <input 
-                                        type="text" 
-                                        value={localSettings.ai.embedding_model || ''}
-                                        onChange={(e) => handleChange('ai', 'embedding_model', e.target.value)}
-                                        placeholder="e.g. text-embedding-3-small"
-                                    />
-                                </div>
-                                <div className="form-group">
                                     <label>URL (Optional)</label>
                                     <input 
                                         type="text" 
@@ -171,6 +198,89 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         onChange={(e) => handleChange('ai', 'url', e.target.value)}
                                         placeholder="https://api.openai.com/v1"
                                     />
+                                </div>
+                                <div className="form-group">
+                                    <label>Connection</label>
+                                    <div className="ai-connection-row">
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={handleTestConnection}
+                                            disabled={aiTestStatus === 'testing'}
+                                        >
+                                            {aiTestStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+                                        </button>
+                                        <span className={`ai-connection-status ${aiTestStatus}`}>
+                                            {aiTestStatus === 'success'
+                                                ? 'Connected'
+                                                : aiTestStatus === 'error'
+                                                ? 'Failed'
+                                                : 'Not tested'}
+                                        </span>
+                                    </div>
+                                    {aiTestError && (
+                                        <div className="ai-connection-error">{aiTestError}</div>
+                                    )}
+                                </div>
+                                <div className="form-group">
+                                    <label>Model</label>
+                                    {aiModelOptions.length > 0 ? (
+                                        <select
+                                            value={localSettings.ai.model}
+                                            onChange={(e) => handleChange('ai', 'model', e.target.value)}
+                                        >
+                                            {aiModelOptions.map((model) => (
+                                                <option key={model} value={model}>
+                                                    {model}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input 
+                                            type="text" 
+                                            value={localSettings.ai.model}
+                                            onChange={(e) => handleChange('ai', 'model', e.target.value)}
+                                            placeholder="e.g. gpt-4o"
+                                            list="ai-model-options"
+                                        />
+                                    )}
+                                    {aiModelOptions.length > 0 && (
+                                        <datalist id="ai-model-options">
+                                            {aiModelOptions.map((model) => (
+                                                <option key={model} value={model} />
+                                            ))}
+                                        </datalist>
+                                    )}
+                                </div>
+                                <div className="form-group">
+                                    <label>Embedding Model (Optional)</label>
+                                    {aiEmbeddingOptions.length > 0 ? (
+                                        <select
+                                            value={localSettings.ai.embedding_model || ''}
+                                            onChange={(e) => handleChange('ai', 'embedding_model', e.target.value)}
+                                        >
+                                            <option value="">None</option>
+                                            {aiEmbeddingOptions.map((model) => (
+                                                <option key={model} value={model}>
+                                                    {model}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input 
+                                            type="text" 
+                                            value={localSettings.ai.embedding_model || ''}
+                                            onChange={(e) => handleChange('ai', 'embedding_model', e.target.value)}
+                                            placeholder="e.g. text-embedding-3-small"
+                                            list="ai-embedding-options"
+                                        />
+                                    )}
+                                    {aiEmbeddingOptions.length > 0 && (
+                                        <datalist id="ai-embedding-options">
+                                            {aiEmbeddingOptions.map((model) => (
+                                                <option key={model} value={model} />
+                                            ))}
+                                        </datalist>
+                                    )}
                                 </div>
                             </>
                         )}
