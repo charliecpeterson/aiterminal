@@ -1,5 +1,6 @@
 import type { IDecoration, IDisposable, IMarker, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { ContextItem } from '../context/AIContext';
+import type { PendingFileCaptureRef } from './fileCapture';
 
 export interface CopyMenuState {
   x: number;
@@ -18,7 +19,7 @@ export interface MarkerManagerParams {
   setCopyMenu: (value: CopyMenuState | null) => void;
   getRangeText: (range: [number, number]) => string;
   addContextItem: AddContextItem;
-  pendingFileCaptureRef: { current: null | { path: string; maxBytes: number } };
+  pendingFileCaptureRef: PendingFileCaptureRef;
 }
 
 interface MarkerMeta {

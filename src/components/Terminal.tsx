@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
+import type { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
@@ -13,13 +15,8 @@ import { createSearchController } from '../terminal/search';
 import { applyTerminalAppearance } from '../terminal/appearance';
 import { handleTerminalVisibilityChange } from '../terminal/visibility';
 import { createTerminalWiring } from '../terminal/createTerminalWiring';
-import {
-    addContextFromCombinedRanges,
-    addContextFromRange,
-    addSelectionToContext,
-    copyCombinedToClipboard,
-    copyRangeToClipboard,
-} from '../terminal/copyContext';
+import type { PendingFileCapture } from '../terminal/fileCapture';
+import { createTerminalActions } from '../terminal/terminalActions';
 
 interface TerminalProps {
     id: number;
@@ -31,8 +28,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   const { settings, loading } = useSettings();
   const { addContextItem } = useAIContext();
   const terminalRef = useRef<HTMLDivElement>(null);
-    const xtermRef = useRef<import('@xterm/xterm').Terminal | null>(null);
-    const fitAddonRef = useRef<import('@xterm/addon-fit').FitAddon | null>(null);
+        const xtermRef = useRef<XTermTerminal | null>(null);
+        const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -43,54 +40,25 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
     const selectionMenuRef = useRef<HTMLDivElement | null>(null);
     const selectionPointRef = useRef<{ x: number; y: number } | null>(null);
-    const pendingFileCaptureRef = useRef<null | { path: string; maxBytes: number }>(null);
+    const pendingFileCaptureRef = useRef<PendingFileCapture | null>(null);
 
     const hideCopyMenu = () => setCopyMenu(null);
     const hideSelectionMenu = () => setSelectionMenu(null);
-    const copyRange = async (range: [number, number]) => {
-        if (!xtermRef.current) return;
-        await copyRangeToClipboard(xtermRef.current, range);
-        hideCopyMenu();
-        xtermRef.current.focus();
-    };
 
-    const copyCombined = async (commandRange: [number, number], outputRange: [number, number]) => {
-        if (!xtermRef.current) return;
-        await copyCombinedToClipboard(xtermRef.current, commandRange, outputRange);
-        hideCopyMenu();
-        xtermRef.current.focus();
-    };
+    const actions = createTerminalActions({
+        termRef: xtermRef,
+        addContextItem,
+        hideCopyMenu,
+        hideSelectionMenu,
+    });
 
-    const addContextFromLineRange = (type: 'command' | 'output' | 'selection', range: [number, number]) => {
-        if (!xtermRef.current) return;
-        addContextFromRange({
-            term: xtermRef.current,
-            type,
-            range,
-            addContextItem,
-        });
-        hideCopyMenu();
-        xtermRef.current.focus();
-    };
-
-    const addContextFromCombined = (commandRange: [number, number], outputRange: [number, number]) => {
-        if (!xtermRef.current) return;
-        addContextFromCombinedRanges({
-            term: xtermRef.current,
-            commandRange,
-            outputRange,
-            addContextItem,
-        });
-        hideCopyMenu();
-        xtermRef.current.focus();
-    };
-
-    const addSelection = () => {
-        if (!xtermRef.current) return;
-        addSelectionToContext({ term: xtermRef.current, addContextItem });
-        hideSelectionMenu();
-        xtermRef.current.focus();
-    };
+    const {
+        copyRange,
+        copyCombined,
+        addContextFromLineRange,
+        addContextFromCombined,
+        addSelection,
+    } = actions;
 
     const search = createSearchController({
         searchAddonRef,
@@ -139,11 +107,10 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         addContextItem,
         hideCopyMenu,
         hideSelectionMenu,
+                termRef: xtermRef,
+                fitAddonRef,
+                searchAddonRef,
     });
-
-    fitAddonRef.current = wiring.session.fitAddon;
-    searchAddonRef.current = wiring.session.searchAddon;
-    xtermRef.current = wiring.session.term;
 
       return () => {
       wiring.cleanup();

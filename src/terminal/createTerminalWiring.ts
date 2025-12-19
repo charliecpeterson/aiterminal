@@ -12,13 +12,16 @@ import type { SelectionMenuState } from './selectionMenu';
 import { attachSelectionMenu } from './selectionMenu';
 import type { CopyMenuState, MarkerManager } from './markers';
 import { createMarkerManager } from './markers';
-import { attachFileCaptureListener } from './fileCapture';
+import { attachFileCaptureListener, type PendingFileCapture } from './fileCapture';
 import { attachHostLabelOsc } from './hostLabel';
 import { attachTerminalHotkeys } from './keyboardShortcuts';
 import { attachWindowResize } from './resize';
 import { attachPtyDataListener } from './ptyListeners';
 import { attachCaptureLastListener } from './captureLast';
 import { getRangeText } from './copyContext';
+import type { Terminal as XTermTerminal } from '@xterm/xterm';
+import type { FitAddon } from '@xterm/addon-fit';
+import type { SearchAddon } from '@xterm/addon-search';
 
 export interface TerminalWiring {
     session: TerminalSession;
@@ -34,7 +37,7 @@ export function createTerminalWiring(params: {
 
     visibleRef: { current: boolean };
     selectionPointRef: MutableRefObject<{ x: number; y: number } | null>;
-    pendingFileCaptureRef: MutableRefObject<null | { path: string; maxBytes: number }>;
+    pendingFileCaptureRef: MutableRefObject<PendingFileCapture | null>;
 
     setCopyMenu: (value: CopyMenuState | null) => void;
     setSelectionMenu: (value: SelectionMenuState | null) => void;
@@ -45,6 +48,10 @@ export function createTerminalWiring(params: {
 
     hideCopyMenu: () => void;
     hideSelectionMenu: () => void;
+
+    termRef?: { current: XTermTerminal | null };
+    fitAddonRef?: { current: FitAddon | null };
+    searchAddonRef?: { current: SearchAddon | null };
 }): TerminalWiring {
     const {
         id,
@@ -61,10 +68,17 @@ export function createTerminalWiring(params: {
         addContextItem,
         hideCopyMenu,
         hideSelectionMenu,
+        termRef,
+        fitAddonRef,
+        searchAddonRef,
     } = params;
 
     const session = createTerminalSession({ container, appearance });
     const term = session.term;
+
+    if (termRef) termRef.current = term;
+    if (fitAddonRef) fitAddonRef.current = session.fitAddon;
+    if (searchAddonRef) searchAddonRef.current = session.searchAddon;
 
     const scrollbar = attachScrollbarOverlay(container, term.element ?? null);
 
@@ -147,6 +161,10 @@ export function createTerminalWiring(params: {
             hideSelectionMenu();
 
             session.cleanup();
+
+            if (termRef) termRef.current = null;
+            if (fitAddonRef) fitAddonRef.current = null;
+            if (searchAddonRef) searchAddonRef.current = null;
         },
     };
 }

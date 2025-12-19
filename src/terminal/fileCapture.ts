@@ -5,8 +5,10 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+export type PendingFileCapture = { path: string; maxBytes: number };
+
 export interface PendingFileCaptureRef {
-  current: null | { path: string; maxBytes: number };
+  current: PendingFileCapture | null;
 }
 
 export interface FileCaptureListenerParams {
