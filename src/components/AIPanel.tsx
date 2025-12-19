@@ -156,12 +156,12 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
             {children}
           </a>
         ),
-        code: ({ inline, className, children }) => {
+        code: ({ className, children }) => {
           const raw = String(children).replace(/\n$/, "");
-          if (inline) {
+          const language = className?.replace("language-", "");
+          if (!language) {
             return <code>{raw}</code>;
           }
-          const language = className?.replace("language-", "") || "code";
           return (
             <div className="ai-panel-code-block">
               <div className="ai-panel-code-header">

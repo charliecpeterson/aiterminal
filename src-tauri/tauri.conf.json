@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "temp-backend",
+  "productName": "AITerminal",
   "version": "0.1.0",
-  "identifier": "com.charlie.temp-backend",
+  "identifier": "com.charlie.aiterminal",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "temp-backend",
+        "title": "AITerminal",
         "width": 800,
         "height": 600
       }
