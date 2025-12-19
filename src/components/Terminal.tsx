@@ -14,6 +14,8 @@ import { attachScrollbarOverlay } from '../terminal/scrollbarOverlay';
 import { attachSelectionMenu } from '../terminal/selectionMenu';
 import { createMarkerManager } from '../terminal/markers';
 import { attachFileCaptureListener } from '../terminal/fileCapture';
+import { attachHostLabelOsc } from '../terminal/hostLabel';
+import { useLatencyProbe } from '../terminal/useLatencyProbe';
 
 interface TerminalProps {
     id: number;
@@ -45,8 +47,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [showSearch, setShowSearch] = useState(false);
     const [hostLabel, setHostLabel] = useState('Local');
-    const [latencyMs, setLatencyMs] = useState<number | null>(null);
-    const [latencyAt, setLatencyAt] = useState<number | null>(null);
+        const { latencyMs, latencyAt } = useLatencyProbe(10000);
     const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
     const copyMenuRef = useRef<HTMLDivElement | null>(null);
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
@@ -230,18 +231,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         pendingFileCaptureRef,
     });
 
-    term.parser.registerOscHandler(633, (data) => {
-        // Custom: 633;H;hostname
-        try {
-            const parts = data.split(';');
-            if (parts[0] === 'H' && parts[1]) {
-                setHostLabel(parts.slice(1).join(';'));
-            }
-        } catch (e) {
-            console.error('Error handling OSC 633:', e);
-        }
-        return true;
-    });
+    const hostLabelHandle = attachHostLabelOsc(term, setHostLabel);
 
     // Send data to PTY
         const onDataDisposable = term.onData((data) => {
@@ -316,6 +306,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             scrollbar.cleanup();
         markerManager.cleanup();
         onDataDisposable?.dispose?.();
+        hostLabelHandle.cleanup();
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
@@ -332,31 +323,6 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   useEffect(() => {
       onCloseRef.current = onClose;
   }, [onClose]);
-
-  // Latency probe to backend invoke (app RTT)
-  useEffect(() => {
-      let cancelled = false;
-      const measure = async () => {
-          const start = performance.now();
-          try {
-              await invoke('ping');
-              if (cancelled) return;
-              setLatencyMs(Math.round(performance.now() - start));
-              setLatencyAt(Date.now());
-          } catch (e) {
-              if (cancelled) return;
-              setLatencyMs(null);
-              setLatencyAt(Date.now());
-          }
-      };
-
-      measure();
-      const id = setInterval(measure, 10000);
-      return () => {
-          cancelled = true;
-          clearInterval(id);
-      };
-  }, []);
 
   // Update the listener to use the ref
   useEffect(() => {
