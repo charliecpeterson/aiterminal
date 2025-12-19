@@ -10,6 +10,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
+import { attachScrollbarOverlay } from '../terminal/scrollbarOverlay';
+import { attachSelectionMenu } from '../terminal/selectionMenu';
 
 interface TerminalProps {
     id: number;
@@ -38,6 +40,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [showSearch, setShowSearch] = useState(false);
     const [hostLabel, setHostLabel] = useState('Local');
     const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -116,7 +119,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         xtermRef.current?.focus();
     };
 
-    const shellQuote = (value: string) => `'${value.replace(/'/g, `'\"'\"'`)}'`;
+    const shellQuote = (value: string) => `'${value.replace(/'/g, `'"'"'`)}'`;
 
     const addSelectionToContext = () => {
         if (!xtermRef.current) return;
@@ -198,71 +201,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     xtermRef.current = term;
 
     // Custom always-visible scrollbar overlay synced to xterm viewport
-    const viewport = term.element?.querySelector('.xterm-viewport') as HTMLElement | null;
-    const track = document.createElement('div');
-    const thumb = document.createElement('div');
-    track.className = 'aiterm-scroll-track';
-    thumb.className = 'aiterm-scroll-thumb';
-    track.appendChild(thumb);
-    terminalRef.current.appendChild(track);
-
-    let lastThumbHeight = 24;
-    const maxScroll = () => (viewport ? viewport.scrollHeight - viewport.clientHeight : 0);
-
-    const updateThumb = () => {
-        if (!viewport) return;
-        const { scrollTop, scrollHeight, clientHeight } = viewport;
-        const trackHeight = track.clientHeight || clientHeight;
-        const thumbHeight = Math.max(24, (clientHeight / scrollHeight) * trackHeight);
-        lastThumbHeight = thumbHeight;
-        const maxTop = trackHeight - thumbHeight;
-        const top = scrollHeight > clientHeight ? (scrollTop / (scrollHeight - clientHeight)) * maxTop : 0;
-        thumb.style.height = `${thumbHeight}px`;
-        thumb.style.transform = `translateY(${top}px)`;
-        thumb.style.opacity = scrollHeight > clientHeight ? '1' : '0';
-    };
-
-    const scrollToThumbPosition = (clientY: number) => {
-        if (!viewport) return;
-        const rect = track.getBoundingClientRect();
-        const maxTop = rect.height - lastThumbHeight;
-        const offset = Math.min(Math.max(clientY - rect.top - lastThumbHeight / 2, 0), Math.max(maxTop, 0));
-        const ratio = maxTop > 0 ? offset / maxTop : 0;
-        viewport.scrollTop = ratio * maxScroll();
-    };
-
-    let dragging = false;
-    const onThumbMouseDown = (e: MouseEvent) => {
-        dragging = true;
-        thumb.classList.add('dragging');
-        e.preventDefault();
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-        if (!dragging) return;
-        scrollToThumbPosition(e.clientY);
-    };
-
-    const onMouseUp = () => {
-        if (!dragging) return;
-        dragging = false;
-        thumb.classList.remove('dragging');
-    };
-
-    const onTrackMouseDown = (e: MouseEvent) => {
-        if (e.target === thumb) return; // thumb handler covers drag
-        scrollToThumbPosition(e.clientY);
-    };
-
-    thumb.addEventListener('mousedown', onThumbMouseDown);
-    track.addEventListener('mousedown', onTrackMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-
-    const refreshThumb = () => requestAnimationFrame(updateThumb);
-    viewport?.addEventListener('scroll', refreshThumb);
-    window.addEventListener('resize', refreshThumb);
-    refreshThumb();
+    const scrollbar = attachScrollbarOverlay(terminalRef.current, term.element ?? null);
 
 
     // Listen for data from PTY
@@ -275,31 +214,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         term.focus();
     }, 100);
 
-    const handleSelectionChange = () => {
-        if (!term.hasSelection()) {
-            hideSelectionMenu();
-            return;
-        }
-        const point = selectionPointRef.current;
-        if (!terminalRef.current) return;
-        const rect = terminalRef.current.getBoundingClientRect();
-        const baseX = point ? point.x : rect.left + rect.width / 2;
-        const baseY = point ? point.y : rect.top + rect.height / 2;
-        const nextX = baseX + 8;
-        const nextY = baseY - 32;
-        setSelectionMenu({
-            x: Math.max(rect.left + 8, Math.min(nextX, rect.right - 120)),
-            y: Math.max(rect.top + 8, Math.min(nextY, rect.bottom - 40)),
-        });
-    };
-
-    const handleMouseUpSelection = (event: MouseEvent) => {
-        selectionPointRef.current = { x: event.clientX, y: event.clientY };
-        requestAnimationFrame(handleSelectionChange);
-    };
-
-    term.onSelectionChange(handleSelectionChange);
-    terminalRef.current.addEventListener('mouseup', handleMouseUpSelection);
+    const selectionMenuHandle = attachSelectionMenu({
+        term,
+        container: terminalRef.current,
+        selectionPointRef,
+        setSelectionMenu,
+    });
 
     let currentMarker: any = null;
     const markers: any[] = [];
@@ -338,7 +258,6 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         element.addEventListener('mousedown', (e) => {
             e.preventDefault();
             e.stopPropagation(); // Prevent other clicks
-            console.log('Marker clicked!');
             
             const startLine = marker.marker.line;
             let endLine = term.buffer.active.length - 1;
@@ -375,7 +294,6 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
             if (type === 'A') {
                 // Prompt Start - Create Marker
-                console.log('Creating marker at line', term.buffer.active.baseY + term.buffer.active.cursorY);
                 const marker = term.registerDecoration({
                     marker: term.registerMarker(0),
                     x: 0, // Anchor to first column
@@ -605,14 +523,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
       return () => {
       term.dispose();
-        viewport?.removeEventListener('scroll', refreshThumb);
-        window.removeEventListener('resize', refreshThumb);
-        thumb.removeEventListener('mousedown', onThumbMouseDown);
-        track.removeEventListener('mousedown', onTrackMouseDown);
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        track.remove();
-      terminalRef.current?.removeEventListener('mouseup', handleMouseUpSelection);
+            selectionMenuHandle.cleanup();
+            scrollbar.cleanup();
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
@@ -735,6 +647,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         {showSearch && (
             <div className="search-bar">
                 <input 
+                    ref={searchInputRef}
                     type="text" 
                     placeholder="Find..." 
                     autoFocus
@@ -752,12 +665,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     }}
                 />
                 <button onClick={() => {
-                    const input = document.querySelector('.search-bar input') as HTMLInputElement;
-                    if (input) searchAddonRef.current?.findPrevious(input.value);
+                    const value = searchInputRef.current?.value ?? '';
+                    if (value) searchAddonRef.current?.findPrevious(value);
                 }}>↑</button>
                 <button onClick={() => {
-                    const input = document.querySelector('.search-bar input') as HTMLInputElement;
-                    if (input) searchAddonRef.current?.findNext(input.value);
+                    const value = searchInputRef.current?.value ?? '';
+                    if (value) searchAddonRef.current?.findNext(value);
                 }}>↓</button>
                 <button onClick={() => {
                     setShowSearch(false);
