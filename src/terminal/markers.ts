@@ -1,7 +1,5 @@
-import type { Terminal as XTermTerminal } from '@xterm/xterm';
+import type { IDecoration, IDisposable, IMarker, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { ContextItem } from '../context/AIContext';
-
-type Disposable = { dispose: () => void };
 
 export interface CopyMenuState {
   x: number;
@@ -24,18 +22,11 @@ export interface MarkerManagerParams {
 }
 
 interface MarkerMeta {
-  outputStartMarker?: { line: number; dispose?: () => void };
+  outputStartMarker?: IMarker;
   isBootstrap?: boolean;
 }
 
-type Decoration = {
-  marker: { line: number };
-  onRender: (cb: (element: HTMLElement) => void) => void;
-  onDispose?: (cb: () => void) => void;
-  dispose?: () => void;
-};
-
-function computeEndLine(term: XTermTerminal, markers: Decoration[], marker: Decoration): number {
+function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
   let endLine = term.buffer.active.length - 1;
   const index = markers.indexOf(marker);
   if (index !== -1 && index < markers.length - 1) {
@@ -46,9 +37,9 @@ function computeEndLine(term: XTermTerminal, markers: Decoration[], marker: Deco
 
 function computeRanges(
   term: XTermTerminal,
-  markers: Decoration[],
-  markerMeta: WeakMap<Decoration, MarkerMeta>,
-  marker: Decoration
+  markers: IDecoration[],
+  markerMeta: WeakMap<IDecoration, MarkerMeta>,
+  marker: IDecoration
 ): { commandRange: [number, number]; outputRange: [number, number] | null; disabled: boolean; outputDisabled: boolean } {
   const startLine = marker.marker.line;
   const endLine = computeEndLine(term, markers, marker);
@@ -83,20 +74,20 @@ export function createMarkerManager({
   addContextItem,
   pendingFileCaptureRef,
 }: MarkerManagerParams): MarkerManager {
-  let currentMarker: Decoration | null = null;
-  const markers: Decoration[] = [];
-  const markerMeta = new WeakMap<Decoration, MarkerMeta>();
+  let currentMarker: IDecoration | null = null;
+  const markers: IDecoration[] = [];
+  const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
 
-  const removeMarker = (marker: Decoration) => {
+  const removeMarker = (marker: IDecoration) => {
     const index = markers.indexOf(marker);
     if (index !== -1) markers.splice(index, 1);
 
     const meta = markerMeta.get(marker);
-    meta?.outputStartMarker?.dispose?.();
+    meta?.outputStartMarker?.dispose();
     markerMeta.delete(marker);
   };
 
-  const setupMarkerElement = (marker: Decoration, element: HTMLElement, exitCode?: number) => {
+  const setupMarkerElement = (marker: IDecoration, element: HTMLElement, exitCode?: number) => {
     element.classList.add('terminal-marker');
     element.style.cursor = 'pointer';
     element.title = 'Click to copy';
@@ -145,11 +136,11 @@ export function createMarkerManager({
           x: 0,
           width: 1,
           height: 1,
-        }) as unknown as Decoration | undefined;
+        });
 
         if (marker) {
           marker.onRender((element) => setupMarkerElement(marker, element));
-          marker.onDispose?.(() => removeMarker(marker));
+          marker.onDispose(() => removeMarker(marker));
           currentMarker = marker;
           markers.push(marker);
           markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
@@ -157,7 +148,7 @@ export function createMarkerManager({
           if (markers.length > maxMarkers) {
             const oldest = markers[0];
             removeMarker(oldest);
-            oldest?.dispose?.();
+            oldest.dispose();
           }
         }
       } else if (type === 'C') {
@@ -168,11 +159,11 @@ export function createMarkerManager({
             x: 0,
             width: 1,
             height: 1,
-          }) as unknown as Decoration | undefined;
+          });
 
           if (marker) {
             marker.onRender((element) => setupMarkerElement(marker, element));
-            marker.onDispose?.(() => removeMarker(marker));
+            marker.onDispose(() => removeMarker(marker));
             currentMarker = marker;
             markers.push(marker);
             markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
@@ -180,7 +171,7 @@ export function createMarkerManager({
             if (markers.length > maxMarkers) {
               const oldest = markers[0];
               removeMarker(oldest);
-              oldest?.dispose?.();
+              oldest.dispose();
             }
           }
         }
@@ -188,7 +179,7 @@ export function createMarkerManager({
         if (currentMarker) {
           const meta = markerMeta.get(currentMarker) || {};
           if (!meta.outputStartMarker) {
-            meta.outputStartMarker = term.registerMarker(0) as unknown as MarkerMeta['outputStartMarker'];
+            meta.outputStartMarker = term.registerMarker(0);
             markerMeta.set(currentMarker, meta);
           }
         }
@@ -196,15 +187,17 @@ export function createMarkerManager({
         // Command Finished
         const exitCode = parseInt(parts[1] || '0');
         if (currentMarker) {
-          currentMarker.onRender((element: HTMLElement) =>
-            setupMarkerElement(currentMarker as Decoration, element, exitCode)
-          );
+          const marker = currentMarker;
+          marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));
+          if (marker.element) {
+            setupMarkerElement(marker, marker.element, exitCode);
+          }
 
           if (pendingFileCaptureRef.current) {
             const { path, maxBytes } = pendingFileCaptureRef.current;
-            const startLine = currentMarker.marker.line;
-            const endLine = computeEndLine(term, markers, currentMarker);
-            const meta = markerMeta.get(currentMarker);
+            const startLine = marker.marker.line;
+            const endLine = computeEndLine(term, markers, marker);
+            const meta = markerMeta.get(marker);
             const outputStartLine = meta?.outputStartMarker?.line ?? null;
             const hasOutput =
               outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
@@ -241,7 +234,7 @@ export function createMarkerManager({
     }
 
     return true;
-  }) as unknown as Disposable;
+  }) as unknown as IDisposable;
 
   const captureLast = (count: number) => {
     const safeCount = Math.max(1, Math.min(50, count || 1));
