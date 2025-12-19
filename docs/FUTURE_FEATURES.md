@@ -15,7 +15,6 @@ Constraints:
 - Minimize intrusiveness in the user’s terminal.
 
 ## AI Panel Features Still Pending
-- **Floating “Add to Context” button** on text selection (FAB near cursor).
 - **Explain Error** quick action: auto-capture last command/output and send a fix request.
 - **Suggest Command** flow: natural-language input → code block → optional run.
 - **Fix It** button on failed commands directly in the terminal marker row.
