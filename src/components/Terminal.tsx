@@ -17,6 +17,7 @@ import { attachFileCaptureListener } from '../terminal/fileCapture';
 import { attachHostLabelOsc } from '../terminal/hostLabel';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
 import { attachTerminalHotkeys } from '../terminal/keyboardShortcuts';
+import { attachWindowResize, fitAndResizePty } from '../terminal/resize';
 
 interface TerminalProps {
     id: number;
@@ -158,10 +159,10 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       visibleRef.current = visible;
       if (visible && fitAddonRef.current && xtermRef.current) {
           requestAnimationFrame(() => {
-              fitAddonRef.current?.fit();
-              if (xtermRef.current) {
-                  invoke('resize_pty', { id, rows: xtermRef.current.rows, cols: xtermRef.current.cols });
-                  xtermRef.current.focus();
+              if (fitAddonRef.current && xtermRef.current) {
+                  fitAndResizePty(id, xtermRef.current, fitAddonRef.current).finally(() => {
+                      xtermRef.current?.focus();
+                  });
               }
           });
       }
@@ -239,14 +240,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       invoke('write_to_pty', { id, data });
     });
 
-    // Handle resize
-    const handleResize = () => {
-        if (visibleRef.current) {
-            fitAddon.fit();
-            invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
-        }
-    };
-    window.addEventListener('resize', handleResize);
+    const windowResize = attachWindowResize({ id, term, fitAddon, visibleRef });
 
     const hotkeys = attachTerminalHotkeys({
         term,
@@ -258,8 +252,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         resizePty: (rows, cols) => invoke('resize_pty', { id, rows, cols }),
     });
     
-    // Initial resize
-    setTimeout(handleResize, 100); // Delay slightly to ensure container is ready
+    // Initial resize is handled by attachWindowResize
 
     const unlistenCapturePromise = listen<{ count: number }>('ai-context:capture-last', (event) => {
         if (!visibleRef.current) return;
@@ -283,7 +276,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         onDataDisposable?.dispose?.();
         hostLabelHandle.cleanup();
       unlistenDataPromise.then(f => f());
-      window.removeEventListener('resize', handleResize);
+    windowResize.cleanup();
             hotkeys.cleanup();
             fileCaptureListener.cleanup();
       unlistenCapturePromise.then(f => f());
