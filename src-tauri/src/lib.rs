@@ -181,9 +181,6 @@ if [ -n "$BASH_VERSION" ]; then
         __aiterm_mark_done "$ret"
         __aiterm_mark_prompt
         __aiterm_emit_host
-        if [ -z "$__AITERM_PC_MANAGED" ] && [ -n "$__aiterm_original_pc" ]; then
-            eval "$__aiterm_original_pc"
-        fi
     }
 
     if declare -p PROMPT_COMMAND 2>/dev/null | grep -q 'declare -a'; then
@@ -206,13 +203,12 @@ if [ -n "$BASH_VERSION" ]; then
         if [ -n "$AITERM_HOOK_DEBUG" ]; then
             echo "AITERM hook: bash PROMPT_COMMAND is string" 1>&2
         fi
-        __AITERM_PC_MANAGED=
-        __aiterm_original_pc="${PROMPT_COMMAND:-}"
-        case "$__aiterm_original_pc" in
-            *__aiterm_prompt_wrapper*) ;;
-            "") PROMPT_COMMAND="__aiterm_prompt_wrapper" ;;
-            *) PROMPT_COMMAND="__aiterm_prompt_wrapper" ;;
-        esac
+        __AITERM_PC_MANAGED=1
+        if [ -n "$PROMPT_COMMAND" ]; then
+            PROMPT_COMMAND=(__aiterm_prompt_wrapper "$PROMPT_COMMAND")
+        else
+            PROMPT_COMMAND="__aiterm_prompt_wrapper"
+        fi
     fi
 
     __aiterm_preexec() {
