@@ -164,9 +164,17 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
             <div className="ai-panel-code-block">
               <div className="ai-panel-code-header">
                 <span className="ai-panel-code-lang">{language}</span>
-                <button className="ai-panel-code-copy" onClick={() => handleCopyCode(raw)}>
-                  Copy
-                </button>
+                <div className="ai-panel-code-actions">
+                  <button className="ai-panel-code-copy" onClick={() => handleCopyCode(raw)}>
+                    Copy
+                  </button>
+                  <button
+                    className="ai-panel-code-run"
+                    onClick={() => emitTo("main", "ai-run-command", { command: raw })}
+                  >
+                    Run
+                  </button>
+                </div>
               </div>
               <pre>
                 <code>{raw}</code>

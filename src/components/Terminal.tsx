@@ -605,6 +605,19 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       };
   }, [id]);
 
+  useEffect(() => {
+      const unlistenRunPromise = listen<{ command: string }>('ai-run-command', (event) => {
+          if (!visibleRef.current) return;
+          const command = event.payload.command;
+          if (!command || !xtermRef.current) return;
+          invoke('write_to_pty', { id, data: `${command}\n` });
+          xtermRef.current.focus();
+      });
+      return () => {
+          unlistenRunPromise.then(f => f());
+      };
+  }, [id]);
+
     useEffect(() => {
         if (!copyMenu) return;
         const clampMenuPosition = () => {

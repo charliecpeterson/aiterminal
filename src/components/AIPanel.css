@@ -322,6 +322,11 @@
   color: var(--ai-panel-muted);
 }
 
+.ai-panel-code-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
 .ai-panel-code-lang {
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -337,8 +342,22 @@
   cursor: pointer;
 }
 
+.ai-panel-code-run {
+  border: 1px solid rgba(106, 167, 255, 0.3);
+  background: rgba(106, 167, 255, 0.08);
+  color: #dbe5ff;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
 .ai-panel-code-copy:hover {
   border-color: rgba(255, 255, 255, 0.24);
+}
+
+.ai-panel-code-run:hover {
+  border-color: rgba(106, 167, 255, 0.5);
 }
 
 .ai-panel-code-block pre {
