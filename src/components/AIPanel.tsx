@@ -3,7 +3,7 @@ import "./AIPanel.css";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -23,6 +23,7 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
   const [expandedContextId, setExpandedContextId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [captureCount, setCaptureCount] = useState(1);
   const { settings } = useSettings();
   const {
     contextItems,
@@ -179,6 +180,13 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
     </ReactMarkdown>
   );
 
+  const handleCaptureLast = () => {
+    const count = Math.max(1, Math.min(50, captureCount));
+    emitTo("main", "ai-context:capture-last", { count }).catch((err) => {
+      console.error("Failed to request capture:", err);
+    });
+  };
+
   return (
     <div className="ai-panel">
       <div className="ai-panel-header">
@@ -210,6 +218,9 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
           onClick={() => setActiveTab("chat")}
         >
           Chat
+          {contextItems.length > 0 && (
+            <span className="ai-panel-tab-badge">{contextItems.length}</span>
+          )}
         </button>
         <button
           className={`ai-panel-tab ${activeTab === "context" ? "active" : ""}`}
@@ -354,7 +365,23 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
               <div className="ai-panel-empty">No context items yet.</div>
             )}
             <div className="ai-panel-context-actions">
-              <button className="ai-panel-action ghost">Capture last command</button>
+              <div className="ai-panel-capture-row">
+                <label htmlFor="ai-capture-count">Last</label>
+                <input
+                  id="ai-capture-count"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={captureCount}
+                  onChange={(event) => {
+                    const value = Number.parseInt(event.target.value, 10);
+                    setCaptureCount(Number.isFinite(value) ? value : 1);
+                  }}
+                />
+                <button className="ai-panel-action ghost" onClick={handleCaptureLast}>
+                  Capture
+                </button>
+              </div>
               <button className="ai-panel-clear" onClick={clearContext}>
                 Clear All
               </button>

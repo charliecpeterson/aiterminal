@@ -499,6 +499,51 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     // Initial resize
     setTimeout(handleResize, 100); // Delay slightly to ensure container is ready
 
+    const unlistenCapturePromise = listen<{ count: number }>('ai-context:capture-last', (event) => {
+        const count = Math.max(1, Math.min(50, event.payload.count || 1));
+        if (!xtermRef.current || markers.length === 0) return;
+        const eligibleMarkers = markers.filter((marker) => {
+            const meta = markerMeta.get(marker);
+            return Boolean(meta?.outputStartMarker);
+        });
+        const slice = eligibleMarkers.slice(-count);
+        slice.forEach((marker, index) => {
+            const startLine = marker.marker.line;
+            let endLine = term.buffer.active.length - 1;
+            const markerIndex = eligibleMarkers.indexOf(marker);
+            if (markerIndex !== -1 && markerIndex < eligibleMarkers.length - 1) {
+                endLine = eligibleMarkers[markerIndex + 1].marker.line - 1;
+            }
+            const meta = markerMeta.get(marker);
+            const outputStartLine = meta?.outputStartMarker?.line ?? null;
+            const hasOutput = outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
+            const safeOutputStart = hasOutput ? Math.max(outputStartLine, startLine + 1) : startLine + 1;
+            const cmdEnd = Math.max(startLine, (hasOutput ? safeOutputStart : startLine + 1) - 1);
+            const commandText = getRangeText([startLine, cmdEnd]).trim();
+            const outputText = hasOutput ? getRangeText([safeOutputStart, Math.max(safeOutputStart, endLine)]).trim() : "";
+            if (!commandText && !outputText) return;
+            if (outputText) {
+                addContextItem({
+                    id: crypto.randomUUID(),
+                    type: 'command_output',
+                    content: outputText,
+                    timestamp: Date.now() + index,
+                    metadata: {
+                        command: commandText || undefined,
+                        output: outputText,
+                    },
+                });
+            } else if (commandText) {
+                addContextItem({
+                    id: crypto.randomUUID(),
+                    type: 'command',
+                    content: commandText,
+                    timestamp: Date.now() + index,
+                });
+            }
+        });
+    });
+
       return () => {
       term.dispose();
         viewport?.removeEventListener('scroll', refreshThumb);
@@ -512,6 +557,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
+      unlistenCapturePromise.then(f => f());
       hideCopyMenu();
       hideSelectionMenu();
     };
