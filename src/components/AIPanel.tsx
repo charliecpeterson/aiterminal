@@ -4,6 +4,13 @@ import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { emitTo } from "@tauri-apps/api/event";
 import { sendChatMessage } from "../ai/chatSend";
+import { requestCaptureFile, requestCaptureLast } from "../ai/contextCapture";
+import {
+  formatChatTime,
+  formatContextCountLabel,
+  handlePromptKeyDown,
+  roleLabel,
+} from "../ai/panelUi";
 import { AIMarkdown } from "./AIMarkdown";
 
 type PanelTab = "chat" | "context";
@@ -37,9 +44,7 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
   } = useAIContext();
 
   const contextCountLabel = useMemo(() => {
-    if (contextItems.length === 0) return "No context";
-    if (contextItems.length === 1) return "1 item attached";
-    return `${contextItems.length} items attached`;
+    return formatContextCountLabel(contextItems.length);
   }, [contextItems.length]);
 
   const handleSend = () => {
@@ -55,15 +60,6 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
     });
   };
 
-  const formatTime = (timestamp: number) =>
-    new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-  const roleLabel = (role: "user" | "assistant" | "system") => {
-    if (role === "user") return "You";
-    if (role === "system") return "System";
-    return "Assistant";
-  };
-
   const renderMarkdown = (content: string) => (
     <AIMarkdown
       content={content}
@@ -72,20 +68,13 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
   );
 
   const handleCaptureLast = () => {
-    const count = Math.max(1, Math.min(50, captureCount));
-    emitTo("main", "ai-context:capture-last", { count }).catch((err) => {
+    requestCaptureLast(captureCount).catch((err) => {
       console.error("Failed to request capture:", err);
     });
   };
 
   const handleCaptureFile = () => {
-    const path = filePath.trim();
-    if (!path) return;
-    const kb = Number.isFinite(fileLimitKb) ? Math.max(1, Math.min(2048, fileLimitKb)) : 200;
-    emitTo("main", "ai-context:capture-file", {
-      path,
-      maxBytes: kb * 1024,
-    }).catch((err) => {
+    requestCaptureFile({ path: filePath, fileLimitKb }).catch((err) => {
       console.error("Failed to request file capture:", err);
     });
   };
@@ -168,7 +157,7 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
                   <div key={message.id} className={`ai-panel-message ${message.role}`}>
                     <div className="ai-panel-message-meta">
                       <span>{roleLabel(message.role)}</span>
-                      <span>{formatTime(message.timestamp)}</span>
+                      <span>{formatChatTime(message.timestamp)}</span>
                     </div>
                     <div className="ai-panel-message-body">
                       {renderMarkdown(message.content)}
@@ -184,12 +173,7 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
                 rows={3}
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                    event.preventDefault();
-                    handleSend();
-                  }
-                }}
+                onKeyDown={(event) => handlePromptKeyDown(event, handleSend)}
               />
               <button className="ai-panel-send" onClick={handleSend} disabled={isSending}>
                 {isSending ? "Sending..." : "Send"}
@@ -221,7 +205,7 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
                       <div className="ai-panel-context-header">
                         <div>
                           <div className="ai-panel-context-type">{item.type}</div>
-                          <div className="ai-panel-context-time">{formatTime(item.timestamp)}</div>
+                          <div className="ai-panel-context-time">{formatChatTime(item.timestamp)}</div>
                         </div>
                         <div className="ai-panel-context-actions">
                           <button
