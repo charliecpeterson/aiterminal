@@ -31,6 +31,7 @@ The AI Panel provides context-aware assistance alongside the terminal.
 - **Copy Code**: Code blocks include a copy button.
 - **Context Tab**: Staged context items can be previewed, removed, or cleared.
 - **Capture Last N**: Capture the last N completed commands/outputs into context.
+- **Add File Path**: Capture file contents from the current machine using a file path and size cap (works over SSH).
 - **Selection Capture**: Select text in the terminal and click “Add Selection to Context.”
 
 ### 4. Font Zooming

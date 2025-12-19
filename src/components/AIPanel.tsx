@@ -24,6 +24,8 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [captureCount, setCaptureCount] = useState(1);
+  const [filePath, setFilePath] = useState("");
+  const [fileLimitKb, setFileLimitKb] = useState(200);
   const { settings } = useSettings();
   const {
     contextItems,
@@ -195,6 +197,18 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
     });
   };
 
+  const handleCaptureFile = () => {
+    const path = filePath.trim();
+    if (!path) return;
+    const kb = Number.isFinite(fileLimitKb) ? Math.max(1, Math.min(2048, fileLimitKb)) : 200;
+    emitTo("main", "ai-context:capture-file", {
+      path,
+      maxBytes: kb * 1024,
+    }).catch((err) => {
+      console.error("Failed to request file capture:", err);
+    });
+  };
+
   return (
     <div className="ai-panel">
       <div className="ai-panel-header">
@@ -361,6 +375,19 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
                               </div>
                             )}
                           </>
+                        ) : item.type === "file" ? (
+                          <>
+                            {item.metadata?.path && (
+                              <div className="ai-panel-context-block">
+                                <div className="ai-panel-context-label">Path</div>
+                                <div className="ai-panel-context-content">{item.metadata.path}</div>
+                              </div>
+                            )}
+                            <div className="ai-panel-context-block">
+                              <div className="ai-panel-context-label">Content</div>
+                              <div className="ai-panel-context-content">{item.content}</div>
+                            </div>
+                          </>
                         ) : (
                           item.content
                         )}
@@ -388,6 +415,28 @@ const AIPanel = ({ onClose, onDetach, onAttach, mode = "docked" }: AIPanelProps)
                 />
                 <button className="ai-panel-action ghost" onClick={handleCaptureLast}>
                   Capture
+                </button>
+              </div>
+              <div className="ai-panel-file-row">
+                <input
+                  type="text"
+                  value={filePath}
+                  onChange={(event) => setFilePath(event.target.value)}
+                  placeholder="Add file path…"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={2048}
+                  value={fileLimitKb}
+                  onChange={(event) => {
+                    const value = Number.parseInt(event.target.value, 10);
+                    setFileLimitKb(Number.isFinite(value) ? value : 200);
+                  }}
+                />
+                <span className="ai-panel-unit">KB</span>
+                <button className="ai-panel-action ghost" onClick={handleCaptureFile}>
+                  Add File
                 </button>
               </div>
               <button className="ai-panel-clear" onClick={clearContext}>

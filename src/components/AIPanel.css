@@ -502,6 +502,46 @@
   border-color: rgba(106, 167, 255, 0.5);
 }
 
+.ai-panel-file-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(106, 167, 255, 0.2);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--ai-panel-muted);
+}
+
+.ai-panel-file-row input[type="text"] {
+  min-width: 220px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #ffffff;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.ai-panel-file-row input[type="number"] {
+  width: 64px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #ffffff;
+  padding: 2px 8px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.ai-panel-file-row input:focus {
+  outline: none;
+  border-color: rgba(106, 167, 255, 0.5);
+}
+
+.ai-panel-unit {
+  font-size: 11px;
+}
+
 .ai-panel-clear {
   align-self: flex-start;
   border: 1px solid var(--ai-panel-border);

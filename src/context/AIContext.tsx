@@ -10,6 +10,9 @@ export interface ContextItem {
   metadata?: {
     command?: string;
     output?: string;
+    path?: string;
+    truncated?: boolean;
+    byte_count?: number;
     exitCode?: number;
     cwd?: string;
   };
@@ -131,6 +134,12 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
                 const command = item.metadata?.command || "";
                 const output = item.metadata?.output || item.content;
                 return `Type: command\nContent: ${command}\n\nType: output\nContent: ${output}`;
+              }
+              if (item.type === "file") {
+                const pathLine = item.metadata?.path ? `\nPath: ${item.metadata.path}` : "";
+                const truncatedLine =
+                  item.metadata?.truncated ? "\nTruncated: true" : "";
+                return `Type: file\nContent: ${item.content}${pathLine}${truncatedLine}`;
               }
               if (item.metadata?.command) {
                 return `Type: ${item.type}\nContent: ${item.content}\nCommand: ${item.metadata.command}`;

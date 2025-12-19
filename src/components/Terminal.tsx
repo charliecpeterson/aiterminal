@@ -47,6 +47,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
     const selectionMenuRef = useRef<HTMLDivElement | null>(null);
     const selectionPointRef = useRef<{ x: number; y: number } | null>(null);
+    const pendingFileCaptureRef = useRef<null | { path: string; maxBytes: number }>(null);
 
     const hideCopyMenu = () => setCopyMenu(null);
     const hideSelectionMenu = () => setSelectionMenu(null);
@@ -114,6 +115,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         hideCopyMenu();
         xtermRef.current?.focus();
     };
+
+    const shellQuote = (value: string) => `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
     const addSelectionToContext = () => {
         if (!xtermRef.current) return;
@@ -278,12 +281,16 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             return;
         }
         const point = selectionPointRef.current;
-        if (point) {
-            setSelectionMenu({ x: point.x + 8, y: point.y + 8 });
-        } else if (terminalRef.current) {
-            const rect = terminalRef.current.getBoundingClientRect();
-            setSelectionMenu({ x: rect.left + 16, y: rect.top + 16 });
-        }
+        if (!terminalRef.current) return;
+        const rect = terminalRef.current.getBoundingClientRect();
+        const baseX = point ? point.x : rect.left + rect.width / 2;
+        const baseY = point ? point.y : rect.top + rect.height / 2;
+        const nextX = baseX + 8;
+        const nextY = baseY - 32;
+        setSelectionMenu({
+            x: Math.max(rect.left + 8, Math.min(nextX, rect.right - 120)),
+            y: Math.max(rect.top + 8, Math.min(nextY, rect.bottom - 40)),
+        });
     };
 
     const handleMouseUpSelection = (event: MouseEvent) => {
@@ -423,6 +430,42 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                 const exitCode = parseInt(parts[1] || '0');
                 if (currentMarker) {
                     currentMarker.onRender((element: HTMLElement) => setupMarkerElement(currentMarker, element, exitCode));
+                    if (pendingFileCaptureRef.current) {
+                        const { path, maxBytes } = pendingFileCaptureRef.current;
+                        const startLine = currentMarker.marker.line;
+                        let endLine = term.buffer.active.length - 1;
+                        const markerIndex = markers.indexOf(currentMarker);
+                        if (markerIndex !== -1 && markerIndex < markers.length - 1) {
+                            endLine = markers[markerIndex + 1].marker.line - 1;
+                        }
+                        const meta = markerMeta.get(currentMarker);
+                        const outputStartLine = meta?.outputStartMarker?.line ?? null;
+                        const hasOutput =
+                            outputStartLine !== null &&
+                            outputStartLine > startLine &&
+                            outputStartLine <= endLine;
+                        if (hasOutput) {
+                            const safeOutputStart = Math.max(outputStartLine, startLine + 1);
+                            const outputText = getRangeText([
+                                safeOutputStart,
+                                Math.max(safeOutputStart, endLine),
+                            ]).trim();
+                            if (outputText) {
+                                addContextItem({
+                                    id: crypto.randomUUID(),
+                                    type: 'file',
+                                    content: outputText,
+                                    timestamp: Date.now(),
+                                    metadata: {
+                                        path,
+                                        truncated: outputText.length >= maxBytes,
+                                        byte_count: outputText.length,
+                                    },
+                                });
+                            }
+                        }
+                        pendingFileCaptureRef.current = null;
+                    }
                     // Clear currentMarker so subsequent 'C' events (e.g. from PROMPT_COMMAND) don't overwrite our output start
                     currentMarker = null;
                 }
@@ -500,6 +543,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     setTimeout(handleResize, 100); // Delay slightly to ensure container is ready
 
     const unlistenCapturePromise = listen<{ count: number }>('ai-context:capture-last', (event) => {
+        if (!visibleRef.current) return;
         const count = Math.max(1, Math.min(50, event.payload.count || 1));
         if (!xtermRef.current || markers.length === 0) return;
         const eligibleMarkers = markers.filter((marker) => {
@@ -544,6 +588,21 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         });
     });
 
+    const unlistenCaptureFilePromise = listen<{ path: string; maxBytes: number }>(
+        'ai-context:capture-file',
+        (event) => {
+            if (!visibleRef.current) return;
+            if (!xtermRef.current) return;
+            const path = event.payload.path?.trim();
+            const maxBytes = Math.max(1024, Math.min(2 * 1024 * 1024, event.payload.maxBytes || 0));
+            if (!path || !maxBytes) return;
+            pendingFileCaptureRef.current = { path, maxBytes };
+            const command = `head -c ${maxBytes} ${shellQuote(path)}`;
+            invoke('write_to_pty', { id, data: `${command}\n` });
+            xtermRef.current.focus();
+        }
+    );
+
       return () => {
       term.dispose();
         viewport?.removeEventListener('scroll', refreshThumb);
@@ -557,6 +616,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       unlistenDataPromise.then(f => f());
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeydown);
+      unlistenCaptureFilePromise.then(f => f());
       unlistenCapturePromise.then(f => f());
       hideCopyMenu();
       hideSelectionMenu();
@@ -759,11 +819,11 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
             )}
             {selectionMenu && (
                 <div
-                    className="marker-copy-menu selection-menu"
+                    className="selection-badge"
                     style={{ top: selectionMenu.y, left: selectionMenu.x }}
                     ref={selectionMenuRef}
                 >
-                    <button onClick={addSelectionToContext}>Add Selection to Context</button>
+                    <button onClick={addSelectionToContext}>+ Context</button>
                 </div>
             )}
             <div className="terminal-status">

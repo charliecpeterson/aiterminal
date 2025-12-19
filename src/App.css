@@ -215,8 +215,25 @@ body, html, #root {
   margin: 4px 0;
 }
 
-.selection-menu {
-  min-width: 190px;
+.selection-badge {
+  position: fixed;
+  z-index: 210;
+}
+
+.selection-badge button {
+  background: rgba(106, 167, 255, 0.32);
+  border: 1px solid rgba(106, 167, 255, 0.7);
+  color: #dbe5ff;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(33, 91, 200, 0.25);
+}
+
+.selection-badge button:hover {
+  border-color: rgba(106, 167, 255, 0.9);
+  background: rgba(106, 167, 255, 0.4);
 }
 
 .marker-copy-menu button {
