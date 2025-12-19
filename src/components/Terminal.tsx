@@ -1,52 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
-import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
-import { attachScrollbarOverlay } from '../terminal/scrollbarOverlay';
-import { attachSelectionMenu } from '../terminal/selectionMenu';
-import { createMarkerManager } from '../terminal/markers';
-import { attachFileCaptureListener } from '../terminal/fileCapture';
-import { attachHostLabelOsc } from '../terminal/hostLabel';
+import type { CopyMenuState } from '../terminal/markers';
+import type { SelectionMenuState } from '../terminal/selectionMenu';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
-import { attachTerminalHotkeys } from '../terminal/keyboardShortcuts';
-import { attachWindowResize } from '../terminal/resize';
 import { useFloatingMenu } from '../terminal/useFloatingMenu';
 import { attachAiRunCommandListener } from '../terminal/aiRunCommand';
-import { attachPtyDataListener, attachPtyExitListener } from '../terminal/ptyListeners';
+import { attachPtyExitListener } from '../terminal/ptyListeners';
 import { createSearchController } from '../terminal/search';
-import { createTerminalSession } from '../terminal/createTerminalSession';
-import { attachCaptureLastListener } from '../terminal/captureLast';
 import { applyTerminalAppearance } from '../terminal/appearance';
 import { handleTerminalVisibilityChange } from '../terminal/visibility';
+import { createTerminalWiring } from '../terminal/createTerminalWiring';
 import {
     addContextFromCombinedRanges,
     addContextFromRange,
     addSelectionToContext,
     copyCombinedToClipboard,
     copyRangeToClipboard,
-    getRangeText,
 } from '../terminal/copyContext';
 
 interface TerminalProps {
     id: number;
     visible: boolean;
     onClose: () => void;
-}
-
-interface CopyMenuState {
-    x: number;
-    y: number;
-    commandRange: [number, number];
-    outputRange: [number, number] | null;
-    disabled?: boolean;
-    outputDisabled?: boolean;
-}
-
-interface SelectionMenuState {
-    x: number;
-    y: number;
 }
 
 const Terminal = ({ id, visible, onClose }: TerminalProps) => {
@@ -146,97 +124,29 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   useEffect(() => {
     if (!terminalRef.current || loading || !settings) return;
 
-        const session = createTerminalSession({
-                container: terminalRef.current,
-                appearance: settings.appearance,
-        });
-
-        const term = session.term;
-        const fitAddon = session.fitAddon;
-        fitAddonRef.current = fitAddon;
-        searchAddonRef.current = session.searchAddon;
-        xtermRef.current = term;
-
-    // Custom always-visible scrollbar overlay synced to xterm viewport
-    const scrollbar = attachScrollbarOverlay(terminalRef.current, term.element ?? null);
-
-
-        // Listen for data from PTY
-        const ptyDataListener = attachPtyDataListener({
-                id,
-                onData: (data) => term.write(data),
-        });
-
-    // Focus terminal
-    setTimeout(() => {
-        term.focus();
-    }, 100);
-
-    const selectionMenuHandle = attachSelectionMenu({
-        term,
+    const wiring = createTerminalWiring({
+        id,
         container: terminalRef.current,
-        selectionPointRef,
-        setSelectionMenu,
-    });
-
-    const markerManager = createMarkerManager({
-        term,
+        appearance: settings.appearance,
         maxMarkers: settings?.terminal?.max_markers ?? 200,
-        setCopyMenu,
-        getRangeText: (range) => getRangeText(term, range),
-        addContextItem,
-        pendingFileCaptureRef,
-    });
-
-    const markerManagerRef = { current: markerManager };
-
-    const hostLabelHandle = attachHostLabelOsc(term, setHostLabel);
-
-    // Send data to PTY
-        const onDataDisposable = term.onData((data) => {
-      invoke('write_to_pty', { id, data });
-    });
-
-    const windowResize = attachWindowResize({ id, term, fitAddon, visibleRef });
-
-    const hotkeys = attachTerminalHotkeys({
-        term,
-        fitAddon,
         visibleRef,
+        selectionPointRef,
+        pendingFileCaptureRef,
+        setCopyMenu,
+        setSelectionMenu,
         setShowSearch,
+        setHostLabel,
+        addContextItem,
         hideCopyMenu,
         hideSelectionMenu,
-        resizePty: (rows, cols) => invoke('resize_pty', { id, rows, cols }),
-    });
-    
-    // Initial resize is handled by attachWindowResize
-
-    const captureLastListener = attachCaptureLastListener({
-        visibleRef,
-        markerManagerRef,
     });
 
-    const fileCaptureListener = attachFileCaptureListener({
-        id,
-        visibleRef,
-        pendingFileCaptureRef,
-        focusTerminal: () => xtermRef.current?.focus(),
-    });
+    fitAddonRef.current = wiring.session.fitAddon;
+    searchAddonRef.current = wiring.session.searchAddon;
+    xtermRef.current = wiring.session.term;
 
       return () => {
-    session.cleanup();
-            selectionMenuHandle.cleanup();
-            scrollbar.cleanup();
-        markerManager.cleanup();
-        onDataDisposable?.dispose?.();
-        hostLabelHandle.cleanup();
-    ptyDataListener.cleanup();
-    windowResize.cleanup();
-            hotkeys.cleanup();
-            fileCaptureListener.cleanup();
-    captureLastListener.cleanup();
-      hideCopyMenu();
-      hideSelectionMenu();
+      wiring.cleanup();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.

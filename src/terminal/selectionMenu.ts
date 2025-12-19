@@ -2,11 +2,16 @@ import type { Terminal as XTermTerminal } from '@xterm/xterm';
 
 type Disposable = { dispose: () => void };
 
+export interface SelectionMenuState {
+  x: number;
+  y: number;
+}
+
 export interface AttachSelectionMenuParams {
   term: XTermTerminal;
   container: HTMLElement;
   selectionPointRef: React.MutableRefObject<{ x: number; y: number } | null>;
-  setSelectionMenu: (value: { x: number; y: number } | null) => void;
+  setSelectionMenu: (value: SelectionMenuState | null) => void;
 }
 
 export interface SelectionMenuHandle {
