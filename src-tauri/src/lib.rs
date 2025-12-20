@@ -9,6 +9,7 @@ use std::thread::{self, JoinHandle};
 use tauri::{Emitter, State};
 use serde_json::Value;
 use futures_util::StreamExt;
+use keyring::Entry;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AppearanceSettings {
@@ -21,6 +22,7 @@ struct AppearanceSettings {
 struct AiSettings {
     provider: String,
     model: String,
+    #[serde(skip)] // Never serialize API key to disk - store in OS keychain instead
     api_key: String,
     embedding_model: Option<String>,
     url: Option<String>,
@@ -507,26 +509,73 @@ fn get_config_path() -> Option<PathBuf> {
     })
 }
 
+// ==== OS Keychain Integration for Secure API Key Storage ====
+
+fn get_keychain_service(provider: &str) -> String {
+    format!("aiterminal.{}", provider)
+}
+
+fn save_api_key_to_keychain(provider: &str, api_key: &str) -> Result<(), String> {
+    if api_key.trim().is_empty() {
+        // Empty key means delete from keychain
+        return delete_api_key_from_keychain(provider);
+    }
+    
+    let service = get_keychain_service(provider);
+    eprintln!("[Keychain] Saving API key for service: {} (username: api_key)", service);
+    let entry = Entry::new(&service, "api_key")
+        .map_err(|e| format!("Failed to access keychain: {}", e))?;
+    
+    entry.set_password(api_key)
+        .map_err(|e| {
+            eprintln!("[Keychain] Error saving: {}", e);
+            format!("Failed to save API key to keychain: {}", e)
+        })
+        .map(|_| {
+            eprintln!("[Keychain] Successfully saved API key");
+            ()
+        })
+}
+
+fn load_api_key_from_keychain(provider: &str) -> Result<String, String> {
+    let service = get_keychain_service(provider);
+    eprintln!("[Keychain] Loading API key for service: {} (username: api_key)", service);
+    let entry = Entry::new(&service, "api_key")
+        .map_err(|e| {
+            eprintln!("[Keychain] Failed to create Entry: {}", e);
+            format!("Failed to access keychain: {}", e)
+        })?;
+    
+    entry.get_password()
+        .map(|key| {
+            eprintln!("[Keychain] Successfully loaded API key (length: {})", key.len());
+            key
+        })
+        .map_err(|e| {
+            eprintln!("[Keychain] Error loading: {}", e);
+            // Don't expose keychain errors if key simply doesn't exist
+            if e.to_string().contains("No such item") || e.to_string().contains("not found") {
+                "API key not found".to_string()
+            } else {
+                format!("Failed to load API key from keychain: {}", e)
+            }
+        })
+}
+
+fn delete_api_key_from_keychain(provider: &str) -> Result<(), String> {
+    let service = get_keychain_service(provider);
+    let entry = Entry::new(&service, "api_key")
+        .map_err(|e| format!("Failed to access keychain: {}", e))?;
+    
+    // Ignore errors if key doesn't exist
+    let _ = entry.delete_credential();
+    Ok(())
+}
+
+// ========================================================
+
 fn clamp_max_markers(value: u16) -> u16 {
     value.clamp(20, 2000)
-}
-
-fn normalize_base_url(url: &str) -> String {
-    url.trim_end_matches('/').to_string()
-}
-
-fn extract_string_list(value: &Value, array_key: &str, field_key: &str) -> Vec<String> {
-    value
-        .get(array_key)
-        .and_then(|data| data.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.get(field_key).and_then(|v| v.as_str()))
-                .map(|s| s.to_string())
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 fn filter_embedding_models(models: &[String]) -> Vec<String> {
@@ -542,6 +591,22 @@ fn filter_embedding_models(models: &[String]) -> Vec<String> {
 
 fn normalize_prompt(prompt: &str) -> String {
     prompt.trim().to_string()
+}
+
+fn normalize_base_url(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_string()
+}
+
+fn extract_string_list(json: &Value, array_key: &str, item_key: &str) -> Vec<String> {
+    json.get(array_key)
+        .and_then(|arr| arr.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.get(item_key).and_then(|v| v.as_str()))
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn extract_text(value: &Value) -> Option<String> {
@@ -740,6 +805,12 @@ fn load_settings() -> Result<AppSettings, String> {
         AppSettings::default()
     });
     settings.terminal.max_markers = clamp_max_markers(settings.terminal.max_markers);
+    
+    // Load API key from keychain
+    if let Ok(api_key) = load_api_key_from_keychain(&settings.ai.provider) {
+        settings.ai.api_key = api_key;
+    }
+    
     Ok(settings)
 }
 
@@ -747,6 +818,13 @@ fn load_settings() -> Result<AppSettings, String> {
 fn save_settings(settings: AppSettings) -> Result<(), String> {
     let mut settings = settings;
     settings.terminal.max_markers = clamp_max_markers(settings.terminal.max_markers);
+    
+    // Save API key to keychain (not to file)
+    if !settings.ai.api_key.is_empty() {
+        save_api_key_to_keychain(&settings.ai.provider, &settings.ai.api_key)?;
+    }
+    
+    // Save settings to file (API key will be skipped due to #[serde(skip)])
     let config_path = get_config_path().ok_or("Could not determine config path")?;
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     if let Some(parent) = config_path.parent() {
@@ -754,6 +832,21 @@ fn save_settings(settings: AppSettings) -> Result<(), String> {
     }
     fs::write(config_path, json).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+fn get_api_key(provider: String) -> Result<String, String> {
+    load_api_key_from_keychain(&provider)
+}
+
+#[tauri::command]
+fn save_api_key(provider: String, api_key: String) -> Result<(), String> {
+    save_api_key_to_keychain(&provider, &api_key)
+}
+
+#[tauri::command]
+fn delete_api_key(provider: String) -> Result<(), String> {
+    delete_api_key_from_keychain(&provider)
 }
 
 #[tauri::command]
@@ -1147,6 +1240,9 @@ pub fn run() {
             close_pty,
             load_settings,
             save_settings,
+            get_api_key,
+            save_api_key,
+            delete_api_key,
             test_ai_connection,
             ai_chat,
             ai_chat_stream

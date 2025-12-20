@@ -35,6 +35,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
     const handleSave = async () => {
         if (localSettings) {
+            // Save API key separately to keychain
+            if (localSettings.ai.api_key && localSettings.ai.api_key.trim() !== '') {
+                try {
+                    await invoke('save_api_key', { 
+                        provider: localSettings.ai.provider,
+                        apiKey: localSettings.ai.api_key 
+                    });
+                } catch (error) {
+                    console.error('Failed to save API key to keychain:', error);
+                }
+            }
+            
+            // Save other settings (API key will be skipped automatically)
             await updateSettings(localSettings);
             onClose();
         }
@@ -185,7 +198,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <label>API Key</label>
                                     <input 
                                         type="password" 
-                                        value={localSettings.ai.api_key}
+                                        value={localSettings.ai.api_key || ''}
                                         onChange={(e) => handleChange('ai', 'api_key', e.target.value)}
                                         placeholder="sk-..."
                                     />
@@ -237,7 +250,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     ) : (
                                         <input 
                                             type="text" 
-                                            value={localSettings.ai.model}
+                                            value={localSettings.ai.model || ''}
                                             onChange={(e) => handleChange('ai', 'model', e.target.value)}
                                             placeholder="e.g. gpt-4o"
                                             list="ai-model-options"

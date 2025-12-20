@@ -6,14 +6,31 @@ Welcome to AI Terminal! This guide documents the features and shortcuts availabl
 
 ### 1. Shell Integration & Markers
 The terminal detects when commands start and finish (bash and zsh supported).
-- **Markers**: A visual indicator appears in the gutter (left side) for every command.
+- **Markers**: When shell integration is active, a visual indicator appears in the gutter (left side) for every command.
   - **Grey**: Command is running.
   - **Green**: Command finished successfully (Exit Code 0).
   - **Red**: Command failed (Non-zero Exit Code).
 - **Remote sessions**: By default inside AI Terminal, `ssh` is aliased to `aiterm_ssh` so markers are enabled automatically. To opt out for a single command, run `\ssh <host>` (backslash avoids the alias) or start a new tab and remove the alias. `aiterm_ssh` injects the shell integration on the remote side without leaving a permanent file. For non-interactive `ssh host command`, it falls back to plain `ssh` (single marker on the local command).
+- **SSH in scripts**: AI Terminal also installs a small `ssh` shim in `~/.config/aiterminal/bin/ssh` and prepends `~/.config/aiterminal/bin` to `PATH` for shells it launches. This allows scripts that call `ssh` to still benefit from `aiterm_ssh` when running inside AI Terminal.
+- **Privilege changes (`su`)**: `su` is **not** overridden by default. `su` implementations vary (util-linux, busybox, BSD), and wrapper-based bootstrapping can silently fail. If you need markers after `su`, the sustainable approach is to install the integration in that target account (see “Remote install” below).
+- **Containers**: In AI Terminal, interactive `docker` / `podman` and `apptainer` shells attempt to bootstrap integration so markers keep working inside long container sessions.
 - **Remote bootstrap safety**: The SSH helper is sent as a base64 payload; if it fails to decode or validate, the session falls back to a normal login shell without markers.
 - **Hide payload (optional)**: Set `AITERM_SSH_HIDE_PAYLOAD=1` to send the helper via SSH `SendEnv` instead of embedding it in the command line. This requires `AcceptEnv AITERM_B64` on the remote SSH server; otherwise markers will be disabled for that session.
 - **Debugging hooks**: Set `AITERM_HOOK_DEBUG=1` before launching a shell to print which hook path is used (bash `PROMPT_COMMAND` array vs string, zsh hook install).
+
+#### Remote install (recommended for HPC reliability)
+If you frequently SSH into the same accounts, install the integration script on the remote side once. This avoids relying on SSH bootstrapping tricks and is more resilient across long sessions.
+
+- Run: `aiterm_install_remote user@host`
+- What it does:
+  - Copies `~/.config/aiterminal/bash_init.sh` to `user@host:~/.config/aiterminal/bash_init.sh`
+  - Appends a single `source ~/.config/aiterminal/bash_init.sh` line to the remote `~/.bashrc` and `~/.zshrc` (idempotent)
+
+Notes:
+- Requires `ssh` and `scp` availability.
+- Targets bash/zsh initialization (`~/.bashrc`, `~/.zshrc`). Other shells may require manual setup.
+
+If markers are missing in a particular environment, you can still manually select output text or use the copy tools for the nearest marker.
 
 ### 2. Smart Copy
 You can easily copy commands and their outputs without manually selecting text.
@@ -77,6 +94,7 @@ Manage multiple terminal sessions in a single window.
 ## Configuration
 The terminal creates a configuration directory at `~/.config/aiterminal/`.
 - **`bash_init.sh`**: This script is automatically generated and sourced to provide the shell integration features.
+- **`bin/ssh`**: A small shim used so `ssh` inside scripts can still bootstrap integration (when running inside AI Terminal).
 
 ## AI Settings
 Open Settings → AI to configure providers and models.
@@ -87,5 +105,6 @@ Open Settings → AI to configure providers and models.
 ## Troubleshooting
 - **Markers not showing (local)?** Open a fresh tab so the helper re-sources; bash and zsh are supported.
 - **Markers not showing (remote)?** Use `aiterm_ssh <user@host>` (or plain `ssh` is already aliased to it inside AI Terminal). If the remote blocks sourcing, bypass with `\ssh` to avoid the alias.
+- **Markers missing after `su`/restricted shells?** Install integration into that account with `aiterm_install_remote` (or manually add `source ~/.config/aiterminal/bash_init.sh` in that account’s `~/.bashrc`/`~/.zshrc`). Some environments intentionally scrub environment variables; in those cases, exact command markers may not be available.
 - **Copy not working?** The app uses the system clipboard. Ensure you have granted permission if prompted.
 - **Scrollbar missing?** The app renders its own overlay. If you still don’t see it, ensure you’re in the terminal area and the buffer is longer than the viewport; try scrolling once to reveal it.

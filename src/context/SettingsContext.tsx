@@ -44,6 +44,18 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const loadSettings = async () => {
         try {
             const loadedSettings = await invoke<AppSettings>('load_settings');
+            
+            // Load API key from keychain
+            try {
+                const apiKey = await invoke<string>('get_api_key', { 
+                    provider: loadedSettings.ai.provider 
+                });
+                loadedSettings.ai.api_key = apiKey;
+            } catch (error) {
+                // API key not found in keychain, that's ok
+                console.log('No API key found in keychain');
+            }
+            
             setSettings(loadedSettings);
         } catch (error) {
             console.error('Failed to load settings:', error);
