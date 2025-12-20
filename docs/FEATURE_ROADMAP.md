@@ -131,16 +131,20 @@ async fn measure_pty_latency(pty_id: u32) -> Result<u32, String> {
 
 ## Quick Wins (Easy to Implement)
 
-1. **Tab Reordering**: Drag-and-drop tabs to reorder
-2. **Custom Tab Colors**: Color-code production/staging/dev environments
-3. **Quick SSH Profiles**: Save frequently used SSH connections
-4. **Clipboard History**: Access last 10 copied items
-5. **URL Detection**: Cmd+Click to open URLs in browser
-6. **Working Directory Breadcrumbs**: Show full path in status bar with folder navigation
-7. **Reconnect to SSH**: Auto-retry on connection drops
-8. **Tab Zoom**: Cmd+Scroll to adjust font size per tab
-9. **Search History**: Cmd+R for reverse search across all tabs
-10. **Export Session**: Save current tab as script with all commands
+1. **Tab Reordering**: Drag-and-drop tabs to reorder ✅
+2. **LLM-Powered Command Line Autocomplete**: AI suggestions for command completion (Ctrl+Space or Tab)
+   - Send partial command + context to LLM
+   - Display as ghost text
+   - Fast inference (<200ms) using existing AI providers or local Ollama
+3. **Custom Tab Colors**: Color-code production/staging/dev environments
+4. **Quick SSH Profiles**: Save frequently used SSH connections
+5. **Clipboard History**: Access last 10 copied items
+6. **URL Detection**: Cmd+Click to open URLs in browser
+7. **Working Directory Breadcrumbs**: Show full path in status bar with folder navigation
+8. **Reconnect to SSH**: Auto-retry on connection drops
+9. **Tab Zoom**: Cmd+Scroll to adjust font size per tab
+10. **Search History**: Cmd+R for reverse search across all tabs
+11. **Export Session**: Save current tab as script with all commands
 
 ## Implementation Priority
 

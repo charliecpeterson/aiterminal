@@ -52,6 +52,19 @@ Constraints:
 ### Secrets & configuration
 - Stop storing **AI API keys in plaintext** in `~/.config/aiterminal/settings.json`.
 - Use **OS keychain/credential store** (macOS Keychain) and keep only a reference/identifier in settings.
+- Remove `api_key` from frontend settings entirely and fetch keys in the backend (avoid exposing secrets in JS/IPC).
+
+### AI data safety & redaction
+- Add **redaction pass** before sending context to LLMs (keys, tokens, passwords, private keys).
+- Add **preview/confirm step** for captured context and file content.
+- Add **denylist/allowlist** rules for sensitive paths (e.g., `~/.ssh`, `*.pem`, `*.key`, `.env`).
+
+### Streaming & settings consistency
+- Honor `streaming.max_tokens` and `streaming.timeout_secs` for **all providers**, not just streaming.
+- Wire `streaming.buffer_size_limit` into SSE buffering (or remove the setting if unused).
+
+### Settings defaults & drift
+- Align **frontend fallback defaults** with backend defaults (model name, font family, max_markers).
 
 ### Repo hygiene / build artifacts
 - Ensure `src-tauri/target/` is **gitignored and not committed** (remove build/bundle artifacts from version control).
@@ -65,10 +78,26 @@ Constraints:
   - avoid scanning the full xterm buffer on every click;
   - precompute/store output ranges on marker completion.
 - Improve **truncation UX** for massive outputs (show size, truncation status, what was captured).
+- Add **caps on context/chat history size** (count and/or bytes) with eviction or warnings.
+
+### Daily-driver productivity (sysadmin / HPC)
+- **Session resilience**: crash-safe restore for tabs, scrollback, cwd, and env; allow “snapshot now”.
+- **Per-tab profiles**: env vars, shell init hooks, ssh jump, module load, conda/venv activation.
+- **Remote state visibility**: show host/user/cluster + last latency in tab title; warn on stale SSH or expired Kerberos.
+- **Job tooling**: built-in Slurm/PBS helpers (queue watch, job info, cancel/hold) and job output tail.
+- **Structured history**: searchable command history tagged by host/project; export/share snippets.
+- **Copy hygiene**: safe copy that strips ANSI, masks secrets, and keeps prompt/command boundaries.
+- **Large output ergonomics**: folding, regex filtering, and “jump to error” for noisy logs.
+- **Persistent marks**: bookmark/pin important outputs and attach notes to markers.
+- **Multiplexing**: native tmux/screen attach or integrated pane splits for local/remote.
+- **Security posture**: sandbox AI requests per host; allow “no-AI” profiles for sensitive sessions.
 
 ### SSH integration reliability & observability
 - Add **structured debug logging** for shell/SSH integration decisions (without printing noisy output into the user terminal by default).
 - Improve remote bootstrap observability (decode/validate failure reasons surfaced somewhere appropriate).
+
+### File capture safety
+- Use `head -c ${maxBytes} -- ${path}` to avoid interpreting paths starting with `-` as options.
 
 ### Connectivity / backend health
 - Revisit periodic backend `ping` strategy:
