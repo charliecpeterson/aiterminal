@@ -1,5 +1,6 @@
 // Module declarations
 mod ai;
+mod health_check;
 mod models;
 mod pty;
 mod settings;
@@ -7,7 +8,7 @@ mod settings;
 // Re-export models and commands
 pub use models::AppState;
 use ai::{ai_chat, ai_chat_stream, test_ai_connection};
-use pty::{close_pty, resize_pty, spawn_pty, write_to_pty};
+use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
 
 #[tauri::command]
@@ -16,8 +17,20 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-fn ping() -> String {
-    "ok".to_string()
+async fn measure_pty_latency(id: u32, state: tauri::State<'_, AppState>) -> Result<u32, String> {
+    // Check if there's an active SSH session with measured latency
+    let ssh_sessions = state.ssh_sessions.lock()
+        .map_err(|e| format!("Failed to acquire SSH session lock: {}", e))?;
+    
+    if let Some(ssh_info) = ssh_sessions.get(&id) {
+        // Return the last measured network latency for SSH sessions
+        if let Some(latency_ms) = ssh_info.last_latency_ms {
+            return Ok(latency_ms as u32);
+        }
+    }
+    
+    // For local sessions or SSH sessions without measured latency yet, return 0
+    Ok(0)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,7 +42,8 @@ pub fn run() {
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             greet,
-            ping,
+            measure_pty_latency,
+            get_pty_info,
             spawn_pty,
             write_to_pty,
             resize_pty,

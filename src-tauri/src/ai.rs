@@ -128,7 +128,7 @@ pub async fn ai_chat_request(
             let endpoint = format!("{}/messages", base);
             let body = serde_json::json!({
                 "model": model,
-                "max_tokens": 1024,
+                "max_tokens": crate::models::DEFAULT_MAX_TOKENS,
                 "messages": [
                     { "role": "user", "content": prompt }
                 ]
@@ -336,11 +336,27 @@ pub async fn ai_chat_stream(
     model: String,
     prompt: String,
     request_id: String,
+    max_tokens: Option<u32>,
+    timeout_secs: Option<u64>,
 ) -> Result<(), String> {
+    use crate::models::{DEFAULT_MAX_TOKENS, MIN_MAX_TOKENS, MAX_MAX_TOKENS, 
+                        HTTP_TIMEOUT_SECS, MAX_STREAM_BUFFER_SIZE};
+    
     let provider = provider.to_lowercase();
     let api_key = api_key.trim().to_string();
     let url = url.map(|value| value.trim().to_string());
     let prompt = normalize_prompt(&prompt);
+    
+    // Clamp max_tokens to valid range
+    let max_tokens = max_tokens
+        .unwrap_or(DEFAULT_MAX_TOKENS)
+        .clamp(MIN_MAX_TOKENS, MAX_MAX_TOKENS);
+    
+    // Use provided timeout or default
+    let timeout = std::time::Duration::from_secs(
+        timeout_secs.unwrap_or(HTTP_TIMEOUT_SECS)
+    );
+    
     if prompt.is_empty() {
         window
             .emit("ai-stream:error", serde_json::json!({ "request_id": request_id, "error": "Prompt is empty" }))
@@ -349,7 +365,7 @@ pub async fn ai_chat_stream(
     }
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(timeout)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -365,7 +381,8 @@ pub async fn ai_chat_stream(
                 "stream": true,
                 "messages": [
                     { "role": "user", "content": prompt }
-                ]
+                ],
+                "max_tokens": max_tokens,
             });
             let resp = client
                 .post(endpoint)
@@ -385,6 +402,15 @@ pub async fn ai_chat_stream(
                 let chunk = chunk.map_err(|e| e.to_string())?;
                 let part = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&part);
+                
+                // Backpressure: prevent unbounded buffer growth
+                if buffer.len() > MAX_STREAM_BUFFER_SIZE {
+                    return Err(format!(
+                        "Stream buffer exceeded limit of {} bytes. Possible malformed response.",
+                        MAX_STREAM_BUFFER_SIZE
+                    ));
+                }
+                
                 while let Some(pos) = buffer.find('\n') {
                     let line = buffer[..pos].trim().to_string();
                     buffer = buffer[pos + 1..].to_string();
@@ -429,7 +455,10 @@ pub async fn ai_chat_stream(
                 "stream": true,
                 "messages": [
                     { "role": "user", "content": prompt }
-                ]
+                ],
+                "options": {
+                    "num_predict": max_tokens,
+                }
             });
             let resp = client
                 .post(endpoint)
@@ -448,6 +477,15 @@ pub async fn ai_chat_stream(
                 let chunk = chunk.map_err(|e| e.to_string())?;
                 let part = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&part);
+                
+                // Backpressure: prevent unbounded buffer growth
+                if buffer.len() > MAX_STREAM_BUFFER_SIZE {
+                    return Err(format!(
+                        "Stream buffer exceeded limit of {} bytes. Possible malformed response.",
+                        MAX_STREAM_BUFFER_SIZE
+                    ));
+                }
+                
                 while let Some(pos) = buffer.find('\n') {
                     let line = buffer[..pos].trim().to_string();
                     buffer = buffer[pos + 1..].to_string();

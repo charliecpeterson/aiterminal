@@ -43,7 +43,37 @@ __aiterm_emit_host() {
     fi
     printf "\033]633;H;%s\007" "$__AITERM_HOSTNAME"
 }
-__aiterm_mark_prompt() { __aiterm_emit "A"; }
+
+# Emit RemoteHost OSC sequence for SSH detection
+__aiterm_emit_remote_host() {
+    if [ -n "$SSH_CONNECTION" ] || [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
+        # We're in an SSH session - report user@host:ip
+        local current_user="${USER:-$(whoami 2>/dev/null || echo unknown)}"
+        local current_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+        
+        # Extract remote IP from SSH_CONNECTION (format: client_ip client_port server_ip server_port)
+        # We want the server_ip (third field) which is the IP we're connected to
+        local remote_ip=""
+        if [ -n "$SSH_CONNECTION" ]; then
+            remote_ip=$(echo "$SSH_CONNECTION" | awk '{print $3}')
+        fi
+        
+        # Send user@host:ip so we can use the IP for latency measurement
+        if [ -n "$remote_ip" ]; then
+            printf "\033]1337;RemoteHost=%s@%s:%s\007" "$current_user" "$current_host" "$remote_ip"
+        else
+            printf "\033]1337;RemoteHost=%s@%s\007" "$current_user" "$current_host"
+        fi
+    else
+        # Local session - send empty/local marker
+        printf "\033]1337;RemoteHost=\007"
+    fi
+}
+
+__aiterm_mark_prompt() { 
+    __aiterm_emit "A"
+    __aiterm_emit_remote_host  # Update SSH state on every prompt
+}
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
 
