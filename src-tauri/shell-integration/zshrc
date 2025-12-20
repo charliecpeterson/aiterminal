@@ -1,0 +1,3 @@
+# AI Terminal zsh bootstrap
+if [ -f ~/.zshrc ]; then source ~/.zshrc 2>/dev/null; fi
+if [ -f ~/.config/aiterminal/bash_init.sh ]; then source ~/.config/aiterminal/bash_init.sh 2>/dev/null; fi

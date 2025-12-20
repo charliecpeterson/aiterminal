@@ -3,6 +3,7 @@ import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
 import type { CopyMenuState } from '../terminal/markers';
@@ -74,6 +75,33 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   });
 
   const visibleRef = useRef(visible);
+  // Cleanup on unmount
+  useEffect(() => {
+      return () => {
+          // Close PTY before cleaning up terminal
+          invoke('close_pty', { id }).catch((e: unknown) => {
+              console.error(`Failed to close PTY ${id}:`, e);
+          });
+          
+          // Cleanup terminal instance
+          if (xtermRef.current) {
+              xtermRef.current.dispose();
+              xtermRef.current = null;
+          }
+          
+          // Cleanup addons
+          if (fitAddonRef.current) {
+              fitAddonRef.current.dispose();
+              fitAddonRef.current = null;
+          }
+          
+          if (searchAddonRef.current) {
+              searchAddonRef.current.dispose();
+              searchAddonRef.current = null;
+          }
+      };
+  }, [id]);
+  
   useEffect(() => {
       handleTerminalVisibilityChange({
           id,

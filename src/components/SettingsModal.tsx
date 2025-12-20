@@ -35,19 +35,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
     const handleSave = async () => {
         if (localSettings) {
-            // Save API key separately to keychain
-            if (localSettings.ai.api_key && localSettings.ai.api_key.trim() !== '') {
-                try {
-                    await invoke('save_api_key', { 
-                        provider: localSettings.ai.provider,
-                        apiKey: localSettings.ai.api_key 
-                    });
-                } catch (error) {
-                    console.error('Failed to save API key to keychain:', error);
-                }
-            }
-            
-            // Save other settings (API key will be skipped automatically)
             await updateSettings(localSettings);
             onClose();
         }

@@ -29,6 +29,10 @@ export interface TerminalWiring {
     cleanup: () => void;
 }
 
+export interface TerminalWiringCleanup {
+    dispose: () => void;
+}
+
 export function createTerminalWiring(params: {
     id: number;
     container: HTMLElement;

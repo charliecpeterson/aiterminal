@@ -39,14 +39,15 @@ function AppContent() {
       const id = await invoke<number>("spawn_pty");
       setTabs((prev) => [...prev, { id, title: `Tab ${prev.length + 1}` }]);
       setActiveTabId(id);
-    } catch (e) {
-      console.error("Failed to spawn PTY", e);
+    } catch (error) {
+      console.error("Failed to spawn PTY:", error);
+      // Show user-visible error in a future error toast/notification system
     }
   };
 
   const closeTab = (id: number) => {
-    invoke("close_pty", { id }).catch((e) => {
-      console.error("Failed to close PTY", e);
+    invoke("close_pty", { id }).catch((error) => {
+      console.error("Failed to close PTY:", error);
     });
     setTabs((prev) => {
       const newTabs = prev.filter((t) => t.id !== id);

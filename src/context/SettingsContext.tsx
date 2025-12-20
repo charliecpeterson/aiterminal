@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface AppearanceSettings {
@@ -36,29 +36,40 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [settings, setSettings] = useState<AppSettings | null>(null);
     const [loading, setLoading] = useState(true);
+    const loadingRef = useRef(false); // Prevent double-load
 
     useEffect(() => {
-        loadSettings();
+        // Prevent double-loading in case of re-renders
+        if (loadingRef.current) return;
+        loadingRef.current = true;
+        
+        // Check if we're in a detached AI panel window
+        const isAiWindow = window.location.hash.startsWith('#/ai-panel');
+        
+        // Only load settings if we're in the main window
+        // Detached AI windows don't need settings on startup
+        if (!isAiWindow) {
+            loadSettings();
+        } else {
+            // For AI panel windows, just mark as not loading
+            // Settings will be loaded on-demand if needed
+            setLoading(false);
+        }
     }, []);
 
     const loadSettings = async () => {
         try {
             const loadedSettings = await invoke<AppSettings>('load_settings');
-            
-            // Load API key from keychain
-            try {
-                const apiKey = await invoke<string>('get_api_key', { 
-                    provider: loadedSettings.ai.provider 
-                });
-                loadedSettings.ai.api_key = apiKey;
-            } catch (error) {
-                // API key not found in keychain, that's ok
-                console.log('No API key found in keychain');
-            }
-            
+            // API key is already loaded from keychain/cache by load_settings
             setSettings(loadedSettings);
         } catch (error) {
             console.error('Failed to load settings:', error);
+            // Load defaults if settings file is corrupted
+            setSettings({
+                appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
+                ai: { provider: 'openai', model: 'gpt-4', api_key: '', url: '' },
+                terminal: { max_markers: 200 }
+            });
         } finally {
             setLoading(false);
         }
