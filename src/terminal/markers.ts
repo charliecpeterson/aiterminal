@@ -9,6 +9,9 @@ export interface CopyMenuState {
   outputRange: [number, number] | null;
   disabled?: boolean;
   outputDisabled?: boolean;
+  exitCode?: number;
+  commandText?: string;
+  outputText?: string;
 }
 
 export type AddContextItem = (item: ContextItem) => void;
@@ -25,6 +28,7 @@ export interface MarkerManagerParams {
 interface MarkerMeta {
   outputStartMarker?: IMarker;
   isBootstrap?: boolean;
+  exitCode?: number;
 }
 
 function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
@@ -113,6 +117,25 @@ export function createMarkerManager({
         marker
       );
 
+      // Capture text for quick actions
+      const commandText = getRangeText(commandRange);
+      const outputText = outputRange ? getRangeText(outputRange) : undefined;
+      
+      // Get exitCode from marker metadata
+      const meta = markerMeta.get(marker);
+      const storedExitCode = meta?.exitCode;
+
+      console.log('🎯 Marker clicked - Debug info:', {
+        exitCode: storedExitCode,
+        exitCodeType: typeof storedExitCode,
+        exitCodeIsUndefined: storedExitCode === undefined,
+        exitCodeIsNotZero: storedExitCode !== 0,
+        shouldShowExplainError: storedExitCode !== undefined && storedExitCode !== 0,
+        hasOutput: !!outputText,
+        commandPreview: commandText.slice(0, 50),
+        markerMeta: meta,
+      });
+
       const rect = element.getBoundingClientRect();
       setCopyMenu({
         x: rect.right + 8,
@@ -121,6 +144,9 @@ export function createMarkerManager({
         outputRange,
         disabled,
         outputDisabled,
+        exitCode: storedExitCode,
+        commandText,
+        outputText,
       });
     });
   };
@@ -188,8 +214,17 @@ export function createMarkerManager({
         // Command Finished
         const parsed = Number.parseInt(parts[1] || '0', 10);
         const exitCode = Number.isFinite(parsed) ? parsed : 0;
+        
+        console.log('🎯 OSC 133 D - Command finished:', { exitCode, parsed, parts });
+        
         if (currentMarker) {
           const marker = currentMarker;
+          
+          // Store exitCode in metadata
+          const meta = markerMeta.get(marker) || {};
+          meta.exitCode = exitCode;
+          markerMeta.set(marker, meta);
+          
           marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));
           if (marker.element) {
             setupMarkerElement(marker, marker.element, exitCode);

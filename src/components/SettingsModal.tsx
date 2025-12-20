@@ -44,7 +44,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         )), [aiEmbeddingOptions]
     );
 
-    if (!isOpen || !localSettings) return null;
+    if (!isOpen) return null;
+    
+    // Show loading state if settings not loaded yet
+    if (!localSettings) {
+        return (
+            <div className="settings-overlay" onClick={onClose}>
+                <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="settings-header">
+                        <h2>Settings</h2>
+                        <button className="settings-close" onClick={onClose}>×</button>
+                    </div>
+                    <div style={{ padding: '20px', textAlign: 'center' }}>Loading settings...</div>
+                </div>
+            </div>
+        );
+    }
 
     const handleSave = useCallback(async () => {
         if (localSettings) {

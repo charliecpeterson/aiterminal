@@ -8,6 +8,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
 import type { CopyMenuState } from '../terminal/markers';
 import type { SelectionMenuState } from '../terminal/selectionMenu';
+import { QUICK_ACTIONS, buildQuickActionPrompt, shouldShowAction, type QuickActionType } from '../ai/quickActions';
 import { useFloatingMenu } from '../terminal/useFloatingMenu';
 import { createSearchController } from '../terminal/search';
 import { handleTerminalVisibilityChange } from '../terminal/visibility';
@@ -53,6 +54,49 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
     const hideCopyMenu = useCallback(() => setCopyMenu(null), []);
     const hideSelectionMenu = useCallback(() => setSelectionMenu(null), []);
+
+    const handleQuickAction = useCallback(
+        (actionType: QuickActionType, commandText: string, outputText?: string, exitCode?: number) => {
+            console.log('Quick action clicked:', { actionType, exitCode, hasOutput: !!outputText });
+            
+            const { systemPrompt, userPrompt } = buildQuickActionPrompt({
+                actionType,
+                command: commandText,
+                output: outputText,
+                exitCode,
+            });
+
+            // Add the command/output to context first
+            addContextItem({
+                id: crypto.randomUUID(),
+                type: 'command_output',
+                content: outputText || commandText,
+                timestamp: Date.now(),
+                metadata: {
+                    command: commandText,
+                    output: outputText,
+                    exitCode,
+                },
+            });
+
+            // Close the menu
+            hideCopyMenu();
+            
+            // Emit event to open AI panel and trigger chat
+            invoke('emit_event', {
+                event: 'ai-quick-action',
+                payload: {
+                    actionType,
+                    systemPrompt,
+                    userPrompt,
+                    terminalId: id,
+                },
+            }).catch((err) => {
+                console.warn('Failed to emit quick action event:', err);
+            });
+        },
+        [addContextItem, hideCopyMenu, id]
+    );
 
     const actions = useMemo(() => createTerminalActions({
         termRef: xtermRef,
@@ -265,6 +309,82 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     >
                         Add Output to Context
                     </button>
+                    
+                    {/* AI Quick Actions */}
+                    {copyMenu.commandText && (
+                        <>
+                            <div className="marker-copy-divider" />
+                            <div className="marker-quick-actions-label">AI Quick Actions</div>
+                            
+                            {shouldShowAction('explain', copyMenu.exitCode, !!copyMenu.outputText) && (
+                                <button
+                                    className="marker-quick-action"
+                                    disabled={copyMenu.disabled}
+                                    onClick={() =>
+                                        handleQuickAction(
+                                            'explain',
+                                            copyMenu.commandText!,
+                                            copyMenu.outputText,
+                                            copyMenu.exitCode
+                                        )
+                                    }
+                                >
+                                    {QUICK_ACTIONS.explain.icon} {QUICK_ACTIONS.explain.label}
+                                </button>
+                            )}
+                            
+                            {shouldShowAction('explainError', copyMenu.exitCode, !!copyMenu.outputText) && (
+                                <button
+                                    className="marker-quick-action marker-quick-action-error"
+                                    disabled={copyMenu.disabled}
+                                    onClick={() =>
+                                        handleQuickAction(
+                                            'explainError',
+                                            copyMenu.commandText!,
+                                            copyMenu.outputText,
+                                            copyMenu.exitCode
+                                        )
+                                    }
+                                >
+                                    {QUICK_ACTIONS.explainError.icon} {QUICK_ACTIONS.explainError.label}
+                                </button>
+                            )}
+                            
+                            {shouldShowAction('suggestFix', copyMenu.exitCode, !!copyMenu.outputText) && (
+                                <button
+                                    className="marker-quick-action marker-quick-action-fix"
+                                    disabled={copyMenu.disabled}
+                                    onClick={() =>
+                                        handleQuickAction(
+                                            'suggestFix',
+                                            copyMenu.commandText!,
+                                            copyMenu.outputText,
+                                            copyMenu.exitCode
+                                        )
+                                    }
+                                >
+                                    {QUICK_ACTIONS.suggestFix.icon} {QUICK_ACTIONS.suggestFix.label}
+                                </button>
+                            )}
+                            
+                            {shouldShowAction('whatsNext', copyMenu.exitCode, !!copyMenu.outputText) && (
+                                <button
+                                    className="marker-quick-action marker-quick-action-next"
+                                    disabled={copyMenu.disabled}
+                                    onClick={() =>
+                                        handleQuickAction(
+                                            'whatsNext',
+                                            copyMenu.commandText!,
+                                            copyMenu.outputText,
+                                            copyMenu.exitCode
+                                        )
+                                    }
+                                >
+                                    {QUICK_ACTIONS.whatsNext.icon} {QUICK_ACTIONS.whatsNext.label}
+                                </button>
+                            )}
+                        </>
+                    )}
                 </div>
             )}
             {selectionMenu && (

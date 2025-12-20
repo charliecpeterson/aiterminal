@@ -376,13 +376,15 @@ pub async fn ai_chat_stream(
             }
             let base = normalize_base_url(url.as_deref().unwrap_or("https://api.openai.com/v1"));
             let endpoint = format!("{}/chat/completions", base);
+            
+            // Newer models (GPT-4o, o1, etc.) use max_completion_tokens instead of max_tokens
             let body = serde_json::json!({
                 "model": model,
                 "stream": true,
                 "messages": [
                     { "role": "user", "content": prompt }
                 ],
-                "max_tokens": max_tokens,
+                "max_completion_tokens": max_tokens,
             });
             let resp = client
                 .post(endpoint)

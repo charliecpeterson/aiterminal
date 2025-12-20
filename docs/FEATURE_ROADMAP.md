@@ -1,19 +1,6 @@
 # AI Terminal Feature Roadmap
 
-## Current Latency Implementation Analysis
 
-### What It Measures Now
-- **Frontend ↔ Rust IPC round-trip**: `invoke('ping')` → Rust returns "ok" → measures time
-- **Typical values**: 1-5ms for local terminal (basically instant)
-- **Problem**: Doesn't measure actual shell/PTY responsiveness or SSH network latency
-
-### What It Should Measure
-- **PTY echo latency**: Send invisible control sequence to shell, measure time until echo received
-- **Useful for**:
-  - Detecting slow SSH connections
-  - Identifying network issues
-  - Monitoring remote server responsiveness
-  - Warning users about high latency before commands fail
 
 ## High-Priority Features for Everyday Use
 
@@ -104,34 +91,9 @@
 
 **Benefit**: Simplify accessing remote services
 
-### 8. **Improved Latency Monitoring** ⭐
-**Priority**: Nice-to-have, especially for remote work
-**Why**: Current implementation only measures IPC, not actual PTY latency
-**Implementation**:
-```rust
-// Send invisible OSC sequence to shell
-// Measure time until we receive the echo back
-async fn measure_pty_latency(pty_id: u32) -> Result<u32, String> {
-    let seq_id = uuid::Uuid::new_v4();
-    let osc_probe = format!("\x1b]51;probe;{}\x07", seq_id);
-    
-    // Write probe to PTY
-    write_to_pty(pty_id, osc_probe)?;
-    
-    // Listen for echo with timeout
-    // Return elapsed time in milliseconds
-}
-```
-- Send control sequence that shell ignores but echoes
-- Measure round-trip time
-- Update UI with real latency
-- Useful thresholds: <50ms (good), 50-150ms (okay), >150ms (slow)
-
-**Benefit**: Actual network latency visibility for SSH
 
 ## Quick Wins (Easy to Implement)
 
-1. **Tab Reordering**: Drag-and-drop tabs to reorder ✅
 2. **LLM-Powered Command Line Autocomplete**: AI suggestions for command completion (Ctrl+Space or Tab)
    - Send partial command + context to LLM
    - Display as ghost text
@@ -146,22 +108,6 @@ async fn measure_pty_latency(pty_id: u32) -> Result<u32, String> {
 10. **Search History**: Cmd+R for reverse search across all tabs
 11. **Export Session**: Save current tab as script with all commands
 
-## Implementation Priority
-
-**Phase 1 (Core Productivity)**: 
-- Session Persistence
-- Split Panes
-- Command Palette
-
-**Phase 2 (Power User)**:
-- Broadcast Mode
-- Visual Bell
-- Session Logging
-
-**Phase 3 (Polish)**:
-- Port Forwarding Manager
-- Improved Latency
-- Quick Wins
 
 ## Technical Considerations
 
@@ -189,22 +135,4 @@ async fn measure_pty_latency(pty_id: u32) -> Result<u32, String> {
 - Monitor port status using netstat/lsof
 - Auto-cleanup on disconnect
 
-## Competitive Analysis
 
-**What other terminals have that we should match**:
-- iTerm2: Split panes, session restore, broadcast input, color presets
-- Warp: AI command search, workflow blocks, team sharing
-- Hyper: Plugin ecosystem, customization
-- Alacritty: Performance, minimal overhead
-
-**Our advantages**:
-- ✅ Built-in AI chat with context capture
-- ✅ Command markers with output separation
-- ✅ Intelligent context extraction
-- ✅ Modern React UI with extensibility
-- ⚠️ Need: Session persistence, splits, broadcast
-
-**Differentiation strategy**: 
-- Focus on AI-powered workflows
-- Smart context for sysadmin tasks
-- Make complex operations simple (SSH, monitoring, deployments)

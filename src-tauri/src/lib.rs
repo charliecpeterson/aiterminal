@@ -10,10 +10,21 @@ pub use models::AppState;
 use ai::{ai_chat, ai_chat_stream, test_ai_connection};
 use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
+use tauri::Emitter;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+async fn emit_event(
+    app: tauri::AppHandle,
+    event: String,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    app.emit(&event, payload)
+        .map_err(|e| format!("Failed to emit event: {}", e))
 }
 
 #[tauri::command]
@@ -42,6 +53,7 @@ pub fn run() {
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             greet,
+            emit_event,
             measure_pty_latency,
             get_pty_info,
             spawn_pty,
