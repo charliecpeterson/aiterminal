@@ -186,7 +186,8 @@ export function createMarkerManager({
         }
       } else if (type === 'D') {
         // Command Finished
-        const exitCode = parseInt(parts[1] || '0');
+        const parsed = Number.parseInt(parts[1] || '0', 10);
+        const exitCode = Number.isFinite(parsed) ? parsed : 0;
         if (currentMarker) {
           const marker = currentMarker;
           marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));

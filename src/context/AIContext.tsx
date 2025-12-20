@@ -123,30 +123,33 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
     dispatch({ type: "chat:append", id, content });
   }, []);
 
+  // Memoize expensive context item formatting
+  const formattedContextItems = useMemo(() => {
+    return state.contextItems.map((item) => {
+      if (item.type === "command_output") {
+        const command = item.metadata?.command || "";
+        const output = item.metadata?.output || item.content;
+        return `Type: command\nContent: ${command}\n\nType: output\nContent: ${output}`;
+      }
+      if (item.type === "file") {
+        const pathLine = item.metadata?.path ? `\nPath: ${item.metadata.path}` : "";
+        const truncatedLine =
+          item.metadata?.truncated ? "\nTruncated: true" : "";
+        return `Type: file\nContent: ${item.content}${pathLine}${truncatedLine}`;
+      }
+      if (item.metadata?.command) {
+        return `Type: ${item.type}\nContent: ${item.content}\nCommand: ${item.metadata.command}`;
+      }
+      return `Type: ${item.type}\nContent: ${item.content}`;
+    });
+  }, [state.contextItems]);
+
   const buildPrompt = useCallback(
     (userInput: string) => {
       const trimmed = userInput.trim();
-      const hasContext = state.contextItems.length > 0;
+      const hasContext = formattedContextItems.length > 0;
       const contextBlock = hasContext
-        ? state.contextItems
-            .map((item) => {
-              if (item.type === "command_output") {
-                const command = item.metadata?.command || "";
-                const output = item.metadata?.output || item.content;
-                return `Type: command\nContent: ${command}\n\nType: output\nContent: ${output}`;
-              }
-              if (item.type === "file") {
-                const pathLine = item.metadata?.path ? `\nPath: ${item.metadata.path}` : "";
-                const truncatedLine =
-                  item.metadata?.truncated ? "\nTruncated: true" : "";
-                return `Type: file\nContent: ${item.content}${pathLine}${truncatedLine}`;
-              }
-              if (item.metadata?.command) {
-                return `Type: ${item.type}\nContent: ${item.content}\nCommand: ${item.metadata.command}`;
-              }
-              return `Type: ${item.type}\nContent: ${item.content}`;
-            })
-            .join("\n\n")
+        ? formattedContextItems.join("\n\n")
         : "";
 
       const sections = [];
@@ -158,7 +161,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       }
       return sections.join("\n\n");
     },
-    [state.contextItems]
+    [formattedContextItems]
   );
 
   const value = useMemo(

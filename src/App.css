@@ -37,6 +37,7 @@ body, html, #root {
   align-items: center;
   padding-left: 10px;
   user-select: none;
+  -webkit-user-select: none;
   -webkit-app-region: drag; /* Allow dragging window by tabs header */
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -52,6 +53,14 @@ body, html, #root {
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag; /* Tabs themselves should be clickable */
+  transition: background-color 0.2s ease, opacity 0.15s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+.tab.dragging {
+  opacity: 0.5;
+  transform: scale(1.05);
+  cursor: grabbing;
 }
 
 .tab:hover {
@@ -63,6 +72,22 @@ body, html, #root {
   color: #ffffff;
 }
 
+.tab-name-input {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  color: #ffffff;
+  padding: 2px 6px;
+  font-size: 12px;
+  outline: none;
+  width: 100px;
+}
+
+.tab-name-input:focus {
+  border-color: rgba(14, 165, 233, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+}
+
 .close-tab {
   margin-left: 8px;
   font-size: 14px;
@@ -72,6 +97,11 @@ body, html, #root {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: auto;
+}
+
+.tab[draggable="true"] .close-tab {
+  pointer-events: none;
 }
 
 .close-tab:hover {

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AiSettings } from '../context/SettingsContext';
+import type { AiSettings, StreamingSettings } from '../context/SettingsContext';
 import type { ChatMessage } from '../context/AIContext';
 import { attachAiStreamListeners } from './aiStream';
 
@@ -7,6 +7,7 @@ export interface ChatSendDeps {
   prompt: string;
   buildPrompt: (userInput: string) => string;
   settingsAi: AiSettings | null | undefined;
+  settingsStreaming?: StreamingSettings | null;
 
   addMessage: (message: ChatMessage) => void;
   appendMessage: (assistantMessageId: string, content: string) => void;
@@ -65,6 +66,19 @@ export function sendChatMessage(deps: ChatSendDeps): void {
 
   setIsSending(true);
 
+  // Validate required AI settings
+  if (!settingsAi.provider || !settingsAi.model) {
+    setIsSending(false);
+    setSendError('AI provider and model must be configured');
+    addMessage({
+      id: crypto.randomUUID(),
+      role: 'system',
+      content: 'AI provider and model must be configured. Open Settings to complete the setup.',
+      timestamp: Date.now(),
+    });
+    return;
+  }
+
   const stream = attachAiStreamListeners({
     requestId,
     handlers: {
@@ -92,6 +106,8 @@ export function sendChatMessage(deps: ChatSendDeps): void {
     model: settingsAi.model,
     prompt: payload,
     requestId,
+    maxTokens: deps.settingsStreaming?.max_tokens,
+    timeoutSecs: deps.settingsStreaming?.timeout_secs,
   }).catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     setSendError(message);

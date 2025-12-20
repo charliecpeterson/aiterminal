@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings, AppSettings } from '../context/SettingsContext';
 import './SettingsModal.css';
@@ -31,16 +31,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         setAiEmbeddingOptions([]);
     }, [localSettings?.ai?.provider, localSettings?.ai?.api_key, localSettings?.ai?.url]);
 
+    // Memoize expensive model option rendering
+    const memoizedModelOptions = useMemo(() => 
+        aiModelOptions.map((model) => (
+            <option key={model} value={model}>{model}</option>
+        )), [aiModelOptions]
+    );
+
+    const memoizedEmbeddingOptions = useMemo(() => 
+        aiEmbeddingOptions.map((model) => (
+            <option key={model} value={model}>{model}</option>
+        )), [aiEmbeddingOptions]
+    );
+
     if (!isOpen || !localSettings) return null;
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
         if (localSettings) {
             await updateSettings(localSettings);
             onClose();
         }
-    };
+    }, [localSettings, updateSettings, onClose]);
 
-    const handleChange = (section: 'appearance' | 'terminal' | 'ai', key: string, value: any) => {
+    const handleChange = useCallback((section: 'appearance' | 'terminal' | 'ai', key: string, value: string | number) => {
         setLocalSettings(prev => {
             if (!prev) return null;
             return {
@@ -51,9 +64,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                 }
             };
         });
-    };
+    }, []);
 
-    const handleTestConnection = async () => {
+    const handleTestConnection = useCallback(async () => {
         if (!localSettings) return;
         setAiTestStatus('testing');
         setAiTestError(null);
@@ -82,7 +95,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             setAiTestStatus('error');
             setAiTestError(message);
         }
-    };
+    }, [localSettings, handleChange]);
 
     return (
         <div className="settings-modal-overlay" onClick={onClose}>
@@ -120,9 +133,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                 <div className="form-group">
                                     <label>Font Size</label>
                                     <input 
-                                        type="number" 
+                                        type="number"
+                                        min={8}
+                                        max={72}
                                         value={localSettings.appearance.font_size}
-                                        onChange={(e) => handleChange('appearance', 'font_size', parseInt(e.target.value))}
+                                        onChange={(e) => {
+                                            const parsed = Number.parseInt(e.target.value, 10);
+                                            const size = Number.isFinite(parsed) 
+                                                ? Math.min(72, Math.max(8, parsed))
+                                                : 14;
+                                            handleChange('appearance', 'font_size', size);
+                                        }}
                                     />
                                 </div>
                                 <div className="form-group">
@@ -130,7 +151,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <input 
                                         type="text" 
                                         value={localSettings.appearance.font_family}
-                                        onChange={(e) => handleChange('appearance', 'font_family', e.target.value)}
+                                        onChange={(e) => {
+                                            const value = e.target.value.trim();
+                                            if (value) {
+                                                handleChange('appearance', 'font_family', value);
+                                            }
+                                        }}
+                                        placeholder="Monaco, monospace"
                                     />
                                 </div>
                                 <div className="form-group">
@@ -195,7 +222,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <input 
                                         type="text" 
                                         value={localSettings.ai.url || ''}
-                                        onChange={(e) => handleChange('ai', 'url', e.target.value)}
+                                        onChange={(e) => {
+                                            const value = e.target.value.trim();
+                                            // Allow empty or valid URL
+                                            if (!value) {
+                                                handleChange('ai', 'url', '');
+                                            } else {
+                                                handleChange('ai', 'url', value);
+                                            }
+                                        }}
                                         placeholder="https://api.openai.com/v1"
                                     />
                                 </div>
@@ -228,11 +263,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             value={localSettings.ai.model}
                                             onChange={(e) => handleChange('ai', 'model', e.target.value)}
                                         >
-                                            {aiModelOptions.map((model) => (
-                                                <option key={model} value={model}>
-                                                    {model}
-                                                </option>
-                                            ))}
+                                            {memoizedModelOptions}
                                         </select>
                                     ) : (
                                         <input 
@@ -245,9 +276,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     )}
                                     {aiModelOptions.length > 0 && (
                                         <datalist id="ai-model-options">
-                                            {aiModelOptions.map((model) => (
-                                                <option key={model} value={model} />
-                                            ))}
+                                            {memoizedModelOptions}
                                         </datalist>
                                     )}
                                 </div>
@@ -259,11 +288,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             onChange={(e) => handleChange('ai', 'embedding_model', e.target.value)}
                                         >
                                             <option value="">None</option>
-                                            {aiEmbeddingOptions.map((model) => (
-                                                <option key={model} value={model}>
-                                                    {model}
-                                                </option>
-                                            ))}
+                                            {memoizedEmbeddingOptions}
                                         </select>
                                     ) : (
                                         <input 
@@ -276,9 +301,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     )}
                                     {aiEmbeddingOptions.length > 0 && (
                                         <datalist id="ai-embedding-options">
-                                            {aiEmbeddingOptions.map((model) => (
-                                                <option key={model} value={model} />
-                                            ))}
+                                            {memoizedEmbeddingOptions}
                                         </datalist>
                                     )}
                                 </div>

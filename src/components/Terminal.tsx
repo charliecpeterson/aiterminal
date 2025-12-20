@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
@@ -8,7 +8,6 @@ import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
 import type { CopyMenuState } from '../terminal/markers';
 import type { SelectionMenuState } from '../terminal/selectionMenu';
-import { useLatencyProbe } from '../terminal/useLatencyProbe';
 import { useFloatingMenu } from '../terminal/useFloatingMenu';
 import { createSearchController } from '../terminal/search';
 import { handleTerminalVisibilityChange } from '../terminal/visibility';
@@ -18,6 +17,15 @@ import { createTerminalActions } from '../terminal/terminalActions';
 import { usePtyAutoClose } from '../terminal/usePtyAutoClose';
 import { useAiRunCommandListener } from '../terminal/useAiRunCommandListener';
 import { useTerminalAppearance } from '../terminal/useTerminalAppearance';
+import { useLatencyProbe } from '../terminal/useLatencyProbe';
+
+interface PtyInfo {
+    pty_type: string;
+    remote_host: string | null;
+    remote_user: string | null;
+    ssh_client: string | null;
+    connection_time: number | null;
+}
 
 interface TerminalProps {
     id: number;
@@ -35,7 +43,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [showSearch, setShowSearch] = useState(false);
     const [hostLabel, setHostLabel] = useState('Local');
-        const { latencyMs, latencyAt } = useLatencyProbe(10000);
+    const [ptyInfo, setPtyInfo] = useState<PtyInfo | null>(null);
     const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
     const copyMenuRef = useRef<HTMLDivElement | null>(null);
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
@@ -43,15 +51,15 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const selectionPointRef = useRef<{ x: number; y: number } | null>(null);
     const pendingFileCaptureRef = useRef<PendingFileCapture | null>(null);
 
-    const hideCopyMenu = () => setCopyMenu(null);
-    const hideSelectionMenu = () => setSelectionMenu(null);
+    const hideCopyMenu = useCallback(() => setCopyMenu(null), []);
+    const hideSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
-    const actions = createTerminalActions({
+    const actions = useMemo(() => createTerminalActions({
         termRef: xtermRef,
         addContextItem,
         hideCopyMenu,
         hideSelectionMenu,
-    });
+    }), [addContextItem, hideCopyMenu, hideSelectionMenu]);
 
     const {
         copyRange,
@@ -61,12 +69,12 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         addSelection,
     } = actions;
 
-    const search = createSearchController({
+    const search = useMemo(() => createSearchController({
         searchAddonRef,
         searchInputRef,
         setShowSearch,
         focusTerminal: () => xtermRef.current?.focus(),
-    });
+    }), []);
   
   useTerminalAppearance({
       termRef: xtermRef,
@@ -74,7 +82,37 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
       appearance: settings?.appearance,
   });
 
+  // Monitor latency for SSH sessions
+  const { latencyMs } = useLatencyProbe(id, 5000); // Poll every 5 seconds
+
   const visibleRef = useRef(visible);
+  
+  // Fetch PTY info to determine if local or remote
+  // Poll periodically to detect SSH session changes
+  useEffect(() => {
+    const fetchPtyInfo = () => {
+      invoke<PtyInfo>('get_pty_info', { id })
+        .then((info) => {
+          setPtyInfo(info);
+          if (info.pty_type === 'ssh' && info.remote_host) {
+            const userPart = info.remote_user ? `${info.remote_user}@` : '';
+            setHostLabel(`🔒 ${userPart}${info.remote_host}`);
+          } else {
+            setHostLabel('Local');
+          }
+        })
+        .catch((err) => console.error('Failed to get PTY info:', err));
+    };
+    
+    // Initial fetch
+    fetchPtyInfo();
+    
+    // Poll every 2 seconds to detect SSH session changes
+    const intervalId = setInterval(fetchPtyInfo, 2000);
+    
+    return () => clearInterval(intervalId);
+  }, [id]);
+  
   // Cleanup on unmount
   useEffect(() => {
       return () => {
@@ -243,11 +281,20 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     <span className="status-dot" />
                     <span className="status-text">{hostLabel}</span>
                 </div>
-                <div className="status-latency" title={latencyAt ? `Last checked ${new Date(latencyAt).toLocaleTimeString()}` : 'Latency probe'}>
-                    <span className={`latency-pill ${latencyMs == null ? 'latency-unknown' : latencyMs < 80 ? 'latency-good' : latencyMs < 200 ? 'latency-warn' : 'latency-bad'}`}>
-                        {latencyMs == null ? 'Latency: —' : `Latency: ${latencyMs} ms`}
-                    </span>
-                </div>
+                {ptyInfo?.pty_type === 'ssh' && (
+                    <div 
+                        className="status-latency" 
+                        title={
+                            ptyInfo.ssh_client
+                                ? `SSH Connection\n${ptyInfo.ssh_client}\nConnected: ${ptyInfo.connection_time ? new Date(ptyInfo.connection_time * 1000).toLocaleString() : 'Unknown'}\nLatency: ${latencyMs ? `${latencyMs}ms` : 'Measuring...'}`
+                                : 'SSH Session'
+                        }
+                    >
+                        <span className={`latency-pill ${latencyMs && latencyMs > 0 ? (latencyMs < 50 ? 'latency-good' : latencyMs < 150 ? 'latency-ok' : 'latency-poor') : 'latency-measuring'}`}>
+                            {latencyMs && latencyMs > 0 ? `${latencyMs}ms` : '—'}
+                        </span>
+                    </div>
+                )}
             </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import "./AIPanel.css";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
@@ -49,18 +49,19 @@ const AIPanel = ({
     return formatContextCountLabel(contextItems.length);
   }, [contextItems.length]);
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     sendChatMessage({
       prompt,
       buildPrompt,
       settingsAi: settings?.ai,
+      settingsStreaming: settings?.streaming,
       addMessage,
       appendMessage,
       setPrompt,
       setIsSending,
       setSendError,
     });
-  };
+  }, [prompt, buildPrompt, settings?.ai, settings?.streaming, addMessage, appendMessage]);
 
   const handleCaptureLast = () => {
     requestCaptureLast(captureCount).catch((err) => {

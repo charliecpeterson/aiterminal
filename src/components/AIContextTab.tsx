@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { ContextItem } from "../context/AIContext";
 import { formatChatTime } from "../ai/panelUi";
 
@@ -35,39 +36,32 @@ export function AIContextTab(props: {
     onCaptureFile,
   } = props;
 
-  return (
-    <div className="ai-panel-section">
-      <div className="ai-panel-card">
-        <div className="ai-panel-card-title">Context staging</div>
-        <div className="ai-panel-card-body">Selected output and notes appear here.</div>
-      </div>
-
-      {contextItems.length > 0 ? (
-        <div className="ai-panel-context-list">
-          {contextItems.map((item) => {
-            const isExpanded = expandedContextId === item.id;
-            return (
-              <div key={item.id} className="ai-panel-context-card">
-                <div className="ai-panel-context-header">
-                  <div>
-                    <div className="ai-panel-context-type">{item.type}</div>
-                    <div className="ai-panel-context-time">{formatChatTime(item.timestamp)}</div>
-                  </div>
-                  <div className="ai-panel-context-actions">
-                    <button
-                      className="ai-panel-link"
-                      onClick={() => setExpandedContextId(isExpanded ? null : item.id)}
-                    >
-                      {isExpanded ? "Collapse" : "Preview"}
-                    </button>
-                    <button
-                      className="ai-panel-link danger"
-                      onClick={() => removeContextItem(item.id)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
+  // Memoize expensive context item rendering
+  const renderedContextItems = useMemo(() => {
+    return contextItems.map((item) => {
+      const isExpanded = expandedContextId === item.id;
+      return (
+        <div key={item.id} className="ai-panel-context-card">
+          <div className="ai-panel-context-header">
+            <div>
+              <div className="ai-panel-context-type">{item.type}</div>
+              <div className="ai-panel-context-time">{formatChatTime(item.timestamp)}</div>
+            </div>
+            <div className="ai-panel-context-actions">
+              <button
+                className="ai-panel-link"
+                onClick={() => setExpandedContextId(isExpanded ? null : item.id)}
+              >
+                {isExpanded ? "Collapse" : "Preview"}
+              </button>
+              <button
+                className="ai-panel-link danger"
+                onClick={() => removeContextItem(item.id)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
 
                 <div className={`ai-panel-context-body ${isExpanded ? "expanded" : ""}`}>
                   {item.type === "command_output" ? (
@@ -104,7 +98,19 @@ export function AIContextTab(props: {
                 </div>
               </div>
             );
-          })}
+        });
+    }, [contextItems, expandedContextId, setExpandedContextId, removeContextItem]);
+
+  return (
+    <div className="ai-panel-section">
+      <div className="ai-panel-card">
+        <div className="ai-panel-card-title">Context staging</div>
+        <div className="ai-panel-card-body">Selected output and notes appear here.</div>
+      </div>
+
+      {contextItems.length > 0 ? (
+        <div className="ai-panel-context-list">
+          {renderedContextItems}
         </div>
       ) : (
         <div className="ai-panel-empty">No context items yet.</div>
@@ -120,8 +126,11 @@ export function AIContextTab(props: {
             max={50}
             value={captureCount}
             onChange={(event) => {
-              const value = Number.parseInt(event.target.value, 10);
-              setCaptureCount(Number.isFinite(value) ? value : 1);
+              const parsed = Number.parseInt(event.target.value, 10);
+              const value = Number.isFinite(parsed)
+                ? Math.min(50, Math.max(1, parsed))
+                : 1;
+              setCaptureCount(value);
             }}
           />
           <button className="ai-panel-action ghost" onClick={onCaptureLast}>
@@ -142,8 +151,11 @@ export function AIContextTab(props: {
             max={2048}
             value={fileLimitKb}
             onChange={(event) => {
-              const value = Number.parseInt(event.target.value, 10);
-              setFileLimitKb(Number.isFinite(value) ? value : 200);
+              const parsed = Number.parseInt(event.target.value, 10);
+              const value = Number.isFinite(parsed)
+                ? Math.min(2048, Math.max(1, parsed))
+                : 200;
+              setFileLimitKb(value);
             }}
           />
           <span className="ai-panel-unit">KB</span>

@@ -4,7 +4,10 @@ import { invoke } from '@tauri-apps/api/core';
 
 export async function fitAndResizePty(id: number, term: XTermTerminal, fitAddon: FitAddon): Promise<void> {
   fitAddon.fit();
-  await invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
+  // Validate dimensions are positive integers
+  const rows = Math.max(1, Math.min(1000, term.rows));
+  const cols = Math.max(1, Math.min(1000, term.cols));
+  await invoke('resize_pty', { id, rows, cols });
 }
 
 export interface WindowResizeParams {
@@ -23,7 +26,10 @@ export function attachWindowResize({ id, term, fitAddon, visibleRef }: WindowRes
   const handleResize = () => {
     if (!visibleRef.current) return;
     fitAddon.fit();
-    invoke('resize_pty', { id, rows: term.rows, cols: term.cols });
+    // Validate dimensions before sending to backend
+    const rows = Math.max(1, Math.min(1000, term.rows));
+    const cols = Math.max(1, Math.min(1000, term.cols));
+    invoke('resize_pty', { id, rows, cols });
   };
 
   window.addEventListener('resize', handleResize);

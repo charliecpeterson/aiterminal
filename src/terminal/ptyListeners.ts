@@ -9,7 +9,10 @@ export function attachPtyDataListener(params: {
   onData: (data: string) => void;
 }): PtyListenerHandle {
   const unlistenPromise = listen<string>(`pty-data:${params.id}`, (event) => {
-    params.onData(event.payload);
+    // Validate payload is a string before processing
+    if (typeof event.payload === 'string') {
+      params.onData(event.payload);
+    }
   });
 
   return {

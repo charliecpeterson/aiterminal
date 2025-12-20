@@ -69,7 +69,10 @@ export function attachAiRunCommandListener(params: {
     if (targetId !== null && targetId !== undefined && targetId !== params.id) return;
     if (!params.visibleRef.current) return;
 
-    const normalized = normalizeCommand(event.payload.command ?? '');
+    const rawCommand = event.payload?.command;
+    if (!rawCommand || typeof rawCommand !== 'string') return;
+    
+    const normalized = normalizeCommand(rawCommand);
     const { mode, reason } = decideRunMode(normalized);
     if (!normalized.trim()) return;
 

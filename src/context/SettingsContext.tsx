@@ -19,10 +19,17 @@ export interface TerminalSettings {
     max_markers: number;
 }
 
+export interface StreamingSettings {
+    max_tokens: number;
+    timeout_secs: number;
+    buffer_size_limit: number;
+}
+
 export interface AppSettings {
     appearance: AppearanceSettings;
     ai: AiSettings;
     terminal: TerminalSettings;
+    streaming?: StreamingSettings; // Optional for backward compatibility
 }
 
 interface SettingsContextType {
@@ -68,7 +75,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setSettings({
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
                 ai: { provider: 'openai', model: 'gpt-4', api_key: '', url: '' },
-                terminal: { max_markers: 200 }
+                terminal: { max_markers: 200 },
+                streaming: { max_tokens: 4096, timeout_secs: 120, buffer_size_limit: 1048576 }
             });
         } finally {
             setLoading(false);

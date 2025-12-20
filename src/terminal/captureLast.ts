@@ -12,7 +12,9 @@ export function attachCaptureLastListener(params: {
 
     const unlistenPromise = listen<{ count: number }>('ai-context:capture-last', (event) => {
         if (!visibleRef.current) return;
-        const count = Math.max(1, Math.min(50, event.payload.count || 1));
+        const rawCount = event.payload?.count ?? 1;
+        const count = Math.max(1, Math.min(50, 
+            Number.isFinite(rawCount) ? rawCount : 1));
         markerManagerRef.current?.captureLast(count);
     });
 

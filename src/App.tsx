@@ -14,6 +14,7 @@ import "./components/AIPanel.css";
 interface Tab {
   id: number;
   title: string;
+  customName?: string; // User-defined name
 }
 
 function AppContent() {
@@ -27,6 +28,11 @@ function AppContent() {
   const [isAiAttaching, setIsAiAttaching] = useState(false);
   const [aiWidth, setAiWidth] = useState(360);
   const [isResizing, setIsResizing] = useState(false);
+  const [editingTabId, setEditingTabId] = useState<number | null>(null);
+  const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  
   let isAiWindow = false;
   try {
     isAiWindow = window.location.hash.startsWith("#/ai-panel");
@@ -43,6 +49,25 @@ function AppContent() {
       console.error("Failed to spawn PTY:", error);
       // Show user-visible error in a future error toast/notification system
     }
+  };
+
+  const renameTab = (id: number, newName: string) => {
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === id ? { ...tab, customName: newName || undefined } : tab
+      )
+    );
+  };
+
+  const reorderTabs = (fromIndex: number, toIndex: number) => {
+    console.log('Reordering tabs from', fromIndex, 'to', toIndex);
+    setTabs((prev) => {
+      const newTabs = [...prev];
+      const [movedTab] = newTabs.splice(fromIndex, 1);
+      newTabs.splice(toIndex, 0, movedTab);
+      console.log('New tab order:', newTabs.map(t => t.title));
+      return newTabs;
+    });
   };
 
   const closeTab = (id: number) => {
@@ -266,13 +291,61 @@ function AppContent() {
     <div className="app-container">
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       <div className="tabs-header">
-        {tabs.map((tab) => (
+        {tabs.map((tab, index) => (
           <div
             key={tab.id}
-            className={`tab ${tab.id === activeTabId ? "active" : ""}`}
-            onClick={() => setActiveTabId(tab.id)}
+            className={`tab ${tab.id === activeTabId ? "active" : ""} ${isDragging && draggedTabIndex === index ? "dragging" : ""}`}
+            onMouseDown={(e) => {
+              if (editingTabId === tab.id || e.button !== 0) return;
+              setDragStartX(e.clientX);
+              setDraggedTabIndex(index);
+            }}
+            onMouseMove={(e) => {
+              if (draggedTabIndex === index && e.buttons === 1 && Math.abs(e.clientX - dragStartX) > 5) {
+                setIsDragging(true);
+              }
+              if (isDragging && draggedTabIndex !== null && draggedTabIndex !== index) {
+                reorderTabs(draggedTabIndex, index);
+                setDraggedTabIndex(index);
+              }
+            }}
+            onMouseUp={() => {
+              setIsDragging(false);
+              setDraggedTabIndex(null);
+            }}
+            onClick={() => {
+              if (!isDragging && editingTabId !== tab.id) {
+                setActiveTabId(tab.id);
+              }
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditingTabId(tab.id);
+            }}
           >
-            {tab.title}
+            {editingTabId === tab.id ? (
+              <input
+                type="text"
+                className="tab-name-input"
+                defaultValue={tab.customName || tab.title}
+                autoFocus
+                onBlur={(e) => {
+                  renameTab(tab.id, e.target.value);
+                  setEditingTabId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    renameTab(tab.id, e.currentTarget.value);
+                    setEditingTabId(null);
+                  } else if (e.key === "Escape") {
+                    setEditingTabId(null);
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              tab.customName || tab.title
+            )}
             <span
               className="close-tab"
               onClick={(e) => {

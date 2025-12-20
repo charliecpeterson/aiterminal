@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-export function useLatencyProbe(intervalMs: number = 10000): {
+export function useLatencyProbe(terminalId: number, intervalMs: number = 10000): {
   latencyMs: number | null;
   latencyAt: number | null;
 } {
@@ -12,14 +12,14 @@ export function useLatencyProbe(intervalMs: number = 10000): {
     let cancelled = false;
 
     const measure = async () => {
-      const start = performance.now();
       try {
-        await invoke('ping');
+        const result = await invoke<number>('measure_pty_latency', { id: terminalId });
         if (cancelled) return;
-        setLatencyMs(Math.round(performance.now() - start));
+        setLatencyMs(result);
         setLatencyAt(Date.now());
-      } catch {
+      } catch (err) {
         if (cancelled) return;
+        console.warn('Latency probe failed:', err);
         setLatencyMs(null);
         setLatencyAt(Date.now());
       }
@@ -32,7 +32,7 @@ export function useLatencyProbe(intervalMs: number = 10000): {
       cancelled = true;
       clearInterval(handle);
     };
-  }, [intervalMs]);
+  }, [terminalId, intervalMs]);
 
   return { latencyMs, latencyAt };
 }
