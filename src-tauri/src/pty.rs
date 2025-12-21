@@ -1,4 +1,4 @@
-use crate::models::{AppState, PtySession, SshSessionInfo, TerminalContext, ContextConfidence};
+use crate::models::{AppState, PtySession, SshSessionInfo};
 use crate::health_check;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use serde::{Serialize, Deserialize};
@@ -282,14 +282,6 @@ pub fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, S
         );
     }
 
-    // Initialize terminal context as local
-    {
-        let mut contexts = state.terminal_contexts.lock()
-            .map_err(|e| format!("Failed to acquire context lock: {}", e))?;
-        contexts.insert(id, TerminalContext::new_local(id));
-        println!("🆕 Initialized terminal {} context as local", id);
-    }
-
     Ok(id)
 }
 
@@ -335,17 +327,6 @@ pub fn write_to_pty(id: u32, data: String, state: State<AppState>) -> Result<(),
         .map_err(|e| format!("Failed to acquire PTY lock: {}", e))?;
     
     if let Some(session) = ptys.get_mut(&id) {
-        let trimmed = data.trim();
-        println!("📝 Writing to PTY {}: '{}'", id, trimmed);
-        
-        // Detect SSH command
-        if trimmed.starts_with("ssh ") || trimmed.starts_with("\\ssh ") {
-            println!("🔍 SSH command detected: {}", trimmed);
-            detect_ssh_command(id, trimmed, &state);
-        } else {
-            println!("   (not an SSH command)");
-        }
-        
         session.writer.write_all(data.as_bytes())
             .map_err(|e| format!("Failed to write to PTY {}: {}", id, e))?;
         session.writer.flush()
@@ -353,67 +334,6 @@ pub fn write_to_pty(id: u32, data: String, state: State<AppState>) -> Result<(),
         Ok(())
     } else {
         Err(format!("PTY {} not found", id))
-    }
-}
-
-// Helper function to detect SSH connections
-fn detect_ssh_command(id: u32, command: &str, state: &State<AppState>) {
-    // Parse ssh command to extract host
-    // Examples: "ssh user@host", "ssh host", "ssh -J jump user@host"
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    
-    let mut host: Option<String> = None;
-    let mut i = 1; // Skip 'ssh' or '\ssh'
-    
-    while i < parts.len() {
-        let part = parts[i];
-        
-        // Skip flags with arguments
-        if part.starts_with('-') && part.len() == 2 {
-            let flag = &part[1..2];
-            if matches!(flag, "J" | "p" | "l" | "i" | "o") {
-                i += 2; // Skip flag and its argument
-                continue;
-            }
-            i += 1;
-            continue;
-        }
-        
-        // Skip long flags
-        if part.starts_with("--") {
-            i += 1;
-            continue;
-        }
-        
-        // This should be the host
-        if !part.starts_with('-') {
-            host = Some(part.to_string());
-            break;
-        }
-        
-        i += 1;
-    }
-    
-    if let Some(host_str) = host {
-        println!("🔍 Detected SSH to: {}", host_str);
-        
-        // Update terminal context
-        if let Ok(mut contexts) = state.terminal_contexts.lock() {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-            
-            let context = contexts.entry(id).or_insert_with(|| TerminalContext::new_local(id));
-            context.is_ssh = true;
-            context.remote_host = Some(host_str);
-            context.confidence = ContextConfidence::High;
-            context.connection_depth = 1;
-            context.last_updated = now;
-            context.remote_cwd = None; // Will be updated later
-            
-            println!("✅ Updated terminal {} context: SSH to {:?}", id, context.remote_host);
-        }
     }
 }
 
@@ -551,36 +471,4 @@ pub fn get_pty_cwd(id: u32, state: State<AppState>) -> Result<String, String> {
     std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| format!("Failed to get current directory: {}", e))
-}
-
-#[tauri::command]
-pub fn get_terminal_context(id: u32, state: State<AppState>) -> Result<TerminalContext, String> {
-    let contexts = state.terminal_contexts.lock()
-        .map_err(|e| format!("Failed to acquire context lock: {}", e))?;
-    
-    contexts.get(&id)
-        .cloned()
-        .ok_or_else(|| format!("Terminal context {} not found", id))
-}
-
-// Manual command to set SSH state for testing/debugging
-#[tauri::command]
-pub fn set_ssh_context(id: u32, host: String, state: State<AppState>) -> Result<(), String> {
-    let mut contexts = state.terminal_contexts.lock()
-        .map_err(|e| format!("Failed to acquire context lock: {}", e))?;
-    
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    
-    let context = contexts.entry(id).or_insert_with(|| TerminalContext::new_local(id));
-    context.is_ssh = true;
-    context.remote_host = Some(host.clone());
-    context.confidence = ContextConfidence::High;
-    context.connection_depth = 1;
-    context.last_updated = now;
-    
-    println!("✅ Manually set terminal {} to SSH mode: {}", id, host);
-    Ok(())
 }

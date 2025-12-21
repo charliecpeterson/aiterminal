@@ -27,7 +27,6 @@ pub async fn execute_tool_command(command: String, working_directory: Option<Str
 
     // Set working directory if provided
     if let Some(cwd) = working_directory {
-        println!("🔧 Setting working directory to: {}", cwd);
         cmd.current_dir(&cwd);
     }
 

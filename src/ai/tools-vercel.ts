@@ -61,18 +61,13 @@ async function getTerminalCwd(terminalId: number): Promise<string> {
  */
 async function executeCommand(command: string, terminalId: number): Promise<string> {
   try {
-    console.log(`🔧 Executing in PTY ${terminalId}: ${command}`);
-    
     const result = await executeInPty({
       terminalId,
       command,
       timeoutMs: 10000,
     });
-
-    console.log(`✅ PTY command completed with exit code ${result.exitCode}`);
     return result.output || '(no output)';
   } catch (error) {
-    console.error('PTY execution error:', error);
     return `Error: ${error}`;
   }
 }
@@ -102,8 +97,6 @@ Examples:
         command: z.string().describe('The shell command to execute (e.g., "ls -la", "pwd")'),
       }),
       execute: async ({ command }) => {
-        console.log(`🤖 AI called execute_command: ${command}`);
-        
         // Check if command requires approval
         if (requireApproval && onPendingApproval) {
           const safetyCheck = isCommandSafe(command);
@@ -160,7 +153,6 @@ Examples:
         max_bytes: z.number().optional().describe('Maximum bytes to read (default: 50000)'),
       }),
       execute: async ({ path, max_bytes }) => {
-        console.log(`🤖 AI called read_file: ${path}`);
         const cwd = await getTerminalCwd(terminalId);
         
         try {
@@ -190,8 +182,6 @@ Examples:
         path: z.string().describe('Absolute path to the directory to list'),
       }),
       execute: async ({ path }) => {
-        console.log(`🤖 AI called list_directory: ${path}`);
-        
         try {
           const result = await invoke<{
             files: string[];
@@ -230,7 +220,6 @@ Examples:
         path: z.string().optional().describe('Directory to search in (defaults to current)'),
       }),
       execute: async ({ pattern, path }) => {
-        console.log(`🤖 AI called search_files: ${pattern} in ${path || 'current directory'}`);
         const searchPath = path || await getTerminalCwd(terminalId);
         
         try {
@@ -267,8 +256,6 @@ Examples:
         name: z.string().describe('Name of the environment variable'),
       }),
       execute: async ({ name }) => {
-        console.log(`🤖 AI called get_environment_variable: ${name}`);
-        
         try {
           const result = await invoke<string | null>('get_env_var_tool', { name });
           return result || `Environment variable ${name} is not set`;
@@ -294,8 +281,6 @@ Examples:
         content: z.string().describe('Content to write to the file'),
       }),
       execute: async ({ path, content }) => {
-        console.log(`🤖 AI called write_file: ${path}`);
-        
         // Escape for shell
         const escapedContent = content.replace(/'/g, "'\\''");
         const escapedPath = path.replace(/'/g, "'\\''");
@@ -321,7 +306,6 @@ Examples:
         content: z.string().describe('Content to append'),
       }),
       execute: async ({ path, content }) => {
-        console.log(`🤖 AI called append_to_file: ${path}`);
         const cwd = await getTerminalCwd(terminalId);
         
         try {
@@ -343,7 +327,6 @@ Examples:
 Use this to understand the state of the git repository before making suggestions.`,
       inputSchema: z.object({}),
       execute: async () => {
-        console.log(`🤖 AI called git_status`);
         const cwd = await getTerminalCwd(terminalId);
         
         try {
@@ -368,8 +351,6 @@ Examples:
         pattern: z.string().describe('Search pattern for process name'),
       }),
       execute: async ({ pattern }) => {
-        console.log(`🤖 AI called find_process: ${pattern}`);
-        
         try {
           const result = await invoke<string>('find_process_tool', { pattern });
           return result;
@@ -389,8 +370,6 @@ Examples:
         port: z.number().describe('Port number to check (e.g., 8080, 3000)'),
       }),
       execute: async ({ port }) => {
-        console.log(`🤖 AI called check_port: ${port}`);
-        
         try {
           const result = await invoke<string>('check_port_tool', { port });
           return result;
@@ -404,8 +383,6 @@ Examples:
       description: `Get system information including OS, architecture, and disk space. Useful for debugging environment issues.`,
       inputSchema: z.object({}),
       execute: async () => {
-        console.log(`🤖 AI called get_system_info`);
-        
         try {
           const result = await invoke<string>('get_system_info_tool');
           return result;
@@ -426,7 +403,6 @@ Examples:
         lines: z.number().optional().describe('Number of lines to read from end (default: 50)'),
       }),
       execute: async ({ path, lines }) => {
-        console.log(`🤖 AI called tail_file: ${path} (${lines || 50} lines)`);
         const cwd = await getTerminalCwd(terminalId);
         
         try {
@@ -455,8 +431,6 @@ Examples:
         path: z.string().describe('Path to the directory to create'),
       }),
       execute: async ({ path }) => {
-        console.log(`🤖 AI called make_directory: ${path}`);
-        
         const escapedPath = path.replace(/'/g, "'\\''");
         const command = `mkdir -p '${escapedPath}'`;
         
@@ -473,7 +447,6 @@ Examples:
       description: `Get uncommitted changes in the git repository. Shows what has been modified but not yet committed.`,
       inputSchema: z.object({}),
       execute: async () => {
-        console.log(`🤖 AI called get_git_diff`);
         const cwd = await getTerminalCwd(terminalId);
         
         try {
@@ -498,8 +471,6 @@ Examples:
         expression: z.string().describe('Mathematical expression to evaluate'),
       }),
       execute: async ({ expression }) => {
-        console.log(`🤖 AI called calculate: ${expression}`);
-        
         try {
           const result = await invoke<string>('calculate_tool', { expression });
           return `${expression} = ${result}`;
@@ -517,8 +488,6 @@ Use this when the user asks about external documentation or errors that might ne
         query: z.string().describe('Search query'),
       }),
       execute: async ({ query }) => {
-        console.log(`🤖 AI called web_search: ${query}`);
-        
         try {
           const result = await invoke<string>('web_search_tool', { query });
           return result;

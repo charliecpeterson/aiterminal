@@ -28,8 +28,6 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
   // We use printf to avoid extra newlines and escape sequences
   const wrappedCommand = `printf '${startMarker}\\n' && (${command}) && printf '\\n${endMarker}\\n'\n`;
   
-  console.log(`🔧 Executing in PTY ${terminalId}:`, command);
-  
   return new Promise(async (resolve, reject) => {
     let outputBuffer = '';
     let capturing = false;
