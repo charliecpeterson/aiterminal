@@ -1,4 +1,6 @@
 import { emitTo } from "@tauri-apps/api/event";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { ChatMessage, PendingApproval } from "../context/AIContext";
 import { formatChatTime, handlePromptKeyDown, roleLabel } from "../ai/panelUi";
 import { AIMarkdown } from "./AIMarkdown";
@@ -34,6 +36,37 @@ export function AIChatTab(props: {
     onApprove,
     onDeny,
   } = props;
+
+  const handleExportChat = async () => {
+    if (messages.length === 0) return;
+
+    try {
+      // Show save dialog
+      const filePath = await save({
+        defaultPath: `aiterminal-chat-${Date.now()}.md`,
+        filters: [{
+          name: 'Markdown',
+          extensions: ['md']
+        }]
+      });
+
+      if (!filePath) return; // User cancelled
+
+      // Format messages as markdown
+      const exportContent = messages.map(msg => {
+        const timestamp = new Date(msg.timestamp).toLocaleString();
+        const role = msg.role.toUpperCase();
+        return `## ${role} - ${timestamp}\n\n${msg.content}\n`;
+      }).join('\n---\n\n');
+
+      // Write to file
+      await writeTextFile(filePath, exportContent);
+      
+      console.log('✅ Chat exported to:', filePath);
+    } catch (error) {
+      console.error('Failed to export chat:', error);
+    }
+  };
 
   const renderMarkdown = (content: string) => (
     <AIMarkdown
@@ -133,9 +166,14 @@ export function AIChatTab(props: {
 
       <div className="ai-panel-input-footer">
         <span>{contextCountLabel}</span>
-        <button className="ai-panel-clear" onClick={onClearChat}>
-          Clear Chat
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="ai-panel-clear" onClick={handleExportChat} disabled={messages.length === 0}>
+            Export
+          </button>
+          <button className="ai-panel-clear" onClick={onClearChat}>
+            Clear Chat
+          </button>
+        </div>
       </div>
 
       {sendError && <div className="ai-panel-error">{sendError}</div>}
