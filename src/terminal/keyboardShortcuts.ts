@@ -48,6 +48,13 @@ export function attachTerminalHotkeys({
       } else if (e.key === 'f') {
         e.preventDefault();
         setShowSearch((prev) => !prev);
+      } else if (e.key === 'k') {
+        e.preventDefault();
+        // Clear terminal and refresh (helps fix rendering issues)
+        term.clear();
+        term.reset();
+        fitAddon.fit();
+        resizePty(term.rows, term.cols);
       }
     }
 

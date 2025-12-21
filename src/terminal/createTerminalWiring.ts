@@ -93,7 +93,7 @@ export function createTerminalWiring(params: {
 
     const focusTimeoutId = window.setTimeout(() => {
         term.focus();
-    }, 100);
+    }, 50);
 
     const selectionMenuHandle = attachSelectionMenu({
         term,
@@ -118,6 +118,25 @@ export function createTerminalWiring(params: {
     const onDataDisposable = term.onData((data) => {
         invoke('write_to_pty', { id, data });
     });
+
+    // Watch the container for size changes (more reliable than window resize)
+    let resizeTimeout: number | undefined;
+    const resizeObserver = new ResizeObserver(() => {
+        if (!visibleRef.current) return;
+        
+        // Debounce to avoid excessive resizes
+        if (resizeTimeout) {
+            window.clearTimeout(resizeTimeout);
+        }
+        
+        resizeTimeout = window.setTimeout(() => {
+            session.fitAddon.fit();
+            const rows = Math.max(1, Math.min(1000, term.rows));
+            const cols = Math.max(1, Math.min(1000, term.cols));
+            invoke('resize_pty', { id, rows, cols });
+        }, 50);
+    });
+    resizeObserver.observe(container);
 
     const windowResize = attachWindowResize({ id, term, fitAddon: session.fitAddon, visibleRef });
 
@@ -148,11 +167,15 @@ export function createTerminalWiring(params: {
         markerManager,
         cleanup: () => {
             window.clearTimeout(focusTimeoutId);
+            if (resizeTimeout) {
+                window.clearTimeout(resizeTimeout);
+            }
 
             // Tear down in reverse-ish order while term is still alive.
             fileCaptureListener.cleanup();
             captureLastListener.cleanup();
             hotkeys.cleanup();
+            resizeObserver.disconnect();
             windowResize.cleanup();
             onDataDisposable?.dispose?.();
             hostLabelHandle.cleanup();

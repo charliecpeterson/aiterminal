@@ -82,6 +82,7 @@ export function createMarkerManager({
   let currentMarker: IDecoration | null = null;
   const markers: IDecoration[] = [];
   const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
+  let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
 
   const removeMarker = (marker: IDecoration) => {
     const index = markers.indexOf(marker);
@@ -170,7 +171,8 @@ export function createMarkerManager({
           marker.onDispose(() => removeMarker(marker));
           currentMarker = marker;
           markers.push(marker);
-          markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
+          // Only mark as bootstrap if we haven't seen any commands yet AND it's on the first lines
+          markerMeta.set(marker, { isBootstrap: !hasSeenFirstCommand && marker.marker.line <= 1 });
 
           if (markers.length > maxMarkers) {
             const oldest = markers[0];
@@ -193,7 +195,7 @@ export function createMarkerManager({
             marker.onDispose(() => removeMarker(marker));
             currentMarker = marker;
             markers.push(marker);
-            markerMeta.set(marker, { isBootstrap: marker.marker.line <= 1 });
+            markerMeta.set(marker, { isBootstrap: !hasSeenFirstCommand && marker.marker.line <= 1 });
 
             if (markers.length > maxMarkers) {
               const oldest = markers[0];
@@ -214,6 +216,9 @@ export function createMarkerManager({
         // Command Finished
         const parsed = Number.parseInt(parts[1] || '0', 10);
         const exitCode = Number.isFinite(parsed) ? parsed : 0;
+        
+        // Mark that we've seen at least one complete command
+        hasSeenFirstCommand = true;
         
         console.log('🎯 OSC 133 D - Command finished:', { exitCode, parsed, parts });
         

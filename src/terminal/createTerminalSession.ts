@@ -24,6 +24,18 @@ export function createTerminalSession(params: {
         allowProposedApi: true,
         fontFamily: appearance.font_family,
         fontSize: appearance.font_size,
+        scrollback: 10000,
+        fastScrollModifier: 'shift',
+        scrollOnUserInput: true,
+        windowOptions: {
+            setWinSizePixels: false,
+            setWinSizeChars: true,
+            getWinSizePixels: false,
+            getWinSizeChars: true,
+        },
+        allowTransparency: false,
+        drawBoldTextInBrightColors: true,
+        rightClickSelectsWord: false,
     });
 
     const fitAddon = new FitAddon();
@@ -43,6 +55,7 @@ export function createTerminalSession(params: {
     }
 
     term.open(container);
+    fitAddon.fit();
     applyTerminalAppearance({ term, appearance, fitAddon });
 
     return {
