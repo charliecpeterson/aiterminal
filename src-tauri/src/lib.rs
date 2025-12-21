@@ -4,12 +4,17 @@ mod health_check;
 mod models;
 mod pty;
 mod settings;
+mod tools;
 
 // Re-export models and commands
 pub use models::AppState;
 use ai::{ai_chat, ai_chat_stream, test_ai_connection};
-use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info};
+use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
+use tools::{
+    execute_tool_command, read_file_tool, list_directory_tool,
+    search_files_tool, get_current_directory_tool, get_env_var_tool,
+};
 use tauri::Emitter;
 
 #[tauri::command]
@@ -56,6 +61,7 @@ pub fn run() {
             emit_event,
             measure_pty_latency,
             get_pty_info,
+            get_pty_cwd,
             spawn_pty,
             write_to_pty,
             resize_pty,
@@ -67,7 +73,13 @@ pub fn run() {
             delete_api_key,
             test_ai_connection,
             ai_chat,
-            ai_chat_stream
+            ai_chat_stream,
+            execute_tool_command,
+            read_file_tool,
+            list_directory_tool,
+            search_files_tool,
+            get_current_directory_tool,
+            get_env_var_tool,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

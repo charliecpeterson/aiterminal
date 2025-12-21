@@ -17,8 +17,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [aiModelOptions, setAiModelOptions] = useState<string[]>([]);
     const [aiEmbeddingOptions, setAiEmbeddingOptions] = useState<string[]>([]);
 
+    // Load settings when modal opens
     useEffect(() => {
-        if (settings) {
+        if (isOpen && settings) {
+            console.log('📋 Loading settings into modal:', settings);
             setLocalSettings(JSON.parse(JSON.stringify(settings)));
         }
     }, [settings, isOpen]);
@@ -43,23 +45,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             <option key={model} value={model}>{model}</option>
         )), [aiEmbeddingOptions]
     );
-
-    if (!isOpen) return null;
-    
-    // Show loading state if settings not loaded yet
-    if (!localSettings) {
-        return (
-            <div className="settings-overlay" onClick={onClose}>
-                <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-                    <div className="settings-header">
-                        <h2>Settings</h2>
-                        <button className="settings-close" onClick={onClose}>×</button>
-                    </div>
-                    <div style={{ padding: '20px', textAlign: 'center' }}>Loading settings...</div>
-                </div>
-            </div>
-        );
-    }
 
     const handleSave = useCallback(async () => {
         if (localSettings) {
@@ -111,6 +96,44 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             setAiTestError(message);
         }
     }, [localSettings, handleChange]);
+
+    // Early returns AFTER all hooks
+    if (!isOpen) return null;
+    
+    // Show loading state if settings not loaded yet
+    if (!settings) {
+        console.log('⚠️ Settings not available in context');
+        return (
+            <div className="settings-overlay" onClick={onClose}>
+                <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="settings-header">
+                        <h2>Settings</h2>
+                        <button className="settings-close" onClick={onClose}>×</button>
+                    </div>
+                    <div style={{ padding: '20px', textAlign: 'center' }}>
+                        <p>Loading settings...</p>
+                        <p style={{ fontSize: '12px', color: '#888', marginTop: '10px' }}>
+                            If this persists, try refreshing the page.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    
+    if (!localSettings) {
+        return (
+            <div className="settings-overlay" onClick={onClose}>
+                <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="settings-header">
+                        <h2>Settings</h2>
+                        <button className="settings-close" onClick={onClose}>×</button>
+                    </div>
+                    <div style={{ padding: '20px', textAlign: 'center' }}>Initializing...</div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="settings-modal-overlay" onClick={onClose}>

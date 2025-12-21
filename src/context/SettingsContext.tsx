@@ -65,19 +65,27 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, []);
 
     const loadSettings = async () => {
+        console.log('📥 Loading settings from backend...');
         try {
             const loadedSettings = await invoke<AppSettings>('load_settings');
             // API key is already loaded from keychain/cache by load_settings
+            console.log('✅ Settings loaded successfully:', { 
+                provider: loadedSettings.ai?.provider, 
+                model: loadedSettings.ai?.model,
+                hasApiKey: !!loadedSettings.ai?.api_key 
+            });
             setSettings(loadedSettings);
         } catch (error) {
-            console.error('Failed to load settings:', error);
+            console.error('❌ Failed to load settings:', error);
             // Load defaults if settings file is corrupted
-            setSettings({
+            const defaultSettings = {
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
                 ai: { provider: 'openai', model: 'gpt-4', api_key: '', url: '' },
                 terminal: { max_markers: 200 },
                 streaming: { max_tokens: 4096, timeout_secs: 120, buffer_size_limit: 1048576 }
-            });
+            };
+            console.log('📋 Using default settings');
+            setSettings(defaultSettings);
         } finally {
             setLoading(false);
         }

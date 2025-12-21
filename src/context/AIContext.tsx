@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useReducer } from "react";
+import type { PendingToolCall } from '../ai/tools';
 
 export type ContextType = "command" | "output" | "selection" | "file" | "command_output";
 
@@ -28,6 +29,7 @@ export interface ChatMessage {
 interface AIState {
   contextItems: ContextItem[];
   messages: ChatMessage[];
+  pendingToolCalls: PendingToolCall[];
 }
 
 type AIAction =
@@ -36,11 +38,15 @@ type AIAction =
   | { type: "context:clear" }
   | { type: "chat:add"; message: ChatMessage }
   | { type: "chat:clear" }
-  | { type: "chat:append"; id: string; content: string };
+  | { type: "chat:append"; id: string; content: string }
+  | { type: "tool:add"; toolCalls: PendingToolCall[] }
+  | { type: "tool:update"; id: string; updates: Partial<PendingToolCall> }
+  | { type: "tool:clear" };
 
 const initialState: AIState = {
   contextItems: [],
   messages: [],
+  pendingToolCalls: [],
 };
 
 const aiReducer = (state: AIState, action: AIAction): AIState => {
@@ -79,6 +85,23 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
         ...state,
         messages: [],
       };
+    case "tool:add":
+      return {
+        ...state,
+        pendingToolCalls: [...state.pendingToolCalls, ...action.toolCalls],
+      };
+    case "tool:update":
+      return {
+        ...state,
+        pendingToolCalls: state.pendingToolCalls.map((tc) =>
+          tc.id === action.id ? { ...tc, ...action.updates } : tc
+        ),
+      };
+    case "tool:clear":
+      return {
+        ...state,
+        pendingToolCalls: [],
+      };
     default:
       return state;
   }
@@ -92,6 +115,9 @@ interface AIContextValue extends AIState {
   clearChat: () => void;
   buildPrompt: (userInput: string) => string;
   appendMessage: (id: string, content: string) => void;
+  addToolCalls: (toolCalls: PendingToolCall[]) => void;
+  updateToolCall: (id: string, updates: Partial<PendingToolCall>) => void;
+  clearToolCalls: () => void;
 }
 
 const AIContext = createContext<AIContextValue | undefined>(undefined);
@@ -121,6 +147,18 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
 
   const appendMessage = useCallback((id: string, content: string) => {
     dispatch({ type: "chat:append", id, content });
+  }, []);
+
+  const addToolCalls = useCallback((toolCalls: PendingToolCall[]) => {
+    dispatch({ type: "tool:add", toolCalls });
+  }, []);
+
+  const updateToolCall = useCallback((id: string, updates: Partial<PendingToolCall>) => {
+    dispatch({ type: "tool:update", id, updates });
+  }, []);
+
+  const clearToolCalls = useCallback(() => {
+    dispatch({ type: "tool:clear" });
   }, []);
 
   // Memoize expensive context item formatting
@@ -174,6 +212,9 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       clearChat,
       appendMessage,
       buildPrompt,
+      addToolCalls,
+      updateToolCall,
+      clearToolCalls,
     }),
     [
       state,
@@ -184,6 +225,9 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       clearChat,
       appendMessage,
       buildPrompt,
+      addToolCalls,
+      updateToolCall,
+      clearToolCalls,
     ]
   );
 

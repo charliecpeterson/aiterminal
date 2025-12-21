@@ -322,18 +322,19 @@ pub fn get_pty_info(id: u32, state: State<AppState>) -> Result<PtyInfo, String> 
 }
 
 #[tauri::command]
-pub fn write_to_pty(id: u32, data: String, state: State<AppState>) {
-    let mut ptys = match state.ptys.lock() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to acquire PTY lock: {}", e);
-            return;
-        }
-    };
+pub fn write_to_pty(id: u32, data: String, state: State<AppState>) -> Result<(), String> {
+    let mut ptys = state.ptys.lock()
+        .map_err(|e| format!("Failed to acquire PTY lock: {}", e))?;
+    
     if let Some(session) = ptys.get_mut(&id) {
-        if let Err(e) = write!(session.writer, "{}", data) {
-            eprintln!("Failed to write to PTY {}: {}", id, e);
-        }
+        println!("📝 Writing to PTY {}: {}", id, data.trim());
+        session.writer.write_all(data.as_bytes())
+            .map_err(|e| format!("Failed to write to PTY {}: {}", id, e))?;
+        session.writer.flush()
+            .map_err(|e| format!("Failed to flush PTY {}: {}", id, e))?;
+        Ok(())
+    } else {
+        Err(format!("PTY {} not found", id))
     }
 }
 
@@ -420,4 +421,55 @@ pub fn close_pty(id: u32, state: State<AppState>) {
             }
         }
     }
+}
+
+#[tauri::command]
+pub fn get_pty_cwd(id: u32, state: State<AppState>) -> Result<String, String> {
+    let ptys = state.ptys.lock()
+        .map_err(|e| format!("Failed to lock PTY state: {}", e))?;
+    
+    let session = ptys.get(&id)
+        .ok_or_else(|| format!("PTY {} not found", id))?;
+    
+    // Get the PID of the shell process
+    if let Some(child) = &session.child {
+        // On Unix systems, we can try to read the cwd from /proc or use lsof
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            
+            // Use lsof to find the current working directory of the process
+            // lsof -p <pid> | grep cwd will show the current working directory
+            let output = Command::new("lsof")
+                .args(&["-a", "-p", &child.process_id().unwrap_or(0).to_string(), "-d", "cwd", "-Fn"])
+                .output()
+                .map_err(|e| format!("Failed to run lsof: {}", e))?;
+            
+            if output.status.success() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                // Parse lsof output: looking for "n<path>" line
+                for line in output_str.lines() {
+                    if line.starts_with('n') {
+                        return Ok(line[1..].to_string());
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "linux")]
+        {
+            use std::fs;
+            if let Some(pid) = child.process_id() {
+                let cwd_link = format!("/proc/{}/cwd", pid);
+                if let Ok(cwd) = fs::read_link(&cwd_link) {
+                    return Ok(cwd.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    
+    // Fallback: return the app's current directory
+    std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| format!("Failed to get current directory: {}", e))
 }

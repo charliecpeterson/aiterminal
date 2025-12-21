@@ -2,12 +2,11 @@ import { useMemo, useState, useCallback, useEffect } from "react";
 import "./AIPanel.css";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
-import { sendChatMessage } from "../ai/chatSend";
+import { sendChatMessage } from "../ai/chatSend-vercel";
 import { requestCaptureFile, requestCaptureLast } from "../ai/contextCapture";
 import { formatContextCountLabel } from "../ai/panelUi";
 import { AIChatTab } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
-import { listen } from "@tauri-apps/api/event";
 
 type PanelTab = "chat" | "context";
 
@@ -35,6 +34,11 @@ const AIPanel = ({
   const [filePath, setFilePath] = useState("");
   const [fileLimitKb, setFileLimitKb] = useState(200);
   const { settings } = useSettings();
+
+  // Debug: Log when activeTerminalId changes
+  useEffect(() => {
+    console.log('🔍 AIPanel activeTerminalId changed:', activeTerminalId);
+  }, [activeTerminalId]);
   const {
     contextItems,
     messages,
@@ -43,26 +47,25 @@ const AIPanel = ({
     removeContextItem,
     clearContext,
     clearChat,
-    buildPrompt,
   } = useAIContext();
 
   const contextCountLabel = useMemo(() => {
     return formatContextCountLabel(contextItems.length);
   }, [contextItems.length]);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     sendChatMessage({
       prompt,
-      buildPrompt,
       settingsAi: settings?.ai,
-      settingsStreaming: settings?.streaming,
+      messages,
+      terminalId: activeTerminalId || 0, // Default to terminal 0
       addMessage,
       appendMessage,
       setPrompt,
       setIsSending,
       setSendError,
     });
-  }, [prompt, buildPrompt, settings?.ai, settings?.streaming, addMessage, appendMessage]);
+  }, [prompt, settings?.ai, messages, activeTerminalId, addMessage, appendMessage, setPrompt]);
 
   const handleCaptureLast = () => {
     requestCaptureLast(captureCount).catch((err) => {
@@ -75,43 +78,6 @@ const AIPanel = ({
       console.error("Failed to request file capture:", err);
     });
   };
-
-  // Listen for quick action events from terminal
-  useEffect(() => {
-    const unlistenPromise = listen<{
-      actionType: string;
-      systemPrompt: string;
-      userPrompt: string;
-      terminalId: number;
-    }>("ai-quick-action", (event) => {
-      console.log("Quick action received in AI panel:", event.payload);
-      
-      // Switch to chat tab
-      setActiveTab("chat");
-      
-      // Combine system prompt and user prompt
-      const combinedPrompt = `${event.payload.systemPrompt}\n\n${event.payload.userPrompt}`;
-      
-      // Auto-send the message after a brief delay
-      setTimeout(() => {
-        sendChatMessage({
-          prompt: combinedPrompt,
-          buildPrompt: (input) => input, // Don't add context again, prompt is already complete
-          settingsAi: settings?.ai,
-          settingsStreaming: settings?.streaming,
-          addMessage,
-          appendMessage,
-          setPrompt,
-          setIsSending,
-          setSendError,
-        });
-      }, 100);
-    });
-
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [settings, addMessage, appendMessage]);
 
   return (
     <div className="ai-panel">
@@ -187,6 +153,7 @@ const AIPanel = ({
           />
         )}
       </div>
+
     </div>
   );
 };

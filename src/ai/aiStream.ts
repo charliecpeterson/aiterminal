@@ -3,6 +3,7 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 
 export interface AiStreamHandlers {
     onChunk: (content: string) => void;
+    onToolCalls?: (toolCalls: any[]) => void;
     onEnd: () => void;
     onError: (error: string) => void;
 }
@@ -31,9 +32,21 @@ export function attachAiStreamListeners(params: {
     unlistenPromises.push(
         listen<{ request_id: string; content: string }>('ai-stream:chunk', (event) => {
             if (event.payload.request_id !== requestId) return;
+            console.log('📨 Chunk received:', event.payload.content);
             handlers.onChunk(event.payload.content);
         })
     );
+
+    // Listen for tool calls
+    if (handlers.onToolCalls) {
+        unlistenPromises.push(
+            listen<{ request_id: string; tool_calls: any[] }>('ai-stream:tool-calls', (event) => {
+                if (event.payload.request_id !== requestId) return;
+                console.log('🔧 Tool calls event received:', event.payload.tool_calls);
+                handlers.onToolCalls!(event.payload.tool_calls);
+            })
+        );
+    }
 
     unlistenPromises.push(
         listen<{ request_id: string }>('ai-stream:end', (event) => {

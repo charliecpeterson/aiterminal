@@ -43,8 +43,10 @@ function AppContent() {
   const createTab = async () => {
     try {
       const id = await invoke<number>("spawn_pty");
+      console.log(`✅ Created terminal tab with ID: ${id}`);
       setTabs((prev) => [...prev, { id, title: `Tab ${prev.length + 1}` }]);
       setActiveTabId(id);
+      console.log(`✅ Set active tab ID to: ${id}`);
     } catch (error) {
       console.error("Failed to spawn PTY:", error);
       // Show user-visible error in a future error toast/notification system
