@@ -296,21 +296,16 @@ Examples:
       execute: async ({ path, content }) => {
         console.log(`🤖 AI called write_file: ${path}`);
         
-        // Escape content for shell - replace ' with '\''
+        // Escape for shell
         const escapedContent = content.replace(/'/g, "'\\''");
         const escapedPath = path.replace(/'/g, "'\\''");
-        
-        // Use printf with escaped content - more reliable than heredoc in subshells
         const command = `printf '%s' '${escapedContent}' > '${escapedPath}'`;
         
         try {
-          const result = await executeCommand(command, terminalId);
-          if (result.includes('Error:')) {
-            return result;
-          }
-          return `Successfully wrote to ${path}`;
+          await executeCommand(command, terminalId);
+          return `Wrote to ${path}`;
         } catch (error) {
-          return `Error writing file: ${error}`;
+          return `Error: ${error}`;
         }
       },
     }),
@@ -462,18 +457,14 @@ Examples:
       execute: async ({ path }) => {
         console.log(`🤖 AI called make_directory: ${path}`);
         
-        // Use mkdir via PTY - works everywhere (local, SSH, docker, etc.)
         const escapedPath = path.replace(/'/g, "'\\''");
         const command = `mkdir -p '${escapedPath}'`;
         
         try {
-          const result = await executeCommand(command, terminalId);
-          if (result.includes('Error:')) {
-            return result;
-          }
-          return `Successfully created directory: ${path}`;
+          await executeCommand(command, terminalId);
+          return `Created directory: ${path}`;
         } catch (error) {
-          return `Error creating directory: ${error}`;
+          return `Error: ${error}`;
         }
       },
     }),
