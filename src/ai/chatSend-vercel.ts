@@ -9,7 +9,7 @@ import { streamText, stepCountIs } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { CoreMessage } from 'ai';
 import type { AiSettings } from '../context/SettingsContext';
-import type { ChatMessage } from '../context/AIContext';
+import type { ChatMessage, PendingApproval } from '../context/AIContext';
 import { createTools } from './tools-vercel';
 
 export interface ChatSendDeps {
@@ -23,6 +23,8 @@ export interface ChatSendDeps {
   setPrompt: (value: string) => void;
   setIsSending: (value: boolean) => void;
   setSendError: (value: string | null) => void;
+  abortController?: AbortController; // For cancellation
+  addPendingApproval: (approval: PendingApproval) => void;
 }
 
 /**
@@ -61,6 +63,8 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     setPrompt,
     setIsSending,
     setSendError,
+    abortController,
+    addPendingApproval,
   } = deps;
 
   const trimmed = prompt.trim();
@@ -109,10 +113,15 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       model: settingsAi.model,
       messageCount: coreMessages.length,
       terminalId,
+      requireApproval: settingsAi.require_command_approval !== false,
     });
 
-    // Create tools with terminal context
-    const tools = createTools(terminalId);
+    // Create tools with terminal context and approval callback
+    const tools = createTools(
+      terminalId, 
+      settingsAi.require_command_approval !== false,
+      addPendingApproval // Pass callback for immediate approval UI
+    );
 
     // Stream response with tools
     const result = await streamText({
@@ -120,6 +129,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       messages: coreMessages,
       tools,
       stopWhen: stepCountIs(5), // Allow up to 5 tool roundtrips
+      abortSignal: abortController?.signal, // Enable cancellation
       system: `You are a helpful AI assistant embedded in a terminal emulator.
 You have access to tools to help users interact with their system.
 
@@ -183,15 +193,28 @@ CURRENT CONTEXT:
 
   } catch (error) {
     console.error('❌ AI request failed:', error);
-    const message = error instanceof Error ? error.message : String(error);
-    setSendError(message);
-    setIsSending(false);
     
-    addMessage({
-      id: crypto.randomUUID(),
-      role: 'system',
-      content: `Request failed: ${message}`,
-      timestamp: Date.now(),
-    });
+    // Check if it was aborted
+    if (error instanceof Error && error.name === 'AbortError') {
+      setSendError('Request cancelled');
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: 'Request cancelled by user.',
+        timestamp: Date.now(),
+      });
+    } else {
+      const message = error instanceof Error ? error.message : String(error);
+      setSendError(message);
+      
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: `Request failed: ${message}`,
+        timestamp: Date.now(),
+      });
+    }
+    
+    setIsSending(false);
   }
 }

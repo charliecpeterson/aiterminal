@@ -466,6 +466,21 @@
   filter: brightness(1.08);
 }
 
+.ai-panel-cancel {
+  border: none;
+  background: rgba(244, 67, 54, 0.9);
+  color: white;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 0 18px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.ai-panel-cancel:hover {
+  background: rgba(244, 67, 54, 1);
+}
+
 .ai-panel-context-actions {
   display: flex;
   gap: 8px;

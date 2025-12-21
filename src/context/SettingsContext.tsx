@@ -13,6 +13,7 @@ export interface AiSettings {
     api_key: string;
     embedding_model?: string;
     url?: string;
+    require_command_approval?: boolean; // New: Require approval before executing commands
 }
 
 export interface TerminalSettings {

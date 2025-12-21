@@ -343,6 +343,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </datalist>
                                     )}
                                 </div>
+                                <div className="form-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={localSettings.ai.require_command_approval !== false}
+                                            onChange={(e) => handleChange('ai', 'require_command_approval', e.target.checked as any)}
+                                        />
+                                        <span>Require approval before executing commands</span>
+                                    </label>
+                                    <div className="form-hint">
+                                        When enabled, the AI will ask for permission before running potentially destructive commands (rm, sudo, etc.). Safe read-only commands run automatically.
+                                    </div>
+                                </div>
                             </>
                         )}
                     </div>

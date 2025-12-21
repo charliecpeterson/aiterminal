@@ -40,16 +40,73 @@ You can easily copy commands and their outputs without manually selecting text.
   - **Add to AI Context**: Add command/output to the AI Panel context.
 
 ### 3. AI Panel
-The AI Panel provides context-aware assistance alongside the terminal.
-- **Toggle**: Use the AI Panel button in the top bar.
+The AI Panel provides context-aware assistance alongside the terminal with powerful automated tool execution.
+
+#### Interface
+- **Toggle**: Use the AI Panel button in the top bar or press `Cmd + B` (macOS) / `Ctrl + B` (Windows/Linux).
 - **Detach**: Pop the panel into its own window and reattach when needed.
-- **Chat**: Send prompts and see responses stream in.
-- **Markdown**: Responses render with links, tables, emphasis, and code blocks.
-- **Copy Code**: Code blocks include a copy button.
+- **Chat Tab**: Send prompts and see responses stream in with markdown formatting.
 - **Context Tab**: Staged context items can be previewed, removed, or cleared.
-- **Capture Last N**: Capture the last N completed commands/outputs into context.
-- **Add File Path**: Capture file contents from the current machine using a file path and size cap (works over SSH).
-- **Selection Capture**: Select text in the terminal and click “Add Selection to Context.”
+
+#### AI Capabilities & Tools
+The AI assistant has access to 5 powerful tools that execute automatically to help you:
+
+1. **execute_command** - Run any shell command in your current terminal directory
+   - Examples: Check versions, run git commands, install packages, view logs
+   - Automatically uses your terminal's working directory
+
+2. **read_file** - Read and analyze file contents
+   - Examples: Check package.json, read configuration files, examine logs
+   - Supports text files up to 500KB (configurable)
+
+3. **list_directory** - Browse directory contents
+   - Shows files and subdirectories
+   - Works with absolute paths
+
+4. **search_files** - Find files by name pattern or content
+   - Glob patterns for filenames (e.g., `*.ts`, `**/*.json`)
+   - Content search across files
+
+5. **get_environment_variable** - Check environment variables
+   - Examples: PATH, HOME, custom variables
+
+#### Multi-Step Tool Execution
+The AI can automatically chain multiple tools together to accomplish complex tasks:
+- **Example**: "What files are in my current directory?"
+  1. AI calls `execute_command("pwd")` to get your location
+  2. AI calls `list_directory("/your/path")` with the result
+  3. AI generates a formatted response with the file list
+
+- **Example**: "Find the main TypeScript file and show me the first 20 lines"
+  1. AI searches for `*.ts` files
+  2. AI identifies the main file
+  3. AI reads and displays the relevant portion
+
+The AI can perform up to 5 sequential tool calls per request, allowing it to solve complex tasks autonomously.
+
+#### Features
+- **Streaming Responses**: Text appears in real-time as the AI generates it
+- **Markdown Rendering**: Responses include formatted text, links, tables, code blocks, and emphasis
+- **Code Block Copy**: Each code block includes a copy button for easy use
+- **Automatic Tool Execution**: No approval needed - tools run automatically with full transparency
+- **Terminal Context Aware**: AI knows your current terminal directory for accurate file operations
+- **Context Management**: Add commands, outputs, files, or selections to provide context for AI queries
+
+#### Adding Context
+- **Capture Last N**: Capture the last N completed commands/outputs from your terminal
+- **Add File Path**: Capture file contents using a path and size cap (works over SSH)
+- **Selection Capture**: Select text in the terminal and use "Add Selection to Context"
+- **Marker Context**: Click any command marker and choose "Add to AI Context"
+
+#### Example Prompts
+Try these to see the AI's capabilities:
+- "What files are in my current directory?"
+- "Read the package.json and tell me what scripts are available"
+- "Check if Node.js is installed and what version"
+- "Find all TypeScript files in src/"
+- "What's my current git branch and last 3 commits?"
+- "Search for TODO comments in this project"
+- "Show me what's in the README file"
 
 ### 4. Font Zooming
 Adjust the text size to your preference. The terminal window automatically reflows text when zooming.
@@ -98,13 +155,37 @@ The terminal creates a configuration directory at `~/.config/aiterminal/`.
 
 ## AI Settings
 Open Settings → AI to configure providers and models.
-- **Providers**: OpenAI, Anthropic, Gemini, Ollama.
-- **Test Connection**: Validates credentials and populates model/embedding dropdowns.
-- **Custom URL**: Override base API endpoints when needed.
+- **Providers**: OpenAI (recommended), Anthropic, Gemini, Ollama
+- **Models**: Any model that supports function calling/tool use
+  - OpenAI: gpt-4, gpt-4-turbo, gpt-3.5-turbo
+  - Requires tool calling support for automatic command execution
+- **API Key**: Required for cloud providers (OpenAI, Anthropic, Gemini)
+- **Custom URL**: Override base API endpoints (useful for Ollama or proxies)
+- **Test Connection**: Validates credentials and populates model dropdowns
+
+### Technical Implementation
+The AI system is built on:
+- **Vercel AI SDK v5** for robust streaming and tool execution
+- **Automatic Tool Calling**: Tools execute without manual approval for seamless workflows
+- **Multi-Step Execution**: Up to 5 sequential tool calls per request using `stopWhen`
+- **Terminal Integration**: Uses `get_pty_cwd` to determine your actual working directory
+- **Type-Safe**: Tool schemas validated with Zod for reliable execution
 
 ## Troubleshooting
+
+### Terminal Markers
 - **Markers not showing (local)?** Open a fresh tab so the helper re-sources; bash and zsh are supported.
 - **Markers not showing (remote)?** Use `aiterm_ssh <user@host>` (or plain `ssh` is already aliased to it inside AI Terminal). If the remote blocks sourcing, bypass with `\ssh` to avoid the alias.
-- **Markers missing after `su`/restricted shells?** Install integration into that account with `aiterm_install_remote` (or manually add `source ~/.config/aiterminal/bash_init.sh` in that account’s `~/.bashrc`/`~/.zshrc`). Some environments intentionally scrub environment variables; in those cases, exact command markers may not be available.
+- **Markers missing after `su`/restricted shells?** Install integration into that account with `aiterm_install_remote` (or manually add `source ~/.config/aiterminal/bash_init.sh` in that account's `~/.bashrc`/`~/.zshrc`). Some environments intentionally scrub environment variables; in those cases, exact command markers may not be available.
+
+### AI Panel
+- **Blank AI responses?** Ensure your AI settings are configured with a valid API key and model that supports tool calling.
+- **AI not using tools?** Check that you're using a model with function calling support (e.g., gpt-4, gpt-4-turbo, not base models).
+- **Wrong directory for commands?** The AI automatically detects your terminal's working directory. If issues persist, try `cd` to refresh.
+- **Tool execution errors?** Check console logs (View → Developer → Developer Tools) for detailed error messages.
+- **Connection errors?** Verify your API key and internet connection. Test with the "Test Connection" button in Settings.
+
+### General
 - **Copy not working?** The app uses the system clipboard. Ensure you have granted permission if prompted.
-- **Scrollbar missing?** The app renders its own overlay. If you still don’t see it, ensure you’re in the terminal area and the buffer is longer than the viewport; try scrolling once to reveal it.
+- **Scrollbar missing?** The app renders its own overlay. If you still don't see it, ensure you're in the terminal area and the buffer is longer than the viewport; try scrolling once to reveal it.
+- **Performance issues?** Try closing unused tabs or clearing the terminal buffer (`Cmd + K`).

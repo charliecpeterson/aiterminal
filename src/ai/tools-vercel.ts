@@ -8,6 +8,36 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
+import { isCommandSafe } from './commandSafety';
+import type { PendingApproval } from '../context/AIContext';
+
+// Store pending approval promises
+const pendingApprovalPromises = new Map<string, {
+  resolve: (result: string) => void;
+  reject: (error: Error) => void;
+}>();
+
+/**
+ * Resolve a pending approval with execution result
+ */
+export function resolveApproval(id: string, result: string) {
+  const promise = pendingApprovalPromises.get(id);
+  if (promise) {
+    promise.resolve(result);
+    pendingApprovalPromises.delete(id);
+  }
+}
+
+/**
+ * Reject a pending approval
+ */
+export function rejectApproval(id: string, reason: string) {
+  const promise = pendingApprovalPromises.get(id);
+  if (promise) {
+    promise.reject(new Error(reason));
+    pendingApprovalPromises.delete(id);
+  }
+}
 
 /**
  * Get the terminal's current working directory
@@ -58,7 +88,11 @@ async function executeCommand(command: string, workingDirectory?: string): Promi
 /**
  * Create tools with terminal context
  */
-export function createTools(terminalId: number = 0) {
+export function createTools(
+  terminalId: number = 0, 
+  requireApproval: boolean = true,
+  onPendingApproval?: (approval: PendingApproval) => void
+) {
   return {
     execute_command: tool({
       description: `Execute a shell command in the terminal. Use this to run commands, check system state, install packages, etc.
@@ -77,6 +111,47 @@ Examples:
       }),
       execute: async ({ command }) => {
         console.log(`🤖 AI called execute_command: ${command}`);
+        
+        // Check if command requires approval
+        if (requireApproval && onPendingApproval) {
+          const safetyCheck = isCommandSafe(command);
+          if (!safetyCheck.isSafe) {
+            console.log(`⚠️ Dangerous command detected: ${command}`);
+            console.log(`   Reason: ${safetyCheck.reason}`);
+            
+            // Get current directory for context
+            const cwd = await getTerminalCwd(terminalId);
+            
+            // Create approval request
+            const approval: PendingApproval = {
+              id: `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              command,
+              reason: safetyCheck.reason || 'Unknown risk',
+              category: safetyCheck.category || 'unknown',
+              terminalId,
+              cwd,
+              timestamp: Date.now(),
+            };
+            
+            // Create a promise that waits for user approval/denial
+            const approvalPromise = new Promise<string>((resolve, reject) => {
+              pendingApprovalPromises.set(approval.id, { resolve, reject });
+            });
+            
+            // Add to pending approvals immediately (shows UI)
+            console.log(`⏸️ Adding pending approval: ${command}`);
+            onPendingApproval(approval);
+            
+            // Wait for user decision
+            try {
+              const result = await approvalPromise;
+              return result;
+            } catch (error) {
+              return `⛔ Command denied by user: ${error instanceof Error ? error.message : 'User cancelled'}`;
+            }
+          }
+        }
+        
         const cwd = await getTerminalCwd(terminalId);
         const output = await executeCommand(command, cwd);
         return output;

@@ -1,7 +1,8 @@
 import { emitTo } from "@tauri-apps/api/event";
-import type { ChatMessage } from "../context/AIContext";
+import type { ChatMessage, PendingApproval } from "../context/AIContext";
 import { formatChatTime, handlePromptKeyDown, roleLabel } from "../ai/panelUi";
 import { AIMarkdown } from "./AIMarkdown";
+import { ToolExecutionStatus, type ToolExecution } from "./ToolExecutionStatus";
 
 export function AIChatTab(props: {
   messages: ChatMessage[];
@@ -10,9 +11,13 @@ export function AIChatTab(props: {
   isSending: boolean;
   sendError: string | null;
   onSend: () => void;
+  onCancel?: () => void;
   onClearChat: () => void;
   contextCountLabel: string;
   targetTerminalId?: number | null;
+  pendingApprovals?: PendingApproval[];
+  onApprove?: (id: string) => void;
+  onDeny?: (id: string) => void;
 }) {
   const {
     messages,
@@ -21,9 +26,13 @@ export function AIChatTab(props: {
     isSending,
     sendError,
     onSend,
+    onCancel,
     onClearChat,
     contextCountLabel,
     targetTerminalId,
+    pendingApprovals = [],
+    onApprove,
+    onDeny,
   } = props;
 
   const renderMarkdown = (content: string) => (
@@ -39,8 +48,27 @@ export function AIChatTab(props: {
     />
   );
 
+  // Convert pending approvals to tool executions
+  const toolExecutions: ToolExecution[] = pendingApprovals.map(approval => ({
+    id: approval.id,
+    toolName: 'execute_command',
+    status: 'pending' as const,
+    command: approval.command,
+    workingDirectory: approval.cwd,
+    startTime: approval.timestamp,
+  }));
+
   return (
     <div className="ai-panel-section">
+      {/* Pending Approvals */}
+      {toolExecutions.length > 0 && (
+        <ToolExecutionStatus
+          executions={toolExecutions}
+          onApprove={onApprove}
+          onDeny={onDeny}
+        />
+      )}
+      
       <div className="ai-panel-message-list">
         {messages.length === 0 ? (
           <div className="ai-panel-card ai-panel-intro">
@@ -90,10 +118,17 @@ export function AIChatTab(props: {
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => handlePromptKeyDown(event, onSend)}
+          disabled={isSending}
         />
-        <button className="ai-panel-send" onClick={onSend} disabled={isSending}>
-          {isSending ? "Sending..." : "Send"}
-        </button>
+        {isSending ? (
+          <button className="ai-panel-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+        ) : (
+          <button className="ai-panel-send" onClick={onSend}>
+            Send
+          </button>
+        )}
       </div>
 
       <div className="ai-panel-input-footer">
