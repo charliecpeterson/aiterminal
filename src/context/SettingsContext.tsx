@@ -66,7 +66,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, []);
 
     const loadSettings = async () => {
-        console.log('📥 Loading settings from backend...');
         try {
             const loadedSettings = await invoke<AppSettings>('load_settings');
             // API key is already loaded from keychain/cache by load_settings

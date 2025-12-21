@@ -10,13 +10,42 @@ The terminal detects when commands start and finish (bash and zsh supported).
   - **Grey**: Command is running.
   - **Green**: Command finished successfully (Exit Code 0).
   - **Red**: Command failed (Non-zero Exit Code).
-- **Remote sessions**: By default inside AI Terminal, `ssh` is aliased to `aiterm_ssh` so markers are enabled automatically. To opt out for a single command, run `\ssh <host>` (backslash avoids the alias) or start a new tab and remove the alias. `aiterm_ssh` injects the shell integration on the remote side without leaving a permanent file. For non-interactive `ssh host command`, it falls back to plain `ssh` (single marker on the local command).
-- **SSH in scripts**: AI Terminal also installs a small `ssh` shim in `~/.config/aiterminal/bin/ssh` and prepends `~/.config/aiterminal/bin` to `PATH` for shells it launches. This allows scripts that call `ssh` to still benefit from `aiterm_ssh` when running inside AI Terminal.
+- **Remote sessions**: AI Terminal automatically wraps `ssh` with `aiterm_ssh` using an exported bash function. This enables markers on remote hosts automatically. The integration works for:
+  - Interactive typing: `ssh user@host`
+  - Scripts: Any script that calls `ssh` (functions are exported with `export -f`)
+  - Remote shells: Supports both bash and zsh on remote hosts
+- **How it works**: `aiterm_ssh` injects shell integration (bash_init.sh) into the remote session via base64 encoding. The remote shell:
+  1. Decodes and validates the integration script
+  2. Sources user's existing `.bashrc` or `.zshrc` (preserves customizations)
+  3. Sets up OSC 133 command markers and OSC 1337 SSH detection
+  4. Falls back to normal ssh if integration fails
+- **SSH detection**: When connected via SSH, the terminal label changes from "Local" to "🔒 user@host" using OSC 1337;RemoteHost sequences.
 - **Privilege changes (`su`)**: `su` is **not** overridden by default. `su` implementations vary (util-linux, busybox, BSD), and wrapper-based bootstrapping can silently fail. If you need markers after `su`, the sustainable approach is to install the integration in that target account (see “Remote install” below).
 - **Containers**: In AI Terminal, interactive `docker` / `podman` and `apptainer` shells attempt to bootstrap integration so markers keep working inside long container sessions.
 - **Remote bootstrap safety**: The SSH helper is sent as a base64 payload; if it fails to decode or validate, the session falls back to a normal login shell without markers.
-- **Hide payload (optional)**: Set `AITERM_SSH_HIDE_PAYLOAD=1` to send the helper via SSH `SendEnv` instead of embedding it in the command line. This requires `AcceptEnv AITERM_B64` on the remote SSH server; otherwise markers will be disabled for that session.
+- **Bypassing the wrapper**: To use plain ssh without integration, run `command ssh user@host` or `\ssh user@host`.
 - **Debugging hooks**: Set `AITERM_HOOK_DEBUG=1` before launching a shell to print which hook path is used (bash `PROMPT_COMMAND` array vs string, zsh hook install).
+
+#### Technical Details: SSH Integration
+The SSH integration uses exported bash functions to intercept ssh calls:
+
+1. **Function export**: Both `aiterm_ssh` and `ssh` functions are exported with `export -f`, making them available in:
+   - Interactive shells (when you type commands)
+   - Non-interactive scripts (when scripts call ssh)
+   - Subshells and child processes
+   
+2. **Shell detection**: On remote hosts, the integration detects whether the remote shell is bash or zsh:
+   - **Bash**: Uses `--rcfile` to load integration directly
+   - **Zsh**: Uses `zsh -c` to source user's `.zshrc` first, then the integration script
+   
+3. **OSC sequences**: The integration sends terminal control sequences:
+   - **OSC 133**: Command markers (A=prompt start, C=output start, D=command done with exit code)
+   - **OSC 1337;RemoteHost**: SSH session info (user@host:ip format)
+   - **OSC 633;H**: Hostname label for display
+   
+4. **Environment detection**: Checks `SSH_CONNECTION`, `SSH_CLIENT`, and `SSH_TTY` environment variables to determine if the session is remote
+
+This architecture ensures SSH integration works reliably across different shells, execution contexts, and remote configurations without requiring system-level modifications or permanent files on remote hosts.
 
 #### Remote install (recommended for HPC reliability)
 If you frequently SSH into the same accounts, install the integration script on the remote side once. This avoids relying on SSH bootstrapping tricks and is more resilient across long sessions.
@@ -241,8 +270,12 @@ Manage multiple terminal sessions in a single window.
 
 ## Configuration
 The terminal creates a configuration directory at `~/.config/aiterminal/`.
-- **`bash_init.sh`**: This script is automatically generated and sourced to provide the shell integration features.
-- **`bin/ssh`**: A small shim used so `ssh` inside scripts can still bootstrap integration (when running inside AI Terminal).
+- **`bash_init.sh`**: Shell integration script automatically generated and loaded by the terminal. Provides command markers, OSC sequences, and SSH integration features.
+- **`ssh_helper.sh`**: Contains the `aiterm_ssh` function that handles remote shell integration bootstrap.
+- **`.zshrc`**: Zsh initialization script that sources bash_init.sh for local zsh sessions.
+- **`settings.json`**: Application settings including appearance, fonts, and AI configuration.
+
+The integration files are embedded in the application binary and written to disk on first launch or when updated.
 
 ## AI Settings
 Open Settings → AI to configure providers and models.

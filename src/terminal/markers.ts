@@ -126,17 +126,6 @@ export function createMarkerManager({
       const meta = markerMeta.get(marker);
       const storedExitCode = meta?.exitCode;
 
-      console.log('🎯 Marker clicked - Debug info:', {
-        exitCode: storedExitCode,
-        exitCodeType: typeof storedExitCode,
-        exitCodeIsUndefined: storedExitCode === undefined,
-        exitCodeIsNotZero: storedExitCode !== 0,
-        shouldShowExplainError: storedExitCode !== undefined && storedExitCode !== 0,
-        hasOutput: !!outputText,
-        commandPreview: commandText.slice(0, 50),
-        markerMeta: meta,
-      });
-
       const rect = element.getBoundingClientRect();
       setCopyMenu({
         x: rect.right + 8,
@@ -219,8 +208,6 @@ export function createMarkerManager({
         
         // Mark that we've seen at least one complete command
         hasSeenFirstCommand = true;
-        
-        console.log('🎯 OSC 133 D - Command finished:', { exitCode, parsed, parts });
         
         if (currentMarker) {
           const marker = currentMarker;

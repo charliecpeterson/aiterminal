@@ -77,9 +77,18 @@ __aiterm_mark_prompt() {
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
 
-# Prefer aiterm_ssh automatically inside AI Terminal
-if [ "$TERM_PROGRAM" = "aiterminal" ]; then
-    alias ssh='aiterm_ssh'
+# Source aiterm_ssh helper if it exists (must be done before creating ssh wrapper)
+if [ -f "$HOME/.config/aiterminal/ssh_helper.sh" ]; then
+    source "$HOME/.config/aiterminal/ssh_helper.sh"
+fi
+
+# Wrap ssh command to automatically use aiterm_ssh in AI Terminal
+# Export function so it works in scripts and subshells
+if [ "$TERM_PROGRAM" = "aiterminal" ] && command -v aiterm_ssh >/dev/null 2>&1; then
+    ssh() {
+        aiterm_ssh "$@"
+    }
+    export -f ssh
 fi
 
 if [ -n "$BASH_VERSION" ]; then
@@ -155,9 +164,4 @@ if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
     if [ -n "$AITERM_HOOK_DEBUG" ] || [ -n "$AITERM_SSH_DEBUG" ]; then
         echo "AI Terminal OSC 133 shell integration active ($(basename "$SHELL"))"
     fi
-fi
-
-# Source aiterm_ssh helper if it exists
-if [ -f "$HOME/.config/aiterminal/ssh_helper.sh" ]; then
-    source "$HOME/.config/aiterminal/ssh_helper.sh"
 fi

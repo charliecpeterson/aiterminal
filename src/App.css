@@ -432,12 +432,14 @@ body, html, #root {
   border-radius: 10px;
   font-weight: 600;
   color: #0f0f0f;
+  font-size: 11px;
 }
 
-.latency-good { background: #6ad16a; }
-.latency-warn { background: #e3c75f; }
-.latency-bad { background: #e07a7a; }
-.latency-unknown { background: #7a7a7a; color: #0f0f0f; }
+/* Latency color coding: <100ms green, 100-300ms yellow, >300ms red */
+.latency-good { background: #4ade80; color: #0a3d0a; }
+.latency-warn { background: #fbbf24; color: #422006; }
+.latency-bad { background: #f87171; color: #450a0a; }
+.latency-unknown { background: #6b7280; color: #f9fafb; }
 
 /* Ensure terminal content can scroll with a visible gutter on the right */
 .xterm .xterm-viewport {

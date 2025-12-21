@@ -46,7 +46,6 @@ export function rejectApproval(id: string, reason: string) {
 async function getTerminalCwd(terminalId: number): Promise<string> {
   try {
     const cwd = await invoke<string>('get_pty_cwd', { id: terminalId });
-    console.log(`📂 Got terminal ${terminalId} CWD:`, cwd);
     return cwd;
   } catch (error) {
     console.error('Failed to get terminal CWD:', error);

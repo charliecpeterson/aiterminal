@@ -158,16 +158,13 @@ CURRENT CONTEXT:
 
     // Stream the full response including tool calls and results
     for await (const part of result.fullStream) {
-      console.log('📦 Stream part:', part.type);
-      
       if (part.type === 'text-delta') {
         appendMessage(assistantId, part.text);
       } else if (part.type === 'tool-call') {
-        console.log('🔧 Tool call:', part.toolName);
+        // Tool being called - no action needed, handled by tool-result
       } else if (part.type === 'tool-result') {
-        console.log('✅ Tool result:', part.toolName);
+        // Tool completed - no action needed
       } else if (part.type === 'finish') {
-        console.log('🏁 Finish:', part.finishReason);
       }
     }
 

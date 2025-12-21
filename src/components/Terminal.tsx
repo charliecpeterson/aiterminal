@@ -57,8 +57,6 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
 
     const handleQuickAction = useCallback(
         (actionType: QuickActionType, commandText: string, outputText?: string, exitCode?: number) => {
-            console.log('Quick action clicked:', { actionType, exitCode, hasOutput: !!outputText });
-            
             const { systemPrompt, userPrompt } = buildQuickActionPrompt({
                 actionType,
                 command: commandText,
@@ -410,7 +408,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                                 : 'SSH Session'
                         }
                     >
-                        <span className={`latency-pill ${latencyMs && latencyMs > 0 ? (latencyMs < 50 ? 'latency-good' : latencyMs < 150 ? 'latency-ok' : 'latency-poor') : 'latency-measuring'}`}>
+                        <span className={`latency-pill ${latencyMs && latencyMs > 0 ? (latencyMs < 100 ? 'latency-good' : latencyMs < 300 ? 'latency-warn' : 'latency-bad') : 'latency-unknown'}`}>
                             {latencyMs && latencyMs > 0 ? `${latencyMs}ms` : '—'}
                         </span>
                     </div>
