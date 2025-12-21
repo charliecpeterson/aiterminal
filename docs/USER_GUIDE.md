@@ -49,26 +49,85 @@ The AI Panel provides context-aware assistance alongside the terminal with power
 - **Context Tab**: Staged context items can be previewed, removed, or cleared.
 
 #### AI Capabilities & Tools
-The AI assistant has access to 5 powerful tools that execute automatically to help you:
+The AI assistant has access to 16 powerful tools that execute automatically to help you:
 
+**File Operations**
 1. **execute_command** - Run any shell command in your current terminal directory
    - Examples: Check versions, run git commands, install packages, view logs
-   - Automatically uses your terminal's working directory
+   - Dangerous commands (rm, sudo, etc.) require approval when enabled in settings
 
 2. **read_file** - Read and analyze file contents
    - Examples: Check package.json, read configuration files, examine logs
-   - Supports text files up to 500KB (configurable)
+   - Supports text files up to 50KB by default
 
-3. **list_directory** - Browse directory contents
+3. **write_file** - Create new files or overwrite existing ones
+   - Examples: Create config files, generate scripts, fix code files
+   - Overwrites require approval when enabled
+
+4. **append_to_file** - Add content to the end of a file
+   - Examples: Add to logs, update lists, append notes
+   - Creates file if it doesn't exist
+
+5. **list_directory** - Browse directory contents
    - Shows files and subdirectories
    - Works with absolute paths
 
-4. **search_files** - Find files by name pattern or content
+6. **tail_file** - Read the last N lines of a file
+   - More efficient than reading entire large log files
+   - Default: 50 lines, configurable
+
+7. **make_directory** - Create directories (and parents if needed)
+   - Examples: Set up project structure, create nested folders
+
+**Search & Discovery**
+8. **search_files** - Find files by name pattern or content
    - Glob patterns for filenames (e.g., `*.ts`, `**/*.json`)
    - Content search across files
 
-5. **get_environment_variable** - Check environment variables
-   - Examples: PATH, HOME, custom variables
+**Git Operations**
+9. **git_status** - Get current branch, staged files, uncommitted changes
+   - Helps AI understand your git repository state
+
+10. **get_git_diff** - Show uncommitted changes
+    - See what's been modified before committing
+
+**System & Process**
+11. **find_process** - Search for running processes by name
+    - Examples: Find node processes, check for running servers
+    - Useful for debugging "port already in use" errors
+
+12. **check_port** - Check if a network port is in use
+    - Shows which process is using the port
+    - Common for debugging port conflicts
+
+13. **get_system_info** - Get OS, architecture, and disk space
+    - Useful for environment debugging
+
+14. **get_environment_variable** - Check environment variables
+    - Examples: PATH, HOME, custom variables
+
+**Utilities**
+15. **calculate** - Evaluate mathematical expressions
+    - Examples: Unit conversions, sizing calculations
+    - Supports arithmetic and math functions
+
+16. **web_search** - Generate search URLs for documentation
+    - Suggests Google searches when external info is needed
+    - Cannot actually browse but provides helpful links
+
+#### Command Approval System
+Dangerous commands are protected by an interactive approval system:
+
+- **Settings**: Enable/disable in Settings → AI → "Require approval before executing commands"
+- **Safe by Default**: Enabled by default for security
+- **Automatic Detection**: Commands like `rm`, `sudo`, `dd`, `chmod`, `kill`, etc. are flagged
+- **Approval UI**: When a dangerous command is detected:
+  1. Execution pauses immediately
+  2. Approval card appears showing command, reason, and working directory
+  3. Click **✓ Run** to execute or **✗ Cancel** to deny
+  4. AI receives result or denial and continues accordingly
+- **Safe Commands**: Read-only commands (pwd, ls, cat, grep, etc.) run automatically
+- **Transparency**: All tool executions are logged in the console for debugging
 
 #### Multi-Step Tool Execution
 The AI can automatically chain multiple tools together to accomplish complex tasks:
@@ -88,9 +147,13 @@ The AI can perform up to 5 sequential tool calls per request, allowing it to sol
 - **Streaming Responses**: Text appears in real-time as the AI generates it
 - **Markdown Rendering**: Responses include formatted text, links, tables, code blocks, and emphasis
 - **Code Block Copy**: Each code block includes a copy button for easy use
-- **Automatic Tool Execution**: No approval needed - tools run automatically with full transparency
+- **Automatic Tool Execution**: Tools run automatically with full transparency
+- **Command Approval**: Dangerous commands pause for user approval (configurable)
+- **Cancel Requests**: Stop AI requests mid-stream with the Cancel button
+- **Export Chat**: Download conversation history as markdown file with native save dialog
 - **Terminal Context Aware**: AI knows your current terminal directory for accurate file operations
 - **Context Management**: Add commands, outputs, files, or selections to provide context for AI queries
+- **Tool Execution Status**: See pending approvals with command preview and working directory
 
 #### Adding Context
 - **Capture Last N**: Capture the last N completed commands/outputs from your terminal
@@ -100,13 +163,41 @@ The AI can perform up to 5 sequential tool calls per request, allowing it to sol
 
 #### Example Prompts
 Try these to see the AI's capabilities:
+
+**File Operations**
 - "What files are in my current directory?"
 - "Read the package.json and tell me what scripts are available"
+- "Create a new config.json file with default settings"
+- "Add a TODO item to my notes.txt file"
+- "Show me the last 100 lines of the error log"
+- "Create a new src/components folder"
+
+**Git Operations**
+- "What's my current git branch and status?"
+- "Show me what changes I haven't committed yet"
+- "Check if I have any uncommitted changes"
+
+**System & Debugging**
 - "Check if Node.js is installed and what version"
+- "Is port 8080 in use? What's using it?"
+- "Find all node processes running"
+- "What's my system architecture and OS version?"
+
+**Search & Discovery**
 - "Find all TypeScript files in src/"
-- "What's my current git branch and last 3 commits?"
 - "Search for TODO comments in this project"
 - "Show me what's in the README file"
+- "List all Python files in the current directory"
+
+**Code & Scripts**
+- "Write a simple hello world script in Python"
+- "Fix the syntax error in app.js"
+- "Create a .gitignore file for a Node.js project"
+
+**Calculations & Utilities**
+- "How many kilobytes is 1048576 bytes?"
+- "Calculate 15% of 250"
+- "What's the square root of 144?"
 
 ### 4. Font Zooming
 Adjust the text size to your preference. The terminal window automatically reflows text when zooming.
@@ -157,19 +248,26 @@ The terminal creates a configuration directory at `~/.config/aiterminal/`.
 Open Settings → AI to configure providers and models.
 - **Providers**: OpenAI (recommended), Anthropic, Gemini, Ollama
 - **Models**: Any model that supports function calling/tool use
-  - OpenAI: gpt-4, gpt-4-turbo, gpt-3.5-turbo
+  - OpenAI: gpt-4, gpt-4o, gpt-4-turbo, gpt-3.5-turbo
   - Requires tool calling support for automatic command execution
 - **API Key**: Required for cloud providers (OpenAI, Anthropic, Gemini)
 - **Custom URL**: Override base API endpoints (useful for Ollama or proxies)
 - **Test Connection**: Validates credentials and populates model dropdowns
+- **Command Approval**: Enable/disable approval requirement for dangerous commands
+  - When enabled: Commands like `rm`, `sudo`, `chmod` require user approval
+  - When disabled: All commands execute automatically (use with caution)
+  - Safe commands (ls, pwd, cat, grep) always run automatically
 
 ### Technical Implementation
 The AI system is built on:
 - **Vercel AI SDK v5** for robust streaming and tool execution
-- **Automatic Tool Calling**: Tools execute without manual approval for seamless workflows
+- **Automatic Tool Calling**: 16 tools execute seamlessly to accomplish tasks
 - **Multi-Step Execution**: Up to 5 sequential tool calls per request using `stopWhen`
+- **Approval System**: Promise-based blocking for dangerous command approval
 - **Terminal Integration**: Uses `get_pty_cwd` to determine your actual working directory
 - **Type-Safe**: Tool schemas validated with Zod for reliable execution
+- **Cancellation**: AbortController-based request cancellation
+- **Export**: Native file system integration for saving conversations
 
 ## Troubleshooting
 
@@ -180,10 +278,14 @@ The AI system is built on:
 
 ### AI Panel
 - **Blank AI responses?** Ensure your AI settings are configured with a valid API key and model that supports tool calling.
-- **AI not using tools?** Check that you're using a model with function calling support (e.g., gpt-4, gpt-4-turbo, not base models).
+- **AI not using tools?** Check that you're using a model with function calling support (e.g., gpt-4, gpt-4o, gpt-4-turbo, not base models).
 - **Wrong directory for commands?** The AI automatically detects your terminal's working directory. If issues persist, try `cd` to refresh.
 - **Tool execution errors?** Check console logs (View → Developer → Developer Tools) for detailed error messages.
 - **Connection errors?** Verify your API key and internet connection. Test with the "Test Connection" button in Settings.
+- **Command not executing after approval?** Check console for errors. The approval system waits for your decision before proceeding.
+- **Dangerous commands running without approval?** Verify "Require approval for commands" is enabled in Settings → AI.
+- **Export not working?** Ensure the fs and dialog plugins are properly initialized (check console for errors).
+- **Can't cancel request?** The Cancel button appears while sending. If it's unresponsive, check for network issues or refresh the app.
 
 ### General
 - **Copy not working?** The app uses the system clipboard. Ensure you have granted permission if prompted.

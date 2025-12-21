@@ -286,5 +286,250 @@ Examples:
         }
       },
     }),
+
+    write_file: tool({
+      description: `Write content to a file (creates new file or overwrites existing).
+
+IMPORTANT: This will overwrite existing files! Use with caution.
+
+Examples:
+- Create config: path="config.json", content="{\\"key\\": \\"value\\"}"
+- Write script: path="script.sh", content="#!/bin/bash\\necho hello"`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file (absolute or relative)'),
+        content: z.string().describe('Content to write to the file'),
+      }),
+      execute: async ({ path, content }) => {
+        console.log(`🤖 AI called write_file: ${path}`);
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('write_file_tool', {
+            path,
+            content,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error writing file: ${error}`;
+        }
+      },
+    }),
+
+    append_to_file: tool({
+      description: `Append content to the end of a file. Creates file if it doesn't exist.
+
+Examples:
+- Add to log: path="app.log", content="[INFO] Message\\n"
+- Update list: path="notes.txt", content="- New item\\n"`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file'),
+        content: z.string().describe('Content to append'),
+      }),
+      execute: async ({ path, content }) => {
+        console.log(`🤖 AI called append_to_file: ${path}`);
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('append_to_file_tool', {
+            path,
+            content,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error appending to file: ${error}`;
+        }
+      },
+    }),
+
+    git_status: tool({
+      description: `Get git repository status including current branch, staged files, and uncommitted changes.
+
+Use this to understand the state of the git repository before making suggestions.`,
+      inputSchema: z.object({}),
+      execute: async () => {
+        console.log(`🤖 AI called git_status`);
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('git_status_tool', {
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error getting git status: ${error}`;
+        }
+      },
+    }),
+
+    find_process: tool({
+      description: `Find running processes by name or pattern. Useful for debugging "port already in use" errors.
+
+Examples:
+- Find node: pattern="node"
+- Find Python: pattern="python"
+- Find by port: pattern="8080"`,
+      inputSchema: z.object({
+        pattern: z.string().describe('Search pattern for process name'),
+      }),
+      execute: async ({ pattern }) => {
+        console.log(`🤖 AI called find_process: ${pattern}`);
+        
+        try {
+          const result = await invoke<string>('find_process_tool', { pattern });
+          return result;
+        } catch (error) {
+          return `Error finding process: ${error}`;
+        }
+      },
+    }),
+
+    check_port: tool({
+      description: `Check if a network port is in use and what process is using it.
+
+Examples:
+- Check web port: port=8080
+- Check database: port=5432`,
+      inputSchema: z.object({
+        port: z.number().describe('Port number to check (e.g., 8080, 3000)'),
+      }),
+      execute: async ({ port }) => {
+        console.log(`🤖 AI called check_port: ${port}`);
+        
+        try {
+          const result = await invoke<string>('check_port_tool', { port });
+          return result;
+        } catch (error) {
+          return `Error checking port: ${error}`;
+        }
+      },
+    }),
+
+    get_system_info: tool({
+      description: `Get system information including OS, architecture, and disk space. Useful for debugging environment issues.`,
+      inputSchema: z.object({}),
+      execute: async () => {
+        console.log(`🤖 AI called get_system_info`);
+        
+        try {
+          const result = await invoke<string>('get_system_info_tool');
+          return result;
+        } catch (error) {
+          return `Error getting system info: ${error}`;
+        }
+      },
+    }),
+
+    tail_file: tool({
+      description: `Read the last N lines of a file. More efficient than read_file for large log files.
+
+Examples:
+- Last 50 lines: path="app.log", lines=50
+- Recent errors: path="/var/log/error.log", lines=100`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file'),
+        lines: z.number().optional().describe('Number of lines to read from end (default: 50)'),
+      }),
+      execute: async ({ path, lines }) => {
+        console.log(`🤖 AI called tail_file: ${path} (${lines || 50} lines)`);
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('tail_file_tool', {
+            path,
+            lines: lines || 50,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error reading file tail: ${error}`;
+        }
+      },
+    }),
+
+    make_directory: tool({
+      description: `Create a directory (and parent directories if needed).
+
+Examples:
+- Create folder: path="new_project"
+- Nested path: path="src/components/ui"`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the directory to create'),
+      }),
+      execute: async ({ path }) => {
+        console.log(`🤖 AI called make_directory: ${path}`);
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('make_directory_tool', {
+            path,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error creating directory: ${error}`;
+        }
+      },
+    }),
+
+    get_git_diff: tool({
+      description: `Get uncommitted changes in the git repository. Shows what has been modified but not yet committed.`,
+      inputSchema: z.object({}),
+      execute: async () => {
+        console.log(`🤖 AI called get_git_diff`);
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('get_git_diff_tool', {
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error getting git diff: ${error}`;
+        }
+      },
+    }),
+
+    calculate: tool({
+      description: `Evaluate a mathematical expression. Supports basic arithmetic and advanced math functions.
+
+Examples:
+- Simple: expression="2 + 2"
+- Complex: expression="sqrt(16) * 3.14"
+- Conversions: expression="1024 / 8" (bytes to KB)`,
+      inputSchema: z.object({
+        expression: z.string().describe('Mathematical expression to evaluate'),
+      }),
+      execute: async ({ expression }) => {
+        console.log(`🤖 AI called calculate: ${expression}`);
+        
+        try {
+          const result = await invoke<string>('calculate_tool', { expression });
+          return `${expression} = ${result}`;
+        } catch (error) {
+          return `Error calculating: ${error}`;
+        }
+      },
+    }),
+
+    web_search: tool({
+      description: `Get suggestions for searching the web. Cannot actually browse, but provides helpful search URLs.
+
+Use this when the user asks about external documentation or errors that might need web research.`,
+      inputSchema: z.object({
+        query: z.string().describe('Search query'),
+      }),
+      execute: async ({ query }) => {
+        console.log(`🤖 AI called web_search: ${query}`);
+        
+        try {
+          const result = await invoke<string>('web_search_tool', { query });
+          return result;
+        } catch (error) {
+          return `Error generating search suggestion: ${error}`;
+        }
+      },
+    }),
   };
 }

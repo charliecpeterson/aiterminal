@@ -200,6 +200,244 @@ pub async fn get_env_var_tool(variable: String) -> Result<Option<String>, String
     Ok(std::env::var(&variable).ok())
 }
 
+// Write content to a file (create or overwrite)
+#[tauri::command]
+pub async fn write_file_tool(path: String, content: String, working_directory: Option<String>) -> Result<String, String> {
+    let full_path = if let Some(cwd) = working_directory {
+        Path::new(&cwd).join(&path)
+    } else {
+        Path::new(&path).to_path_buf()
+    };
+
+    fs::write(&full_path, content)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    
+    Ok(format!("Successfully wrote to {}", full_path.display()))
+}
+
+// Append content to a file
+#[tauri::command]
+pub async fn append_to_file_tool(path: String, content: String, working_directory: Option<String>) -> Result<String, String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let full_path = if let Some(cwd) = working_directory {
+        Path::new(&cwd).join(&path)
+    } else {
+        Path::new(&path).to_path_buf()
+    };
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&full_path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to append to file: {}", e))?;
+    
+    Ok(format!("Successfully appended to {}", full_path.display()))
+}
+
+// Get git status
+#[tauri::command]
+pub async fn git_status_tool(working_directory: Option<String>) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    cmd.args(["status", "--porcelain", "--branch"]);
+    
+    if let Some(cwd) = working_directory {
+        cmd.current_dir(&cwd);
+    }
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to execute git: {}", e))?;
+
+    if !output.status.success() {
+        return Err("Not a git repository or git not installed".to_string());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+// Find running processes
+#[tauri::command]
+pub async fn find_process_tool(pattern: String) -> Result<String, String> {
+    let cmd = if cfg!(target_os = "windows") {
+        Command::new("tasklist")
+            .output()
+    } else {
+        Command::new("ps")
+            .args(["aux"])
+            .output()
+    };
+
+    let output = cmd.map_err(|e| format!("Failed to execute ps: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    let matches: Vec<&str> = stdout
+        .lines()
+        .filter(|line| line.to_lowercase().contains(&pattern.to_lowercase()))
+        .collect();
+
+    if matches.is_empty() {
+        Ok(format!("No processes found matching '{}'", pattern))
+    } else {
+        Ok(matches.join("\n"))
+    }
+}
+
+// Check if a port is in use
+#[tauri::command]
+pub async fn check_port_tool(port: u16) -> Result<String, String> {
+    let cmd = if cfg!(target_os = "windows") {
+        Command::new("netstat")
+            .args(["-ano"])
+            .output()
+    } else {
+        Command::new("lsof")
+            .args(["-i", &format!(":{}", port)])
+            .output()
+    };
+
+    let output = cmd.map_err(|e| format!("Failed to check port: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    if stdout.trim().is_empty() {
+        Ok(format!("Port {} is available", port))
+    } else {
+        Ok(format!("Port {} is in use:\n{}", port, stdout))
+    }
+}
+
+// Get system information
+#[tauri::command]
+pub async fn get_system_info_tool() -> Result<String, String> {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let family = std::env::consts::FAMILY;
+    
+    // Get available disk space
+    let disk_info = if cfg!(target_os = "windows") {
+        Command::new("wmic")
+            .args(["logicaldisk", "get", "size,freespace,caption"])
+            .output()
+            .ok()
+    } else {
+        Command::new("df")
+            .args(["-h", "/"])
+            .output()
+            .ok()
+    };
+
+    let mut info = format!("OS: {}\nArchitecture: {}\nFamily: {}\n", os, arch, family);
+    
+    if let Some(output) = disk_info {
+        info.push_str("\nDisk Space:\n");
+        info.push_str(&String::from_utf8_lossy(&output.stdout));
+    }
+
+    Ok(info)
+}
+
+// Read last N lines of a file (tail)
+#[tauri::command]
+pub async fn tail_file_tool(path: String, lines: usize, working_directory: Option<String>) -> Result<String, String> {
+    let full_path = if let Some(cwd) = working_directory {
+        Path::new(&cwd).join(&path)
+    } else {
+        Path::new(&path).to_path_buf()
+    };
+
+    let content = fs::read_to_string(&full_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    
+    let all_lines: Vec<&str> = content.lines().collect();
+    let start = all_lines.len().saturating_sub(lines);
+    let tail_lines = &all_lines[start..];
+    
+    Ok(tail_lines.join("\n"))
+}
+
+// Create a directory
+#[tauri::command]
+pub async fn make_directory_tool(path: String, working_directory: Option<String>) -> Result<String, String> {
+    let full_path = if let Some(cwd) = working_directory {
+        Path::new(&cwd).join(&path)
+    } else {
+        Path::new(&path).to_path_buf()
+    };
+
+    fs::create_dir_all(&full_path)
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    
+    Ok(format!("Successfully created directory: {}", full_path.display()))
+}
+
+// Get git diff
+#[tauri::command]
+pub async fn get_git_diff_tool(working_directory: Option<String>) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    cmd.args(["diff"]);
+    
+    if let Some(cwd) = working_directory {
+        cmd.current_dir(&cwd);
+    }
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to execute git: {}", e))?;
+
+    if !output.status.success() {
+        return Err("Not a git repository or git not installed".to_string());
+    }
+
+    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    
+    if diff.trim().is_empty() {
+        Ok("No uncommitted changes".to_string())
+    } else {
+        Ok(diff)
+    }
+}
+
+// Calculate math expression
+#[tauri::command]
+pub async fn calculate_tool(expression: String) -> Result<String, String> {
+    // Simple calculator using bc on Unix or PowerShell on Windows
+    let output = if cfg!(target_os = "windows") {
+        Command::new("powershell")
+            .args(["-Command", &expression])
+            .output()
+    } else {
+        Command::new("sh")
+            .arg("-c")
+            .arg(format!("echo '{}' | bc -l", expression))
+            .output()
+    };
+
+    let result = output.map_err(|e| format!("Failed to calculate: {}", e))?;
+    
+    if result.status.success() {
+        Ok(String::from_utf8_lossy(&result.stdout).trim().to_string())
+    } else {
+        Err(format!("Invalid expression: {}", String::from_utf8_lossy(&result.stderr)))
+    }
+}
+
+// Web search (returns curl command suggestion)
+#[tauri::command]
+pub async fn web_search_tool(query: String) -> Result<String, String> {
+    // Rather than actually web scraping, return a suggestion
+    let encoded_query = query.replace(' ', "+");
+    Ok(format!(
+        "To search the web, you can:\n\
+        1. Open browser: https://www.google.com/search?q={}\n\
+        2. Use curl: curl -s 'https://www.google.com/search?q={}'\n\
+        3. Ask the user to check documentation\n\n\
+        Note: This terminal cannot directly browse the web. Consider asking the user to search for: '{}'",
+        encoded_query, encoded_query, query
+    ))
+}
+
 // Simple pattern matching helper
 fn matches_pattern(text: &str, pattern: &str) -> bool {
     if pattern.contains('*') {

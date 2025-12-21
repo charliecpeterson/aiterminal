@@ -14,6 +14,9 @@ use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_se
 use tools::{
     execute_tool_command, read_file_tool, list_directory_tool,
     search_files_tool, get_current_directory_tool, get_env_var_tool,
+    write_file_tool, append_to_file_tool, git_status_tool, find_process_tool,
+    check_port_tool, get_system_info_tool, tail_file_tool, make_directory_tool,
+    get_git_diff_tool, calculate_tool, web_search_tool,
 };
 use tauri::Emitter;
 
@@ -81,6 +84,17 @@ pub fn run() {
             search_files_tool,
             get_current_directory_tool,
             get_env_var_tool,
+            write_file_tool,
+            append_to_file_tool,
+            git_status_tool,
+            find_process_tool,
+            check_port_tool,
+            get_system_info_tool,
+            tail_file_tool,
+            make_directory_tool,
+            get_git_diff_tool,
+            calculate_tool,
+            web_search_tool,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {
