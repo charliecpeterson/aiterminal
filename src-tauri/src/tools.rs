@@ -201,18 +201,23 @@ pub async fn get_env_var_tool(variable: String) -> Result<Option<String>, String
 }
 
 // Write content to a file (create or overwrite)
+// Uses shell command so it works everywhere (local, SSH, docker, etc.)
 #[tauri::command]
-pub async fn write_file_tool(path: String, content: String, working_directory: Option<String>) -> Result<String, String> {
-    let full_path = if let Some(cwd) = working_directory {
-        Path::new(&cwd).join(&path)
-    } else {
-        Path::new(&path).to_path_buf()
-    };
-
-    fs::write(&full_path, content)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+pub async fn write_file_tool(
+    path: String,
+    content: String,
+    working_directory: Option<String>
+) -> Result<String, String> {
+    // Use cat with heredoc for reliable multi-line writing
+    let command = format!("cat > '{}' << 'AITERMINAL_EOF'\n{}\nAITERMINAL_EOF", path, content);
     
-    Ok(format!("Successfully wrote to {}", full_path.display()))
+    let result = execute_tool_command(command, working_directory).await?;
+    
+    if result.exit_code == 0 {
+        Ok(format!("Successfully wrote to {}", path))
+    } else {
+        Err(format!("Failed to write file: {}", result.stderr))
+    }
 }
 
 // Append content to a file
@@ -359,18 +364,20 @@ pub async fn tail_file_tool(path: String, lines: usize, working_directory: Optio
 }
 
 // Create a directory
+// Uses shell command so it works everywhere (local, SSH, docker, etc.)
 #[tauri::command]
-pub async fn make_directory_tool(path: String, working_directory: Option<String>) -> Result<String, String> {
-    let full_path = if let Some(cwd) = working_directory {
-        Path::new(&cwd).join(&path)
-    } else {
-        Path::new(&path).to_path_buf()
-    };
-
-    fs::create_dir_all(&full_path)
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
+pub async fn make_directory_tool(
+    path: String,
+    working_directory: Option<String>
+) -> Result<String, String> {
+    let command = format!("mkdir -p '{}'", path);
+    let result = execute_tool_command(command, working_directory).await?;
     
-    Ok(format!("Successfully created directory: {}", full_path.display()))
+    if result.exit_code == 0 {
+        Ok(format!("Successfully created directory: {}", path))
+    } else {
+        Err(format!("Failed to create directory: {}", result.stderr))
+    }
 }
 
 // Get git diff

@@ -9,7 +9,7 @@ mod tools;
 // Re-export models and commands
 pub use models::AppState;
 use ai::{ai_chat, ai_chat_stream, test_ai_connection};
-use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
+use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd, get_terminal_context, set_ssh_context};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
 use tools::{
     execute_tool_command, read_file_tool, list_directory_tool,
@@ -66,6 +66,8 @@ pub fn run() {
             measure_pty_latency,
             get_pty_info,
             get_pty_cwd,
+            get_terminal_context,
+            set_ssh_context,
             spawn_pty,
             write_to_pty,
             resize_pty,

@@ -125,12 +125,48 @@ pub struct SshSessionInfo {
     pub latency_monitor_handle: Option<()>, // Placeholder for thread handle (can't serialize JoinHandle)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub enum ContextConfidence {
+    High,   // Single SSH, clear prompt
+    Medium, // SSH detected but uncertain
+    Low,    // Complex nesting or unclear
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TerminalContext {
+    pub terminal_id: u32,
+    pub is_ssh: bool,
+    pub remote_host: Option<String>,
+    pub remote_cwd: Option<String>,
+    pub confidence: ContextConfidence,
+    pub connection_depth: u32, // 0=local, 1=ssh, 2=nested, etc.
+    pub last_updated: u64,     // Unix timestamp
+}
+
+impl TerminalContext {
+    pub fn new_local(terminal_id: u32) -> Self {
+        Self {
+            terminal_id,
+            is_ssh: false,
+            remote_host: None,
+            remote_cwd: None,
+            confidence: ContextConfidence::High,
+            connection_depth: 0,
+            last_updated: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        }
+    }
+}
+
 pub struct AppState {
     pub ptys: Mutex<HashMap<u32, PtySession>>,
     pub next_id: Mutex<u32>,
     pub api_key_cache: Mutex<HashMap<String, String>>,
     pub keychain_lock: Mutex<()>,
     pub ssh_sessions: Arc<Mutex<HashMap<u32, SshSessionInfo>>>, // PTY ID -> SSH info, wrapped in Arc for thread sharing
+    pub terminal_contexts: Arc<Mutex<HashMap<u32, TerminalContext>>>, // PTY ID -> Context
 }
 
 impl AppState {
@@ -141,6 +177,7 @@ impl AppState {
             api_key_cache: Mutex::new(HashMap::new()),
             keychain_lock: Mutex::new(()),
             ssh_sessions: Arc::new(Mutex::new(HashMap::new())),
+            terminal_contexts: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

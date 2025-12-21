@@ -9,6 +9,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
 import { isCommandSafe } from './commandSafety';
+import { executeInPty } from '../terminal/executeInPty';
 import type { PendingApproval } from '../context/AIContext';
 
 // Store pending approval promises
@@ -55,32 +56,23 @@ async function getTerminalCwd(terminalId: number): Promise<string> {
 }
 
 /**
- * Execute a shell command
+ * Execute a shell command using the active terminal PTY
+ * This ensures commands run in the current terminal context (local, SSH, docker, etc.)
  */
-async function executeCommand(command: string, workingDirectory?: string): Promise<string> {
+async function executeCommand(command: string, terminalId: number): Promise<string> {
   try {
-    console.log(`🔧 Executing: ${command}`);
-    console.log(`📂 Working directory: ${workingDirectory || 'default'}`);
+    console.log(`🔧 Executing in PTY ${terminalId}: ${command}`);
     
-    const result = await invoke<{
-      stdout: string;
-      stderr: string;
-      exit_code: number;
-    }>('execute_tool_command', {
+    const result = await executeInPty({
+      terminalId,
       command,
-      workingDirectory: workingDirectory || null,
+      timeoutMs: 10000,
     });
 
-    console.log(`✅ Command completed with exit code ${result.exit_code}`);
-    
-    if (result.exit_code !== 0) {
-      return `Command failed with exit code ${result.exit_code}\nstderr: ${result.stderr}\nstdout: ${result.stdout}`;
-    }
-    
-    // Combine stdout and stderr, but prioritize stdout
-    return result.stdout || result.stderr || '(no output)';
+    console.log(`✅ PTY command completed with exit code ${result.exitCode}`);
+    return result.output || '(no output)';
   } catch (error) {
-    console.error('Command execution error:', error);
+    console.error('PTY execution error:', error);
     return `Error: ${error}`;
   }
 }
@@ -152,8 +144,7 @@ Examples:
           }
         }
         
-        const cwd = await getTerminalCwd(terminalId);
-        const output = await executeCommand(command, cwd);
+        const output = await executeCommand(command, terminalId);
         return output;
       },
     }),
@@ -290,26 +281,34 @@ Examples:
     write_file: tool({
       description: `Write content to a file (creates new file or overwrites existing).
 
-IMPORTANT: This will overwrite existing files! Use with caution.
+⚠️ NOTE: This tool only works on your LOCAL machine. If you're SSHed to a remote server, 
+use execute_command instead with: cat > filename << 'EOF'
+content here
+EOF
 
 Examples:
-- Create config: path="config.json", content="{\\"key\\": \\"value\\"}"
-- Write script: path="script.sh", content="#!/bin/bash\\necho hello"`,
+- Local: Use this tool with path="config.json", content="{\\"key\\": \\"value\\"}"
+- Remote (SSH): Use execute_command with command="cat > config.json << 'EOF'\\n{\\"key\\": \\"value\\"}\\nEOF"`,
       inputSchema: z.object({
         path: z.string().describe('Path to the file (absolute or relative)'),
         content: z.string().describe('Content to write to the file'),
       }),
       execute: async ({ path, content }) => {
         console.log(`🤖 AI called write_file: ${path}`);
-        const cwd = await getTerminalCwd(terminalId);
+        
+        // Escape content for shell - replace ' with '\''
+        const escapedContent = content.replace(/'/g, "'\\''");
+        const escapedPath = path.replace(/'/g, "'\\''");
+        
+        // Use printf with escaped content - more reliable than heredoc in subshells
+        const command = `printf '%s' '${escapedContent}' > '${escapedPath}'`;
         
         try {
-          const result = await invoke<string>('write_file_tool', {
-            path,
-            content,
-            workingDirectory: cwd,
-          });
-          return result;
+          const result = await executeCommand(command, terminalId);
+          if (result.includes('Error:')) {
+            return result;
+          }
+          return `Successfully wrote to ${path}`;
         } catch (error) {
           return `Error writing file: ${error}`;
         }
@@ -451,22 +450,28 @@ Examples:
     make_directory: tool({
       description: `Create a directory (and parent directories if needed).
 
+⚠️ NOTE: This tool only works on your LOCAL machine. If you're SSHed to a remote server,
+use execute_command instead with: mkdir -p directory_name
+
 Examples:
-- Create folder: path="new_project"
-- Nested path: path="src/components/ui"`,
+- Local: Use this tool with path="new_project"
+- Remote (SSH): Use execute_command with command="mkdir -p new_project"`,
       inputSchema: z.object({
         path: z.string().describe('Path to the directory to create'),
       }),
       execute: async ({ path }) => {
         console.log(`🤖 AI called make_directory: ${path}`);
-        const cwd = await getTerminalCwd(terminalId);
+        
+        // Use mkdir via PTY - works everywhere (local, SSH, docker, etc.)
+        const escapedPath = path.replace(/'/g, "'\\''");
+        const command = `mkdir -p '${escapedPath}'`;
         
         try {
-          const result = await invoke<string>('make_directory_tool', {
-            path,
-            workingDirectory: cwd,
-          });
-          return result;
+          const result = await executeCommand(command, terminalId);
+          if (result.includes('Error:')) {
+            return result;
+          }
+          return `Successfully created directory: ${path}`;
         } catch (error) {
           return `Error creating directory: ${error}`;
         }
