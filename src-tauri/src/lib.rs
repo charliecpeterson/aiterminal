@@ -2,6 +2,7 @@
 mod ai;
 mod health_check;
 mod history;
+mod llm;
 mod models;
 mod pty;
 mod settings;
@@ -62,6 +63,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .manage(std::sync::Arc::new(tokio::sync::Mutex::new(llm::LLMEngine::new())))
         .invoke_handler(tauri::generate_handler![
             greet,
             emit_event,
@@ -98,6 +100,10 @@ pub fn run() {
             get_git_diff_tool,
             calculate_tool,
             web_search_tool,
+            llm::init_llm,
+            llm::stop_llm,
+            llm::get_llm_completions,
+            llm::llm_health_check,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

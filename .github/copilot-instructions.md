@@ -3,6 +3,12 @@
 ## Project Overview
 AI Terminal is a modern terminal emulator built with Tauri (Rust) and React (TypeScript). It features multi-tab support, shell integration, and a persistent configuration system.
 
+## Development Environment
+- **Conda Environment**: `aiterminal` - ALWAYS activate this environment for development
+  - Contains llama.cpp binaries (`llama-cli`, `llama-server`)
+  - Activate with: `conda activate aiterminal`
+- **LLM Model**: Qwen3-0.6B Q4_K_M GGUF stored in `~/.config/aiterminal/models/`
+
 ## Architecture
 - **Frontend**: React, TypeScript, Vite.
   - `src/components/Terminal.tsx`: Wraps `xterm.js` and handles PTY interaction.

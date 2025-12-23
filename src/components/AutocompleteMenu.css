@@ -1,0 +1,110 @@
+.autocomplete-menu {
+  position: fixed;
+  background: var(--vscode-dropdown-background, #252526);
+  border: 1px solid var(--vscode-dropdown-border, #454545);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  min-width: 300px;
+  max-width: 600px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 10000;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  color: var(--vscode-dropdown-foreground, #cccccc);
+}
+
+.menu-item:hover,
+.menu-item.selected {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.menu-item.selected {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+.menu-item .command {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: inherit;
+}
+
+.menu-item .badge {
+  margin-left: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.badge-llm {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.badge-history {
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+}
+
+.menu-item.loading,
+.menu-item.empty,
+.menu-item.loading-more {
+  color: var(--vscode-descriptionForeground, #999999);
+  font-style: italic;
+  justify-content: center;
+  cursor: default;
+}
+
+.menu-item.loading:hover,
+.menu-item.empty:hover,
+.menu-item.loading-more:hover {
+  background: transparent;
+}
+
+.spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Scrollbar styling */
+.autocomplete-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.autocomplete-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.autocomplete-menu::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, #424242);
+  border-radius: 4px;
+}
+
+.autocomplete-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, #4f4f4f);
+}

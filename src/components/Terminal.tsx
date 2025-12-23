@@ -20,6 +20,8 @@ import { useAiRunCommandListener } from '../terminal/useAiRunCommandListener';
 import { useTerminalAppearance } from '../terminal/useTerminalAppearance';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
 import { useAutocompleteSimple } from '../terminal/useAutocompleteSimple';
+import { useAutocompleteMenu } from '../terminal/useAutocompleteMenu';
+import { AutocompleteMenu } from './AutocompleteMenu';
 
 interface PtyInfo {
     pty_type: string;
@@ -45,6 +47,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
   const searchAddonRef = useRef<SearchAddon | null>(null);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [terminalReady, setTerminalReady] = useState(false);
     const [hostLabel, setHostLabel] = useState('Local');
     
     const setHostLabelAndRemoteState = useCallback((label: string) => {
@@ -141,6 +144,13 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
   // Simple Fish-style autocomplete (clean rewrite)
   useAutocompleteSimple(xtermRef, settings?.autocomplete?.enable_inline ?? true, id);
 
+  const autocompleteMenu = useAutocompleteMenu(
+    xtermRef,
+    settings?.autocomplete?.enable_menu ?? true,
+    id,
+    terminalReady
+  );
+
   const visibleRef = useRef(visible);
   
   // Fetch PTY info to determine if local or remote
@@ -229,8 +239,12 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
                 searchAddonRef,
     });
 
+    // Signal that terminal is ready for keyboard listeners
+    setTerminalReady(true);
+
       return () => {
       wiring.cleanup();
+      setTerminalReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.
@@ -272,6 +286,16 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
             </div>
         )}
             <div className="terminal-body" ref={terminalRef} />
+            {autocompleteMenu.menuVisible && (
+                <AutocompleteMenu
+                    suggestions={autocompleteMenu.suggestions}
+                    selectedIndex={autocompleteMenu.selectedIndex}
+                    position={autocompleteMenu.menuPosition}
+                    loading={autocompleteMenu.loading}
+                    onSelect={autocompleteMenu.acceptSuggestion}
+                    onClose={autocompleteMenu.closeMenu}
+                />
+            )}
             {copyMenu && (
                 <div
                     className="marker-copy-menu"
