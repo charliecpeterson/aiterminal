@@ -38,7 +38,7 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
         <div key={execution.id} className={`tool-execution-item ${execution.status}`}>
           <div className="tool-execution-header">
             <span className="tool-icon">
-              {execution.status === 'running' && '⚙️'}
+
               {execution.status === 'pending' && '⏳'}
             </span>
             <span className="tool-name">{execution.toolName}</span>

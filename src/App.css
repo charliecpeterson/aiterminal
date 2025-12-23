@@ -32,28 +32,29 @@ body, html, #root {
 
 .tabs-header {
   display: flex;
-  background-color: #1b1c21;
-  height: 32px;
+  background-color: #0d0e12;
+  height: 34px;
   align-items: center;
-  padding-left: 10px;
+  padding-left: 8px;
   user-select: none;
   -webkit-user-select: none;
-  -webkit-app-region: drag; /* Allow dragging window by tabs header */
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  -webkit-app-region: drag;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .tab {
-  padding: 4px 10px;
+  padding: 5px 12px;
   margin-right: 2px;
-  background-color: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.55);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   border-radius: 6px 6px 0 0;
   font-size: 12px;
+  font-weight: 500;
   display: flex;
   align-items: center;
-  -webkit-app-region: no-drag; /* Tabs themselves should be clickable */
-  transition: background-color 0.2s ease, opacity 0.15s ease, transform 0.15s ease;
+  -webkit-app-region: no-drag;
+  transition: all 120ms ease;
   user-select: none;
 }
 
@@ -64,12 +65,13 @@ body, html, #root {
 }
 
 .tab:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .tab.active {
   background-color: #14151a;
-  color: #ffffff;
+  color: #e8eaed;
 }
 
 .tab-name-input {
@@ -122,41 +124,45 @@ body, html, #root {
 }
 
 .ai-panel-button {
-  padding: 4px 12px;
+  padding: 5px 12px;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.6);
   font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  margin-right: 8px;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  margin-right: 6px;
   -webkit-app-region: no-drag;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.02);
+  letter-spacing: 0.01em;
+  background: rgba(255, 255, 255, 0.03);
+  transition: all 100ms ease;
 }
 
 .ai-panel-button:hover {
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .settings-button {
-  padding: 4px 12px;
+  padding: 5px 12px;
   cursor: pointer;
   color: rgba(255, 255, 255, 0.6);
   font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  margin-right: 10px;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  margin-right: 8px;
   -webkit-app-region: no-drag;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.02);
+  letter-spacing: 0.01em;
+  background: rgba(255, 255, 255, 0.03);
+  transition: all 100ms ease;
 }
 
 .settings-button:hover {
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .terminal-container {
@@ -440,6 +446,26 @@ body, html, #root {
 .latency-warn { background: #fbbf24; color: #422006; }
 .latency-bad { background: #f87171; color: #450a0a; }
 .latency-unknown { background: #6b7280; color: #f9fafb; }
+
+/* Port forward button */
+.port-forward-btn {
+  margin-left: 8px;
+  padding: 3px 10px;
+  background: #3c3c3c;
+  color: #e0e0e0;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.port-forward-btn:hover {
+  background: #4a4a4a;
+  border-color: #0078d4;
+  color: #fff;
+}
 
 /* Ensure terminal content can scroll with a visible gutter on the right */
 .xterm .xterm-viewport {

@@ -134,5 +134,3 @@
 - Store forwards in settings: `~/.config/aiterminal/forwards.json`
 - Monitor port status using netstat/lsof
 - Auto-cleanup on disconnect
-
-

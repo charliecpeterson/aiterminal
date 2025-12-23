@@ -400,18 +400,20 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     <span className="status-text">{hostLabel}</span>
                 </div>
                 {ptyInfo?.pty_type === 'ssh' && (
-                    <div 
-                        className="status-latency" 
-                        title={
-                            ptyInfo.ssh_client
-                                ? `SSH Connection\n${ptyInfo.ssh_client}\nConnected: ${ptyInfo.connection_time ? new Date(ptyInfo.connection_time * 1000).toLocaleString() : 'Unknown'}\nLatency: ${latencyMs ? `${latencyMs}ms` : 'Measuring...'}`
-                                : 'SSH Session'
-                        }
-                    >
-                        <span className={`latency-pill ${latencyMs && latencyMs > 0 ? (latencyMs < 100 ? 'latency-good' : latencyMs < 300 ? 'latency-warn' : 'latency-bad') : 'latency-unknown'}`}>
-                            {latencyMs && latencyMs > 0 ? `${latencyMs}ms` : '—'}
-                        </span>
-                    </div>
+                    <>
+                        <div 
+                            className="status-latency" 
+                            title={
+                                ptyInfo.ssh_client
+                                    ? `SSH Connection\n${ptyInfo.ssh_client}\nConnected: ${ptyInfo.connection_time ? new Date(ptyInfo.connection_time * 1000).toLocaleString() : 'Unknown'}\nLatency: ${latencyMs ? `${latencyMs}ms` : 'Measuring...'}`
+                                    : 'SSH Session'
+                            }
+                        >
+                            <span className={`latency-pill ${latencyMs && latencyMs > 0 ? (latencyMs < 100 ? 'latency-good' : latencyMs < 300 ? 'latency-warn' : 'latency-bad') : 'latency-unknown'}`}>
+                                {latencyMs && latencyMs > 0 ? `${latencyMs}ms` : '\u2014'}
+                            </span>
+                        </div>
+                    </>
                 )}
             </div>
     </div>

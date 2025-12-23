@@ -66,8 +66,7 @@ export const ToolConfirmation = ({
                   {toolCall.name === 'execute_command' && '💻'}
                   {toolCall.name === 'read_file' && '📄'}
                   {toolCall.name === 'list_directory' && '📁'}
-                  {toolCall.name === 'search_files' && '🔍'}
-                  {toolCall.name === 'get_environment_variable' && '🔧'}
+
                 </div>
 
                 <div className="tool-confirmation-content">
@@ -83,7 +82,7 @@ export const ToolConfirmation = ({
 
                   {isDangerous.dangerous && (
                     <div className="tool-confirmation-warning">
-                      ⚠️ <strong>Warning:</strong> {isDangerous.reason}
+                      <strong>Warning:</strong> {isDangerous.reason}
                     </div>
                   )}
 

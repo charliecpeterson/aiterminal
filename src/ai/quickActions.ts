@@ -14,7 +14,7 @@ export const QUICK_ACTIONS: Record<QuickActionType, QuickActionConfig> = {
   explain: {
     type: 'explain',
     label: 'Explain This',
-    icon: '🔍',
+    icon: '',
     systemPrompt: `You are a helpful terminal assistant. When given a command and its output:
 - Explain what the command does in clear, concise language
 - Describe what the output shows or means
@@ -34,7 +34,7 @@ Keep your response brief and actionable.`,
   explainError: {
     type: 'explainError',
     label: 'Explain Error',
-    icon: '⚠️',
+    icon: '',
     systemPrompt: `You are an expert debugging assistant. When given a failed command and its error output:
 - Identify the specific error that occurred
 - Explain why it happened (root cause)
@@ -51,7 +51,7 @@ Be clear, empathetic, and educational. Don't suggest fixes yet - focus on unders
   suggestFix: {
     type: 'suggestFix',
     label: 'Suggest Fix',
-    icon: '🔧',
+    icon: '',
     systemPrompt: `You are a solution-focused terminal assistant. When given a failed command:
 - Provide specific, actionable fixes for the error
 - List multiple solutions if applicable (ordered by likelihood of success)
