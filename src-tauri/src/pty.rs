@@ -17,7 +17,7 @@ pub struct PtyInfo {
     pub connection_time: Option<u64>,
 }
 /// Parse RemoteHost OSC sequence
-/// Format: ESC]1337;RemoteHost=user@host:ip BEL
+/// Format: ESC]1337;RemoteHost=user@host:ip;Depth=N BEL
 /// Returns Some((user, host, ip)) if SSH, None if local
 fn parse_remote_host_osc(data: &str) -> Option<Option<(String, String, Option<String>)>> {
     // Look for OSC 1337 RemoteHost sequence
@@ -32,15 +32,18 @@ fn parse_remote_host_osc(data: &str) -> Option<Option<(String, String, Option<St
         
         let value = &after_prefix[..end];
         
-        if value.is_empty() || value == "local" {
+        // Split off optional parameters like ;Depth=N
+        let remote_info = value.split(';').next().unwrap_or(value);
+        
+        if remote_info.is_empty() || remote_info == "local" {
             // Explicitly local
             return Some(None);
         }
         
         // Parse user@host:ip
-        if let Some(at_pos) = value.find('@') {
-            let user = value[..at_pos].to_string();
-            let rest = &value[at_pos + 1..];
+        if let Some(at_pos) = remote_info.find('@') {
+            let user = remote_info[..at_pos].to_string();
+            let rest = &remote_info[at_pos + 1..];
             
             // Check for :ip suffix
             if let Some(colon_pos) = rest.rfind(':') {
@@ -55,12 +58,12 @@ fn parse_remote_host_osc(data: &str) -> Option<Option<(String, String, Option<St
             let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
             
             // Check for :ip suffix
-            if let Some(colon_pos) = value.rfind(':') {
-                let host = value[..colon_pos].to_string();
-                let ip = value[colon_pos + 1..].to_string();
+            if let Some(colon_pos) = remote_info.rfind(':') {
+                let host = remote_info[..colon_pos].to_string();
+                let ip = remote_info[colon_pos + 1..].to_string();
                 return Some(Some((user, host, Some(ip))));
             } else {
-                return Some(Some((user, value.to_string(), None)));
+                return Some(Some((user, remote_info.to_string(), None)));
             }
         }
     }
