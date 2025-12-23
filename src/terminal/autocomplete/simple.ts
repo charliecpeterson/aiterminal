@@ -19,7 +19,6 @@ export class SimpleAutocomplete {
    */
   onChar(char: string) {
     this.currentInput += char;
-    console.log('📝 currentInput is now:', this.currentInput, 'length:', this.currentInput.length, 'charCodes:', Array.from(this.currentInput).map(c => c.charCodeAt(0)));
     this.updateSuggestion();
   }
   
@@ -29,7 +28,6 @@ export class SimpleAutocomplete {
   onBackspace() {
     if (this.currentInput.length > 0) {
       this.currentInput = this.currentInput.slice(0, -1);
-      console.log('⌫ currentInput after backspace:', JSON.stringify(this.currentInput));
       this.updateSuggestion();
     }
   }
@@ -38,7 +36,6 @@ export class SimpleAutocomplete {
    * Handle Enter - reset
    */
   onEnter() {
-    console.log('↵ Resetting currentInput');
     this.currentInput = '';
     this.currentSuggestion = '';
   }
@@ -55,8 +52,6 @@ export class SimpleAutocomplete {
    * Update suggestion based on current input
    */
   private updateSuggestion() {
-    console.log('🔍 Searching for match with currentInput:', this.currentInput, 'length:', this.currentInput.length);
-    
     if (this.currentInput.trim().length === 0) {
       this.currentSuggestion = '';
       return;
@@ -67,13 +62,11 @@ export class SimpleAutocomplete {
       const cmd = this.history[i];
       if (cmd.startsWith(this.currentInput) && cmd !== this.currentInput) {
         this.currentSuggestion = cmd;
-        console.log('✅ Found match:', cmd);
         return;
       }
     }
     
     this.currentSuggestion = '';
-    console.log('❌ No match found');
   }
   
   /**
@@ -97,11 +90,9 @@ export class SimpleAutocomplete {
    */
   acceptSuggestion(): string {
     const toInsert = this.getSuggestion();
-    console.log('🎯 acceptSuggestion called. currentInput:', this.currentInput, 'currentSuggestion:', this.currentSuggestion, 'toInsert:', toInsert);
     if (toInsert) {
       this.currentInput = this.currentSuggestion;
       this.currentSuggestion = '';
-      console.log('🎯 After accepting, currentInput updated to:', this.currentInput);
     }
     return toInsert;
   }
