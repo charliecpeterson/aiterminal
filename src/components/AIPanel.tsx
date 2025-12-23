@@ -124,6 +124,7 @@ const AIPanel = ({
       prompt,
       settingsAi: settings?.ai,
       messages,
+      contextItems,
       terminalId: activeTerminalId || 0, // Default to terminal 0
       addMessage,
       appendMessage,
@@ -133,7 +134,7 @@ const AIPanel = ({
       abortController: controller,
       addPendingApproval,
     });
-  }, [prompt, settings?.ai, messages, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval]);
+  }, [prompt, settings?.ai, messages, contextItems, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval]);
 
   const handleCancel = useCallback(() => {
     if (abortController) {
@@ -161,18 +162,53 @@ const AIPanel = ({
       <div className="ai-panel-header">
         <div className="ai-panel-title">
           <div className="ai-panel-title-text">AI Panel</div>
-          <div className="ai-panel-subtitle">Terminal context</div>
+        </div>
+        <div className="ai-panel-tabs">
+          <button
+            className={`ai-panel-tab ${activeTab === "chat" ? "active" : ""}`}
+            onClick={() => setActiveTab("chat")}
+          >
+            Chat
+          </button>
+          <button
+            className={`ai-panel-tab ${activeTab === "context" ? "active" : ""}`}
+            onClick={() => setActiveTab("context")}
+          >
+            Context
+            {contextItems.length > 0 && (
+              <span className="ai-panel-tab-badge">{contextItems.length}</span>
+            )}
+          </button>
         </div>
         <div className="ai-panel-actions">
-          {onDetach && (
-            <button className="ai-panel-action" onClick={onDetach}>
-              Detach
-            </button>
-          )}
-          {onAttach && mode === "detached" && (
-            <button className="ai-panel-action" onClick={onAttach}>
-              Attach
-            </button>
+          {activeTab === "chat" && (
+            <>
+              <button className="ai-panel-header-btn" onClick={async () => {
+                if (messages.length === 0) return;
+                try {
+                  const { save } = await import('@tauri-apps/plugin-dialog');
+                  const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+                  const filePath = await save({
+                    defaultPath: `aiterminal-chat-${Date.now()}.md`,
+                    filters: [{ name: 'Markdown', extensions: ['md'] }]
+                  });
+                  if (!filePath) return;
+                  const exportContent = messages.map(msg => {
+                    const timestamp = new Date(msg.timestamp).toLocaleString();
+                    const role = msg.role.toUpperCase();
+                    return `## ${role} - ${timestamp}\n\n${msg.content}\n`;
+                  }).join('\n---\n\n');
+                  await writeTextFile(filePath, exportContent);
+                } catch (error) {
+                  console.error('Failed to export chat:', error);
+                }
+              }} disabled={messages.length === 0} title="Export chat">
+                Export
+              </button>
+              <button className="ai-panel-header-btn" onClick={clearChat} title="Clear chat">
+                Clear
+              </button>
+            </>
           )}
           {onClose && mode === "docked" && (
             <button className="ai-panel-close" onClick={onClose} aria-label="Close AI panel">
@@ -180,23 +216,6 @@ const AIPanel = ({
             </button>
           )}
         </div>
-      </div>
-      <div className="ai-panel-tabs">
-        <button
-          className={`ai-panel-tab ${activeTab === "chat" ? "active" : ""}`}
-          onClick={() => setActiveTab("chat")}
-        >
-          Chat
-          {contextItems.length > 0 && (
-            <span className="ai-panel-tab-badge">{contextItems.length}</span>
-          )}
-        </button>
-        <button
-          className={`ai-panel-tab ${activeTab === "context" ? "active" : ""}`}
-          onClick={() => setActiveTab("context")}
-        >
-          Context
-        </button>
       </div>
       <div className="ai-panel-body">
         {activeTab === "chat" && (
@@ -209,7 +228,6 @@ const AIPanel = ({
             onSend={handleSend}
             onCancel={handleCancel}
             onClearChat={clearChat}
-            contextCountLabel={contextCountLabel}
             targetTerminalId={activeTerminalId}
             pendingApprovals={pendingApprovals}
             onApprove={handleApprove}

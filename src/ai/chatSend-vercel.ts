@@ -9,13 +9,14 @@ import { streamText, stepCountIs } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { CoreMessage } from 'ai';
 import type { AiSettings } from '../context/SettingsContext';
-import type { ChatMessage, PendingApproval } from '../context/AIContext';
+import type { ChatMessage, PendingApproval, ContextItem } from '../context/AIContext';
 import { createTools } from './tools-vercel';
 
 export interface ChatSendDeps {
   prompt: string;
   settingsAi: AiSettings | null | undefined;
   messages: ChatMessage[]; // Full message history
+  contextItems: ContextItem[]; // Context from terminal
   terminalId: number; // Active terminal ID
 
   addMessage: (message: ChatMessage) => void;
@@ -57,6 +58,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     prompt,
     settingsAi,
     messages,
+    contextItems,
     terminalId,
     addMessage,
     appendMessage,
@@ -81,6 +83,20 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     });
     return;
   }
+
+  // Format context items for AI
+  const formattedContext = contextItems.map((item) => {
+    if (item.type === 'command_output') {
+      const command = item.metadata?.command || '';
+      const output = item.metadata?.output || item.content;
+      return `Command: ${command}\nOutput:\n${output}`;
+    }
+    if (item.type === 'file') {
+      const path = item.metadata?.path ? ` (${item.metadata.path})` : '';
+      return `File${path}:\n${item.content}`;
+    }
+    return `${item.type}: ${item.content}`;
+  }).join('\n\n---\n\n');
 
   // Add user message
   addMessage({
@@ -143,7 +159,9 @@ IMPORTANT GUIDELINES:
 
 CURRENT CONTEXT:
 - Terminal ID: ${terminalId}
-- You have access to: execute_command, read_file, list_directory, search_files, get_environment_variable`,
+- You have access to: execute_command, read_file, list_directory, search_files, get_environment_variable
+
+${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\n` : ''}Use the terminal context above to answer the user's question.`,
     });
 
     // Create assistant message

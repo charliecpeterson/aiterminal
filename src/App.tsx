@@ -26,7 +26,7 @@ function AppContent() {
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [isAiDetached, setIsAiDetached] = useState(false);
   const [isAiAttaching, setIsAiAttaching] = useState(false);
-  const [aiHeight, setAiHeight] = useState(300);
+  const [aiHeight, setAiHeight] = useState(350);
   const [isResizing, setIsResizing] = useState(false);
   const [editingTabId, setEditingTabId] = useState<number | null>(null);
   const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
