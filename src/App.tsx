@@ -23,10 +23,10 @@ function AppContent() {
   const [mainActiveTabId, setMainActiveTabId] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isAiOpen, setIsAiOpen] = useState(true);
+  const [isAiOpen, setIsAiOpen] = useState(false);
   const [isAiDetached, setIsAiDetached] = useState(false);
   const [isAiAttaching, setIsAiAttaching] = useState(false);
-  const [aiWidth, setAiWidth] = useState(360);
+  const [aiHeight, setAiHeight] = useState(300);
   const [isResizing, setIsResizing] = useState(false);
   const [editingTabId, setEditingTabId] = useState<number | null>(null);
   const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
@@ -128,11 +128,11 @@ function AppContent() {
   useEffect(() => {
     if (!isResizing) return;
     const handleMouseMove = (event: MouseEvent) => {
-      const nextWidth = Math.min(
-        720,
-        Math.max(280, window.innerWidth - event.clientX)
+      const nextHeight = Math.min(
+        window.innerHeight * 0.7,
+        Math.max(200, window.innerHeight - event.clientY)
       );
-      setAiWidth(nextWidth);
+      setAiHeight(nextHeight);
     };
     const handleMouseUp = () => {
       setIsResizing(false);
@@ -152,7 +152,7 @@ function AppContent() {
       window.dispatchEvent(new Event("resize"));
     });
     return () => cancelAnimationFrame(id);
-  }, [aiWidth, isAiOpen, isResizing]);
+  }, [aiHeight, isAiOpen, isResizing]);
 
   useEffect(() => {
     document.body.classList.toggle("ai-resizing", isResizing);
@@ -394,13 +394,13 @@ function AppContent() {
         {isAiOpen && !isAiDetached && (
           <>
             <div
-              className="ai-resizer"
+              className="ai-resizer-horizontal"
               onMouseDown={(event) => {
                 event.preventDefault();
                 setIsResizing(true);
               }}
             />
-            <div className="ai-pane" style={{ width: aiWidth }}>
+            <div className="ai-pane-bottom" style={{ height: aiHeight }}>
               <AIPanel
                 onClose={() => setIsAiOpen(false)}
                 onDetach={detachPanel}

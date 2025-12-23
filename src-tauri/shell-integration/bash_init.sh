@@ -47,9 +47,10 @@ __aiterm_emit_host() {
 # Emit RemoteHost OSC sequence for SSH detection
 __aiterm_emit_remote_host() {
     if [ -n "$SSH_CONNECTION" ] || [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
-        # We're in an SSH session - report user@host:ip
+        # We're in an SSH session - report user@host:ip:depth
         local current_user="${USER:-$(whoami 2>/dev/null || echo unknown)}"
         local current_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+        local depth="${__AITERM_SSH_DEPTH:-0}"
         
         # Extract remote IP from SSH_CONNECTION (format: client_ip client_port server_ip server_port)
         # We want the server_ip (third field) which is the IP we're connected to
@@ -58,15 +59,15 @@ __aiterm_emit_remote_host() {
             remote_ip=$(echo "$SSH_CONNECTION" | awk '{print $3}')
         fi
         
-        # Send user@host:ip so we can use the IP for latency measurement
+        # Send user@host:ip:depth so we can track nesting
         if [ -n "$remote_ip" ]; then
-            printf "\033]1337;RemoteHost=%s@%s:%s\007" "$current_user" "$current_host" "$remote_ip"
+            printf "\033]1337;RemoteHost=%s@%s:%s;Depth=%d\007" "$current_user" "$current_host" "$remote_ip" "$depth"
         else
-            printf "\033]1337;RemoteHost=%s@%s\007" "$current_user" "$current_host"
+            printf "\033]1337;RemoteHost=%s@%s;Depth=%d\007" "$current_user" "$current_host" "$depth"
         fi
     else
         # Local session - send empty/local marker
-        printf "\033]1337;RemoteHost=\007"
+        printf "\033]1337;RemoteHost=;Depth=0\007"
     fi
 }
 
@@ -77,18 +78,77 @@ __aiterm_mark_prompt() {
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
 
-# Source aiterm_ssh helper if it exists (must be done before creating ssh wrapper)
-if [ -f "$HOME/.config/aiterminal/ssh_helper.sh" ]; then
-    source "$HOME/.config/aiterminal/ssh_helper.sh"
+# Cache the integration script for nested SSH sessions
+if [ -z "$__AITERM_INLINE_CACHE" ]; then
+    __AITERM_INLINE_CACHE="$(cat "$HOME/.config/aiterminal/bash_init.sh" 2>/dev/null || echo '')"
+    export __AITERM_INLINE_CACHE
 fi
 
-# Wrap ssh command to automatically use aiterm_ssh in AI Terminal
-# Export function so it works in scripts and subshells
-if [ "$TERM_PROGRAM" = "aiterminal" ] && command -v aiterm_ssh >/dev/null 2>&1; then
+# Track SSH nesting depth
+if [ -z "$__AITERM_SSH_DEPTH" ]; then
+    __AITERM_SSH_DEPTH=0
+fi
+export __AITERM_SSH_DEPTH
+
+# Define aiterm_ssh function (inline so it travels with integration)
+aiterm_ssh() {
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then 
+        command ssh "$@"
+        return $?
+    fi
+
+    local orig_args=("$@")
+    [ ${#orig_args[@]} -eq 0 ] && { printf '%s\n' "usage: ssh destination"; return 2; }
+    
+    # Use cached integration script
+    local inline_script="$__AITERM_INLINE_CACHE"
+    if [ -z "$inline_script" ]; then
+        command ssh "${orig_args[@]}"
+        return $?
+    fi
+
+    # Parse args to detect if remote command is present
+    local target=""
+    local remote_cmd_present=0
+    set -- "$@"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -o|-J|-F|-i|-b|-c|-D|-E|-e|-I|-L|-l|-m|-O|-p|-P|-Q|-R|-S|-W|-w|-B)
+                shift; [ $# -gt 0 ] && shift ;;
+            -o*|-J*|-F*|-i*|-b*|-c*|-D*|-E*|-e*|-I*|-L*|-l*|-m*|-O*|-p*|-P*|-Q*|-R*|-S*|-W*|-w*|-B*)
+                shift ;;
+            --) shift; [ $# -gt 0 ] && target="$1" && shift; [ $# -gt 0 ] && remote_cmd_present=1; break ;;
+            -*) shift ;;
+            *) [ -z "$target" ] && target="$1" && shift || { remote_cmd_present=1; break; } ;;
+        esac
+    done
+
+    # Fall back if no target or remote command present
+    [ -z "$target" ] && { command ssh "${orig_args[@]}"; return $?; }
+    [ $remote_cmd_present -eq 1 ] && { command ssh "${orig_args[@]}"; return $?; }
+
+    # Increment SSH depth
+    local next_depth=$((${__AITERM_SSH_DEPTH:-0} + 1))
+    
+    # Encode and inject
+    local inline_b64="$(printf '%s' "$inline_script" | base64 | tr -d '\n')"
+    [ -z "$inline_b64" ] && { command ssh "${orig_args[@]}"; return $?; }
+
+    local remote_cmd='remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile" __AITERM_INLINE_CACHE="$(cat "$tmpfile")" __AITERM_SSH_DEPTH=__D__ TERM_PROGRAM=aiterminal SHELL="$remote_shell" AITERM_REMOTE_BOOTSTRAP=1; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -c "source \"$tmpfile\"; exec $remote_shell" ;; *) exec "$remote_shell" -l ;; esac'
+    remote_cmd="${remote_cmd//__B64__/$inline_b64}"
+    remote_cmd="${remote_cmd//__D__/$next_depth}"
+    
+    command ssh -tt "${orig_args[@]}" "$remote_cmd"
+    return $?
+}
+
+# Wrap ssh command to automatically use aiterm_ssh
+if [ "$TERM_PROGRAM" = "aiterminal" ]; then
     ssh() {
         aiterm_ssh "$@"
     }
-    export -f ssh
+    export -f ssh 2>/dev/null || true
+    export -f aiterm_ssh 2>/dev/null || true
 fi
 
 if [ -n "$BASH_VERSION" ]; then

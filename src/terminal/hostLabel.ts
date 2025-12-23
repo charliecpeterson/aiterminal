@@ -24,16 +24,34 @@ export function attachHostLabelOsc(
     return true;
   }) as unknown as Disposable;
 
-  // Handle OSC 1337;RemoteHost=user@host:ip (iTerm2 format from shell integration)
+  // Handle OSC 1337;RemoteHost=user@host:ip;Depth=N (iTerm2 format from shell integration)
   const disposable1337 = term.parser.registerOscHandler(1337, (data) => {
     try {
-      // Format: RemoteHost=user@host or RemoteHost=user@host:ip or RemoteHost= (for local)
+      // Format: RemoteHost=user@host or RemoteHost=user@host:ip;Depth=N or RemoteHost=;Depth=0 (for local)
       if (data.startsWith('RemoteHost=')) {
-        const remoteInfo = data.substring('RemoteHost='.length);
+        const parts = data.split(';');
+        const remoteInfo = parts[0].substring('RemoteHost='.length);
+        
+        // Extract depth if present
+        let depth = 0;
+        for (const part of parts) {
+          if (part.startsWith('Depth=')) {
+            depth = parseInt(part.substring('Depth='.length), 10) || 0;
+          }
+        }
+        
         if (remoteInfo) {
           // Extract user@host (ignore :ip for display)
           const hostPart = remoteInfo.split(':')[0];
-          setHostLabel(`🔒 ${hostPart}`);
+          
+          // Show depth indicator for nested SSH
+          if (depth > 1) {
+            setHostLabel(`🔒 ${hostPart} [L${depth}]`);
+          } else if (depth === 1) {
+            setHostLabel(`🔒 ${hostPart}`);
+          } else {
+            setHostLabel(`🔒 ${hostPart}`);
+          }
         } else {
           // Empty = local session
           setHostLabel('Local');
