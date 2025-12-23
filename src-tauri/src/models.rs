@@ -55,6 +55,21 @@ pub struct TerminalSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AutocompleteSettings {
+    pub enable_inline: bool,
+    pub enable_menu: bool,
+}
+
+impl Default for AutocompleteSettings {
+    fn default() -> Self {
+        Self {
+            enable_inline: true,
+            enable_menu: true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StreamingSettings {
     pub max_tokens: u32,
     pub timeout_secs: u64,
@@ -76,6 +91,8 @@ pub struct AppSettings {
     pub appearance: AppearanceSettings,
     pub ai: AiSettings,
     pub terminal: TerminalSettings,
+    #[serde(default)]
+    pub autocomplete: AutocompleteSettings,
     #[serde(default)]
     pub streaming: StreamingSettings,
 }
@@ -102,6 +119,7 @@ impl Default for AppSettings {
                 url: None,
             },
             terminal: TerminalSettings { max_markers: DEFAULT_MAX_MARKERS },
+            autocomplete: AutocompleteSettings::default(),
             streaming: StreamingSettings::default(),
         }
     }

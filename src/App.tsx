@@ -15,6 +15,8 @@ interface Tab {
   id: number;
   title: string;
   customName?: string; // User-defined name
+  isRemote?: boolean; // Track if terminal is SSH'd
+  remoteHost?: string; // Remote host info
 }
 
 function AppContent() {
@@ -55,6 +57,14 @@ function AppContent() {
     setTabs((prev) =>
       prev.map((tab) =>
         tab.id === id ? { ...tab, customName: newName || undefined } : tab
+      )
+    );
+  };
+
+  const updateTabRemoteState = (id: number, isRemote: boolean, remoteHost?: string) => {
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === id ? { ...tab, isRemote, remoteHost } : tab
       )
     );
   };
@@ -385,6 +395,7 @@ function AppContent() {
                 <Terminal 
                     id={tab.id} 
                     visible={tab.id === activeTabId}
+                    onUpdateRemoteState={(isRemote, remoteHost) => updateTabRemoteState(tab.id, isRemote, remoteHost)}
                     onClose={() => closeTab(tab.id)} 
                 />
               </div>
@@ -405,6 +416,8 @@ function AppContent() {
                 onClose={() => setIsAiOpen(false)}
                 onDetach={detachPanel}
                 activeTerminalId={activeTabId}
+                isRemote={tabs.find(t => t.id === activeTabId)?.isRemote ?? false}
+                remoteHost={tabs.find(t => t.id === activeTabId)?.remoteHost}
               />
             </div>
           </>

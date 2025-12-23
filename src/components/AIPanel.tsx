@@ -1,10 +1,9 @@
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import "./AIPanel.css";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendChatMessage } from "../ai/chatSend-vercel";
-import { requestCaptureFile, requestCaptureLast } from "../ai/contextCapture";
-import { formatContextCountLabel } from "../ai/panelUi";
+import { requestCaptureLast } from "../ai/contextCapture";
 import { AIChatTab } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
 import { invoke } from "@tauri-apps/api/core";
@@ -18,14 +17,15 @@ interface AIPanelProps {
   onAttach?: () => void;
   mode?: "docked" | "detached";
   activeTerminalId?: number | null;
+  isRemote?: boolean;
+  remoteHost?: string;
 }
 
 const AIPanel = ({
   onClose,
-  onDetach,
-  onAttach,
   mode = "docked",
   activeTerminalId,
+  isRemote = false,
 }: AIPanelProps) => {
   const [activeTab, setActiveTab] = useState<PanelTab>("chat");
   const [prompt, setPrompt] = useState("");
@@ -48,16 +48,13 @@ const AIPanel = ({
     addMessage,
     appendMessage,
     removeContextItem,
+    addContextItem,
     clearContext,
     clearChat,
     addPendingApproval,
     pendingApprovals,
     removePendingApproval,
   } = useAIContext();
-
-  const contextCountLabel = useMemo(() => {
-    return formatContextCountLabel(contextItems.length);
-  }, [contextItems.length]);
 
   const handleApprove = useCallback(async (id: string) => {
     const approval = pendingApprovals.find(a => a.id === id);
@@ -151,10 +148,54 @@ const AIPanel = ({
     });
   };
 
-  const handleCaptureFile = () => {
-    requestCaptureFile({ path: filePath, fileLimitKb }).catch((err) => {
-      console.error("Failed to request file capture:", err);
-    });
+  const handleCaptureFile = async () => {
+    if (!filePath.trim()) return;
+
+    try {
+      // Import the new smart capture function
+      const { captureFileContent } = await import('../ai/contextCapture');
+      
+      const result = await captureFileContent({
+        path: filePath,
+        fileLimitKb,
+        isRemote,
+        workingDirectory: undefined,
+      });
+
+      // Add to context
+      const contextItem = {
+        id: crypto.randomUUID(),
+        type: 'file' as const,
+        content: result.content,
+        timestamp: Date.now(),
+        metadata: {
+          path: filePath,
+          source: result.source,
+          sizeKb: Math.round(result.content.length / 1024),
+        },
+      };
+
+      addContextItem(contextItem);
+
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: `Captured file: ${filePath} (${contextItem.metadata.sizeKb}KB, ${result.source})`,
+        timestamp: Date.now(),
+      });
+
+      console.log('✅ File captured silently:', filePath);
+      setFilePath(''); // Clear input after successful capture
+    } catch (err) {
+      console.error('Failed to capture file:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: `Failed to capture file: ${errorMsg}`,
+        timestamp: Date.now(),
+      });
+    }
   };
 
   return (

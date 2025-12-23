@@ -1,6 +1,7 @@
 // Module declarations
 mod ai;
 mod health_check;
+mod history;
 mod models;
 mod pty;
 mod settings;
@@ -9,6 +10,7 @@ mod tools;
 // Re-export models and commands
 pub use models::AppState;
 use ai::{ai_chat, ai_chat_stream, test_ai_connection};
+use history::get_shell_history;
 use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
 use tools::{
@@ -66,6 +68,7 @@ pub fn run() {
             measure_pty_latency,
             get_pty_info,
             get_pty_cwd,
+            get_shell_history,
             spawn_pty,
             write_to_pty,
             resize_pty,

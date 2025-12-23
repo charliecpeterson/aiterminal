@@ -20,6 +20,11 @@ export interface TerminalSettings {
     max_markers: number;
 }
 
+export interface AutocompleteSettings {
+    enable_inline: boolean; // Fish-style gray text suggestions
+    enable_menu: boolean; // Ctrl+Space dropdown menu
+}
+
 export interface StreamingSettings {
     max_tokens: number;
     timeout_secs: number;
@@ -30,6 +35,7 @@ export interface AppSettings {
     appearance: AppearanceSettings;
     ai: AiSettings;
     terminal: TerminalSettings;
+    autocomplete?: AutocompleteSettings; // Optional for backward compatibility
     streaming?: StreamingSettings; // Optional for backward compatibility
 }
 
@@ -82,6 +88,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
                 ai: { provider: 'openai', model: 'gpt-4', api_key: '', url: '' },
                 terminal: { max_markers: 200 },
+                autocomplete: { enable_inline: true, enable_menu: true },
                 streaming: { max_tokens: 4096, timeout_secs: 120, buffer_size_limit: 1048576 }
             };
             console.log('📋 Using default settings');

@@ -19,6 +19,7 @@ import { usePtyAutoClose } from '../terminal/usePtyAutoClose';
 import { useAiRunCommandListener } from '../terminal/useAiRunCommandListener';
 import { useTerminalAppearance } from '../terminal/useTerminalAppearance';
 import { useLatencyProbe } from '../terminal/useLatencyProbe';
+import { useAutocompleteSimple } from '../terminal/useAutocompleteSimple';
 
 interface PtyInfo {
     pty_type: string;
@@ -31,10 +32,11 @@ interface PtyInfo {
 interface TerminalProps {
     id: number;
     visible: boolean;
+    onUpdateRemoteState?: (isRemote: boolean, remoteHost?: string) => void;
     onClose: () => void;
 }
 
-const Terminal = ({ id, visible, onClose }: TerminalProps) => {
+const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) => {
   const { settings, loading } = useSettings();
   const { addContextItem } = useAIContext();
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -44,6 +46,15 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
     const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [showSearch, setShowSearch] = useState(false);
     const [hostLabel, setHostLabel] = useState('Local');
+    
+    const setHostLabelAndRemoteState = useCallback((label: string) => {
+        setHostLabel(label);
+        // Notify parent of remote state changes
+        if (onUpdateRemoteState) {
+            const isRemote = label !== 'Local' && label.includes('🔒');
+            onUpdateRemoteState(isRemote, isRemote ? label : undefined);
+        }
+    }, [onUpdateRemoteState]);
     const [ptyInfo, setPtyInfo] = useState<PtyInfo | null>(null);
     const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
     const copyMenuRef = useRef<HTMLDivElement | null>(null);
@@ -127,6 +138,9 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
   // Monitor latency for SSH sessions
   const { latencyMs } = useLatencyProbe(id, 5000); // Poll every 5 seconds
 
+  // Simple Fish-style autocomplete (clean rewrite)
+  useAutocompleteSimple(xtermRef, settings?.autocomplete?.enable_inline ?? true, id);
+
   const visibleRef = useRef(visible);
   
   // Fetch PTY info to determine if local or remote
@@ -138,9 +152,9 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
           setPtyInfo(info);
           if (info.pty_type === 'ssh' && info.remote_host) {
             const userPart = info.remote_user ? `${info.remote_user}@` : '';
-            setHostLabel(`🔒 ${userPart}${info.remote_host}`);
+            setHostLabelAndRemoteState(`🔒 ${userPart}${info.remote_host}`);
           } else {
-            setHostLabel('Local');
+            setHostLabelAndRemoteState('Local');
           }
         })
         .catch((err) => console.error('Failed to get PTY info:', err));
@@ -206,7 +220,7 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
         setCopyMenu,
         setSelectionMenu,
         setShowSearch,
-        setHostLabel,
+        setHostLabel: setHostLabelAndRemoteState,
         addContextItem,
         hideCopyMenu,
         hideSelectionMenu,
@@ -416,8 +430,8 @@ const Terminal = ({ id, visible, onClose }: TerminalProps) => {
                     </>
                 )}
             </div>
-    </div>
-  );
+        </div>
+    );
 };
 
 export default Terminal;

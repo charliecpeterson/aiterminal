@@ -26,7 +26,6 @@ export function AIChatTab(props: {
     sendError,
     onSend,
     onCancel,
-    onClearChat,
     targetTerminalId,
     pendingApprovals = [],
     onApprove,

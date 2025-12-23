@@ -11,7 +11,7 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { settings, updateSettings } = useSettings();
     const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
-    const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai'>('appearance');
+    const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai' | 'autocomplete'>('appearance');
     const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [aiTestError, setAiTestError] = useState<string | null>(null);
     const [aiModelOptions, setAiModelOptions] = useState<string[]>([]);
@@ -53,7 +53,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         }
     }, [localSettings, updateSettings, onClose]);
 
-    const handleChange = useCallback((section: 'appearance' | 'terminal' | 'ai', key: string, value: string | number) => {
+    const handleChange = useCallback((section: 'appearance' | 'terminal' | 'ai' | 'autocomplete', key: string, value: string | number | boolean) => {
         setLocalSettings(prev => {
             if (!prev) return null;
             return {
@@ -162,6 +162,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                             onClick={() => setActiveTab('terminal')}
                         >
                             Terminal
+                        </div>
+                        <div 
+                            className={`settings-tab ${activeTab === 'autocomplete' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('autocomplete')}
+                        >
+                            Autocomplete
                         </div>
                     </div>
 
@@ -355,6 +361,40 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <div className="form-hint">
                                         When enabled, the AI will ask for permission before running potentially destructive commands (rm, sudo, etc.). Safe read-only commands run automatically.
                                     </div>
+                                </div>
+                            </>
+                        )}
+
+                        {activeTab === 'autocomplete' && (
+                            <>
+                                <div className="form-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={localSettings.autocomplete?.enable_inline ?? true}
+                                            onChange={(e) => handleChange('autocomplete', 'enable_inline', e.target.checked as any)}
+                                        />
+                                        <span>Enable inline suggestions (Fish-style)</span>
+                                    </label>
+                                    <div className="form-hint">
+                                        Shows command suggestions as gray text after your cursor. Press → (right arrow) to accept.
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={localSettings.autocomplete?.enable_menu ?? true}
+                                            onChange={(e) => handleChange('autocomplete', 'enable_menu', e.target.checked as any)}
+                                        />
+                                        <span>Enable suggestion menu (Ctrl+Space)</span>
+                                    </label>
+                                    <div className="form-hint">
+                                        Press Ctrl+Space to see all available commands, flags, and options in a dropdown menu.
+                                    </div>
+                                </div>
+                                <div className="form-hint" style={{ marginTop: '20px', padding: '12px', background: 'rgba(91, 141, 232, 0.1)', borderRadius: '6px' }}>
+                                    💡 <strong>Tip:</strong> Autocomplete uses the Fig specification (600+ commands). Your Tab key still works normally for shell completion (files, PATH, etc.).
                                 </div>
                             </>
                         )}
