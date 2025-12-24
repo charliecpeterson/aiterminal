@@ -133,6 +133,23 @@ function AppContent() {
   // No resizing or attach/detach logic needed for separate window mode
 
   useEffect(() => {
+    if (isAiWindow) return; // Only run in main window
+    
+    // Close AI Panel window when main window closes
+    const currentWindow = getCurrentWindow();
+    const unlistenPromise = currentWindow.onCloseRequested(async () => {
+      const aiPanel = await WebviewWindow.getByLabel("ai-panel").catch(() => null);
+      if (aiPanel) {
+        await aiPanel.close().catch(() => {});
+      }
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [isAiWindow]);
+
+  useEffect(() => {
     if (!isAiWindow) return;
     const unlistenPromise = listen<{ id: number | null }>("ai-panel:active-terminal", (event) => {
       setMainActiveTabId(event.payload?.id ?? null);
