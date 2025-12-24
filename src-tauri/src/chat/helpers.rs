@@ -19,18 +19,6 @@ pub fn normalize_base_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_string()
 }
 
-pub fn extract_string_list(json: &Value, array_key: &str, item_key: &str) -> Vec<String> {
-    json.get(array_key)
-        .and_then(|arr| arr.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|item| item.get(item_key).and_then(|v| v.as_str()))
-                .map(|s| s.to_string())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 pub fn extract_text(value: &Value) -> Option<String> {
     value.as_str().map(|text| text.to_string())
 }

@@ -1,4 +1,5 @@
 use super::helpers::*;
+use super::providers;
 use crate::models::AiModelList;
 use futures_util::StreamExt;
 use serde_json::Value;
@@ -24,120 +25,10 @@ pub async fn ai_chat_request(
         .map_err(|e| e.to_string())?;
 
     match provider.as_str() {
-        "openai" => {
-            if api_key.is_empty() {
-                return Err("OpenAI API key is required".to_string());
-            }
-            let base = normalize_base_url(url.as_deref().unwrap_or("https://api.openai.com/v1"));
-            let endpoint = format!("{}/chat/completions", base);
-            let body = serde_json::json!({
-                "model": model,
-                "messages": [
-                    { "role": "user", "content": prompt }
-                ]
-            });
-            let resp = client
-                .post(endpoint)
-                .bearer_auth(api_key)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
-            let status = resp.status();
-            let text = resp.text().await.map_err(|e| e.to_string())?;
-            if !status.is_success() {
-                return Err(format!("OpenAI error: {}", text));
-            }
-            let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-            extract_openai_message(&json).ok_or_else(|| "OpenAI response missing content".to_string())
-        }
-        "anthropic" => {
-            if api_key.is_empty() {
-                return Err("Anthropic API key is required".to_string());
-            }
-            let base = normalize_base_url(url.as_deref().unwrap_or("https://api.anthropic.com/v1"));
-            let endpoint = format!("{}/messages", base);
-            let body = serde_json::json!({
-                "model": model,
-                "max_tokens": crate::models::DEFAULT_MAX_TOKENS,
-                "messages": [
-                    { "role": "user", "content": prompt }
-                ]
-            });
-            let resp = client
-                .post(endpoint)
-                .header("x-api-key", api_key)
-                .header("anthropic-version", "2023-06-01")
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
-            let status = resp.status();
-            let text = resp.text().await.map_err(|e| e.to_string())?;
-            if !status.is_success() {
-                return Err(format!("Anthropic error: {}", text));
-            }
-            let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-            extract_anthropic_message(&json)
-                .ok_or_else(|| "Anthropic response missing content".to_string())
-        }
-        "gemini" => {
-            if api_key.is_empty() {
-                return Err("Gemini API key is required".to_string());
-            }
-            if model.trim().is_empty() {
-                return Err("Gemini model is required".to_string());
-            }
-            let base = normalize_base_url(
-                url.as_deref()
-                    .unwrap_or("https://generativelanguage.googleapis.com/v1beta"),
-            );
-            let endpoint = format!("{}/models/{}:generateContent?key={}", base, model, api_key);
-            let body = serde_json::json!({
-                "contents": [
-                    { "role": "user", "parts": [{ "text": prompt }] }
-                ]
-            });
-            let resp = client
-                .post(endpoint)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
-            let status = resp.status();
-            let text = resp.text().await.map_err(|e| e.to_string())?;
-            if !status.is_success() {
-                return Err(format!("Gemini error: {}", text));
-            }
-            let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-            extract_gemini_message(&json)
-                .ok_or_else(|| "Gemini response missing content".to_string())
-        }
-        "ollama" => {
-            let base = normalize_base_url(url.as_deref().unwrap_or("http://localhost:11434"));
-            let endpoint = format!("{}/api/chat", base);
-            let body = serde_json::json!({
-                "model": model,
-                "messages": [
-                    { "role": "user", "content": prompt }
-                ],
-                "stream": false
-            });
-            let resp = client
-                .post(endpoint)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
-            let status = resp.status();
-            let text = resp.text().await.map_err(|e| e.to_string())?;
-            if !status.is_success() {
-                return Err(format!("Ollama error: {}", text));
-            }
-            let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-            extract_ollama_message(&json)
-                .ok_or_else(|| "Ollama response missing content".to_string())
-        }
+        "openai" => providers::openai::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
+        "anthropic" => providers::anthropic::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
+        "gemini" => providers::gemini::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
+        "ollama" => providers::ollama::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
         _ => Err(format!("Unsupported provider: {}", provider)),
     }
 }
@@ -156,95 +47,26 @@ pub async fn test_ai_connection(
         .build()
         .map_err(|e| e.to_string())?;
 
-    match provider.as_str() {
-        "openai" => {
-            if api_key.trim().is_empty() {
-                return Err("OpenAI API key is required".to_string());
-            }
-            let base = normalize_base_url(url.as_deref().unwrap_or("https://api.openai.com/v1"));
-            let endpoint = format!("{}/models", base);
-            let resp = client
-                .get(endpoint)
-                .bearer_auth(api_key)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
-            let status = resp.status();
-            let text = resp.text().await.map_err(|e| e.to_string())?;
-            if !status.is_success() {
-                return Err(format!("OpenAI error: {}", text));
-            }
-            let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-            let mut models = extract_string_list(&json, "data", "id");
-            models.sort();
-            models.dedup();
-            let mut embedding_models = filter_embedding_models(&models);
-            embedding_models.sort();
-            embedding_models.dedup();
-            Ok(AiModelList {
-                models,
-                embedding_models,
-            })
-        }
-        "anthropic" => {
-            if api_key.trim().is_empty() {
-                return Err("Anthropic API key is required".to_string());
-            }
-            let models = vec![
-                "claude-3-5-sonnet-20241022".to_string(),
-                "claude-3-5-haiku-20241022".to_string(),
-                "claude-3-opus-20240229".to_string(),
-            ];
-            Ok(AiModelList {
-                models,
-                embedding_models: Vec::new(),
-            })
-        }
-        "gemini" => {
-            if api_key.trim().is_empty() {
-                return Err("Gemini API key is required".to_string());
-            }
-            let models = vec![
-                "gemini-1.5-flash".to_string(),
-                "gemini-1.5-flash-8b".to_string(),
-                "gemini-1.5-pro".to_string(),
-                "gemini-2.0-flash-exp".to_string(),
-            ];
-            let embedding_models = vec![
-                "text-embedding-004".to_string(),
-            ];
-            Ok(AiModelList {
-                models,
-                embedding_models,
-            })
-        }
-        "ollama" => {
-            let base = normalize_base_url(url.as_deref().unwrap_or("http://localhost:11434"));
-            let endpoint = format!("{}/api/tags", base);
-            let resp = client
-                .get(endpoint)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
-            let status = resp.status();
-            let text = resp.text().await.map_err(|e| e.to_string())?;
-            if !status.is_success() {
-                return Err(format!("Ollama error: {}", text));
-            }
-            let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-            let mut models = extract_string_list(&json, "models", "name");
-            models.sort();
-            models.dedup();
-            let mut embedding_models = filter_embedding_models(&models);
-            embedding_models.sort();
-            embedding_models.dedup();
-            Ok(AiModelList {
-                models,
-                embedding_models,
-            })
-        }
-        _ => Err(format!("Unsupported provider: {}", provider)),
-    }
+    let models = match provider.as_str() {
+        "openai" => providers::openai::test_connection(&client, &api_key, url.as_deref()).await?,
+        "anthropic" => providers::anthropic::test_connection(&client, &api_key, url.as_deref()).await?,
+        "gemini" => providers::gemini::test_connection(&client, &api_key, url.as_deref()).await?,
+        "ollama" => providers::ollama::test_connection(&client, &api_key, url.as_deref()).await?,
+        _ => return Err(format!("Unsupported provider: {}", provider)),
+    };
+
+    let mut sorted_models = models;
+    sorted_models.sort();
+    sorted_models.dedup();
+    
+    let mut embedding_models = filter_embedding_models(&sorted_models);
+    embedding_models.sort();
+    embedding_models.dedup();
+    
+    Ok(AiModelList {
+        models: sorted_models,
+        embedding_models,
+    })
 }
 
 #[tauri::command]

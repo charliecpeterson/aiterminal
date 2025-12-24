@@ -14,7 +14,6 @@ export function useAutocompleteMenu(
   ptyId: number,
   terminalReady: boolean,
 ) {
-  console.log('🎯 useAutocompleteMenu hook created', { enabled, ptyId, terminalReady, hasTerminal: !!terminalRef.current });
   
   const [menuVisible, setMenuVisible] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -29,7 +28,6 @@ export function useAutocompleteMenu(
   
   // Initialize engine
   useEffect(() => {
-    console.log('🔧 Initializing HybridAutocomplete engine');
     if (!engineRef.current) {
       engineRef.current = new HybridAutocomplete();
     }
@@ -108,16 +106,13 @@ export function useAutocompleteMenu(
   }, [terminalRef]);
   
   const showMenu = useCallback(async () => {
-    console.log('📋 showMenu called');
     const terminal = terminalRef.current;
     const engine = engineRef.current;
     
     if (!terminal) {
-      console.log('❌ No terminal ref');
       return;
     }
     if (!engine) {
-      console.log('❌ No engine ref');
       return;
     }
     
@@ -125,16 +120,13 @@ export function useAutocompleteMenu(
     currentInputRef.current = currentInput;
     trackedInputRef.current = currentInput; // Start tracking from this point
     trackingInputRef.current = true;
-    console.log(`📝 Current input: "${currentInput}"`);
     
     if (!currentInput.trim()) {
-      console.log('⚠️ Empty input, not showing menu');
       setMenuVisible(false);
       return;
     }
     
     const position = calculateMenuPosition();
-    console.log(`📍 Menu position:`, position);
     setMenuPosition(position);
     setMenuVisible(true);
     setLoading(true);
@@ -168,8 +160,6 @@ export function useAutocompleteMenu(
     
     // Use the tracked input (what we knew when menu opened)
     const currentInput = trackedInputRef.current;
-    console.log('✅ Accepting suggestion:', text);
-    console.log('📝 Tracked input was:', currentInput);
     
     trackingInputRef.current = false;
     
@@ -184,7 +174,6 @@ export function useAutocompleteMenu(
     // Add the new text
     command += text;
     
-    console.log('📤 Sending to PTY:', JSON.stringify(command));
     
     // Send as single operation to avoid race conditions
     invoke('write_to_pty', { id: ptyId, data: command }).catch(console.error);
@@ -204,20 +193,17 @@ export function useAutocompleteMenu(
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key;
       
-      console.log('🎹 Window keydown:', key, 'menu visible:', menuVisible);
       
       if (key === 'ArrowDown') {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
         setSelectedIndex(i => Math.min(i + 1, suggestions.length - 1));
-        console.log('⬇️ Menu: Arrow Down');
       } else if (key === 'ArrowUp') {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
         setSelectedIndex(i => Math.max(i - 1, 0));
-        console.log('⬆️ Menu: Arrow Up');
       } else if (key === 'Enter' || key === 'Tab') {
         event.preventDefault();
         event.stopPropagation();
@@ -225,13 +211,11 @@ export function useAutocompleteMenu(
         if (suggestions[selectedIndex]) {
           acceptSuggestion(suggestions[selectedIndex].text);
         }
-        console.log('✅ Menu: Accept');
       } else if (key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
         closeMenu();
-        console.log('❌ Menu: Close');
       }
     };
     
@@ -246,22 +230,18 @@ export function useAutocompleteMenu(
   // Ctrl+Space to open menu
   useEffect(() => {
     if (!enabled) {
-      console.log('⚠️ Menu not enabled');
       return;
     }
     
     if (!terminalReady) {
-      console.log('⚠️ Terminal not ready yet');
       return;
     }
     
     const terminal = terminalRef.current;
     if (!terminal) {
-      console.log('⚠️ Terminal ref not populated yet');
       return;
     }
     
-    console.log('🔧 Setting up Ctrl+Space listener on terminal');
     
     const disposer = terminal.onKey((event) => {
       const key = event.domEvent.key;
@@ -269,18 +249,15 @@ export function useAutocompleteMenu(
       
       // Debug log every key with Ctrl
       if (ctrl) {
-        console.log(`🔑 Ctrl+${key} pressed`);
       }
       
       if (key === ' ' && ctrl) {
-        console.log('🚀 Ctrl+Space detected! Opening menu...');
         event.domEvent.preventDefault();
         showMenu();
       }
     });
     
     return () => {
-      console.log('🧹 Cleaning up Ctrl+Space listener');
       disposer.dispose();
     };
   }, [enabled, terminalReady, showMenu]);

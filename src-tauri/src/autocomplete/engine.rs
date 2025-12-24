@@ -4,6 +4,15 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::State;
 
+// LLM Server Configuration Constants
+const LLM_SERVER_PORT: u16 = 8765;
+const LLM_SERVER_HOST: &str = "localhost";
+const LLM_CONTEXT_SIZE: u32 = 512;
+const LLM_N_PREDICT: u32 = 50;
+const LLM_DEFAULT_TEMPERATURE: f32 = 0.3;
+const LLM_FOCUSED_TEMPERATURE: f32 = 0.1;
+const LLM_THREADS: u32 = 4;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionRequest {
     prompt: String,
@@ -41,7 +50,7 @@ impl LLMEngine {
     pub fn new() -> Self {
         Self {
             server_process: Arc::new(Mutex::new(None)),
-            server_url: "http://localhost:8765".to_string(),
+            server_url: format!("http://{}:{}", LLM_SERVER_HOST, LLM_SERVER_PORT),
             model_path: String::new(),
             enabled: false,
         }
@@ -80,15 +89,15 @@ impl LLMEngine {
             .arg("--model")
             .arg(&expanded_path)
             .arg("--port")
-            .arg("8765")
+            .arg(LLM_SERVER_PORT.to_string())
             .arg("--ctx-size")
-            .arg("512")
+            .arg(LLM_CONTEXT_SIZE.to_string())
             .arg("--n-predict")
-            .arg("50")
+            .arg(LLM_N_PREDICT.to_string())
             .arg("--temp")
-            .arg("0.3")
+            .arg(LLM_DEFAULT_TEMPERATURE.to_string())
             .arg("--threads")
-            .arg("4")
+            .arg(LLM_THREADS.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -174,7 +183,7 @@ impl LLMEngine {
         let request = CompletionRequest {
             prompt,
             n_predict: 30,
-            temperature: 0.3,
+            temperature: LLM_DEFAULT_TEMPERATURE,
             stop: vec!["\n".to_string(), "###".to_string()],
         };
 
@@ -308,7 +317,7 @@ pub async fn get_llm_inline_completion(
     let request = CompletionRequest {
         prompt,
         n_predict: 15,      // Reduced from 30
-        temperature: 0.1,   // More focused
+        temperature: LLM_FOCUSED_TEMPERATURE,   // More focused
         stop: vec!["\n".to_string()], // Stop at first newline
     };
 
