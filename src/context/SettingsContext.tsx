@@ -63,18 +63,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (loadingRef.current) return;
         loadingRef.current = true;
         
-        // Check if we're in a detached AI panel window
-        const isAiWindow = window.location.hash.startsWith('#/ai-panel');
-        
-        // Only load settings if we're in the main window
-        // Detached AI windows don't need settings on startup
-        if (!isAiWindow) {
-            loadSettings();
-        } else {
-            // For AI panel windows, just mark as not loading
-            // Settings will be loaded on-demand if needed
-            setLoading(false);
-        }
+        // Load settings for all windows (main and AI panel)
+        loadSettings();
     }, []);
 
     const loadSettings = async () => {

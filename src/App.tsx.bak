@@ -151,13 +151,10 @@ function AppContent() {
   if (isAiWindow) {
     return (
       <div className="ai-window">
-        <SettingsProvider>
-          <AIProvider>
-            <AIPanel
-              activeTerminalId={mainActiveTabId}
-            />
-          </AIProvider>
-        </SettingsProvider>
+        <AIPanel
+          mode="detached"
+          activeTerminalId={mainActiveTabId}
+        />
       </div>
     );
   }

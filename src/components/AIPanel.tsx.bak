@@ -23,7 +23,6 @@ const AIPanel = ({
 }: AIPanelProps) => {
   const [activeTab, setActiveTab] = useState<PanelTab>("chat");
   const [prompt, setPrompt] = useState("");
-  console.log("[AIPanel] Component rendering", { activeTerminalId, isRemote });
   const [expandedContextId, setExpandedContextId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);

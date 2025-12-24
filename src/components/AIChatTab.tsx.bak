@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import type { ChatMessage, PendingApproval } from "../context/AIContext";
 import { formatChatTime, handlePromptKeyDown, roleLabel } from "../ai/panelUi";
 import { AIMarkdown } from "./AIMarkdown";
@@ -40,7 +40,7 @@ export function AIChatTab(props: {
           targetTerminalId === null || targetTerminalId === undefined
             ? { command, source: "ai-panel" }
             : { command, terminalId: targetTerminalId, source: "ai-panel" };
-        invoke("emit_event", { event: "ai-run-command", payload });
+        emitTo("main", "ai-run-command", payload);
       }}
     />
   );

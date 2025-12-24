@@ -1,4 +1,3 @@
-import { emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 
 /**
@@ -19,7 +18,12 @@ import { invoke } from '@tauri-apps/api/core';
 
 export async function requestCaptureLast(count: number): Promise<void> {
   const safeCount = Math.max(1, Math.min(50, count));
-  await emitTo('main', 'ai-context:capture-last', { count: safeCount });
+  console.log('[contextCapture] Emitting ai-context:capture-last', { count: safeCount });
+  await invoke('emit_event', { 
+    event: 'ai-context:capture-last', 
+    payload: { count: safeCount } 
+  });
+  console.log('[contextCapture] Emit completed');
 }
 
 /**
@@ -89,8 +93,11 @@ export async function requestCaptureFile(params: {
     ? Math.max(1, Math.min(2048, params.fileLimitKb))
     : 200;
 
-  await emitTo('main', 'ai-context:capture-file', {
-    path: trimmedPath,
-    maxBytes: kb * 1024,
+  await invoke('emit_event', {
+    event: 'ai-context:capture-file',
+    payload: {
+      path: trimmedPath,
+      maxBytes: kb * 1024,
+    }
   });
 }

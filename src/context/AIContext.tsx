@@ -1,4 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useReducer } from "react";
+import { createContext, useCallback, useContext, useMemo, useReducer, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 export type ContextType = "command" | "output" | "selection" | "file" | "command_output";
 
@@ -125,16 +127,52 @@ const AIContext = createContext<AIContextValue | undefined>(undefined);
 export const AIProvider = ({ children }: { children: React.ReactNode }) => {
   const [state, dispatch] = useReducer(aiReducer, initialState);
 
+  // Set up cross-window event synchronization
+  useEffect(() => {
+    const unlistenPromises = [
+      listen<ContextItem>("ai-context:sync-add", (event) => {
+        console.log('[AIContext] Received sync-add event', event.payload);
+        dispatch({ type: "context:add", item: event.payload });
+      }),
+      listen<{ id: string }>("ai-context:sync-remove", (event) => {
+        dispatch({ type: "context:remove", id: event.payload.id });
+      }),
+      listen("ai-context:sync-clear", () => {
+        dispatch({ type: "context:clear" });
+      }),
+    ];
+
+    return () => {
+      unlistenPromises.forEach((p) => p.then((unlisten) => unlisten()));
+    };
+  }, []);
+
   const addContextItem = useCallback((item: ContextItem) => {
+    console.log('[AIContext] Adding context item', item);
     dispatch({ type: "context:add", item });
+    // Broadcast to other windows
+    invoke("emit_event", {
+      event: "ai-context:sync-add",
+      payload: item,
+    }).catch((err) => console.error("Failed to broadcast context item:", err));
   }, []);
 
   const removeContextItem = useCallback((id: string) => {
     dispatch({ type: "context:remove", id });
+    // Broadcast to other windows
+    invoke("emit_event", {
+      event: "ai-context:sync-remove",
+      payload: { id },
+    }).catch((err) => console.error("Failed to broadcast remove:", err));
   }, []);
 
   const clearContext = useCallback(() => {
     dispatch({ type: "context:clear" });
+    // Broadcast to other windows
+    invoke("emit_event", {
+      event: "ai-context:sync-clear",
+      payload: {},
+    }).catch((err) => console.error("Failed to broadcast clear:", err));
   }, []);
 
   const addMessage = useCallback((message: ChatMessage) => {
