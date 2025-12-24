@@ -1,5 +1,4 @@
 import { createContext, useCallback, useContext, useMemo, useReducer } from "react";
-import type { PendingToolCall } from '../ai/tools';
 
 export type ContextType = "command" | "output" | "selection" | "file" | "command_output";
 
@@ -39,7 +38,6 @@ export interface PendingApproval {
 interface AIState {
   contextItems: ContextItem[];
   messages: ChatMessage[];
-  pendingToolCalls: PendingToolCall[];
   pendingApprovals: PendingApproval[];
 }
 
@@ -50,16 +48,12 @@ type AIAction =
   | { type: "chat:add"; message: ChatMessage }
   | { type: "chat:clear" }
   | { type: "chat:append"; id: string; content: string }
-  | { type: "tool:add"; toolCalls: PendingToolCall[] }
-  | { type: "tool:update"; id: string; updates: Partial<PendingToolCall> }
-  | { type: "tool:clear" }
   | { type: "approval:add"; approval: PendingApproval }
   | { type: "approval:remove"; id: string };
 
 const initialState: AIState = {
   contextItems: [],
   messages: [],
-  pendingToolCalls: [],
   pendingApprovals: [],
 };
 
@@ -99,23 +93,6 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
         ...state,
         messages: [],
       };
-    case "tool:add":
-      return {
-        ...state,
-        pendingToolCalls: [...state.pendingToolCalls, ...action.toolCalls],
-      };
-    case "tool:update":
-      return {
-        ...state,
-        pendingToolCalls: state.pendingToolCalls.map((tc) =>
-          tc.id === action.id ? { ...tc, ...action.updates } : tc
-        ),
-      };
-    case "tool:clear":
-      return {
-        ...state,
-        pendingToolCalls: [],
-      };
     case "approval:add":
       return {
         ...state,
@@ -139,9 +116,6 @@ interface AIContextValue extends AIState {
   clearChat: () => void;
   buildPrompt: (userInput: string) => string;
   appendMessage: (id: string, content: string) => void;
-  addToolCalls: (toolCalls: PendingToolCall[]) => void;
-  updateToolCall: (id: string, updates: Partial<PendingToolCall>) => void;
-  clearToolCalls: () => void;
   addPendingApproval: (approval: PendingApproval) => void;
   removePendingApproval: (id: string) => void;
 }
@@ -173,18 +147,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
 
   const appendMessage = useCallback((id: string, content: string) => {
     dispatch({ type: "chat:append", id, content });
-  }, []);
-
-  const addToolCalls = useCallback((toolCalls: PendingToolCall[]) => {
-    dispatch({ type: "tool:add", toolCalls });
-  }, []);
-
-  const updateToolCall = useCallback((id: string, updates: Partial<PendingToolCall>) => {
-    dispatch({ type: "tool:update", id, updates });
-  }, []);
-
-  const clearToolCalls = useCallback(() => {
-    dispatch({ type: "tool:clear" });
   }, []);
 
   const addPendingApproval = useCallback((approval: PendingApproval) => {
@@ -246,9 +208,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       clearChat,
       appendMessage,
       buildPrompt,
-      addToolCalls,
-      updateToolCall,
-      clearToolCalls,
       addPendingApproval,
       removePendingApproval,
     }),
@@ -261,9 +220,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       clearChat,
       appendMessage,
       buildPrompt,
-      addToolCalls,
-      updateToolCall,
-      clearToolCalls,
       addPendingApproval,
       removePendingApproval,
     ]

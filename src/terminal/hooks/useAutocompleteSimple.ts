@@ -6,8 +6,8 @@
 import { useEffect, useRef } from 'react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { invoke } from '@tauri-apps/api/core';
-import { SimpleAutocomplete } from './autocomplete/simple';
-import { LLMInlineAutocomplete } from './autocomplete/llm-inline';
+import { SimpleAutocomplete } from '../autocomplete/simple';
+import { LLMInlineAutocomplete } from '../autocomplete/llm-inline';
 
 export function useAutocompleteSimple(
   terminalRef: React.RefObject<XTermTerminal | null>,

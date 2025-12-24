@@ -1,6 +1,6 @@
 import type { IDecoration, IDisposable, IMarker, Terminal as XTermTerminal } from '@xterm/xterm';
-import type { ContextItem } from '../context/AIContext';
-import type { PendingFileCaptureRef } from './fileCapture';
+import type { ContextItem } from '../../context/AIContext';
+import type { PendingFileCaptureRef } from '../core/fileCapture';
 
 export interface CopyMenuState {
   x: number;

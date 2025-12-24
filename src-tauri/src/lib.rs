@@ -1,8 +1,8 @@
 // Module declarations
-mod ai;
+mod chat;
+mod autocomplete;
 mod health_check;
 mod history;
-mod llm;
 mod models;
 mod pty;
 mod settings;
@@ -10,7 +10,7 @@ mod tools;
 
 // Re-export models and commands
 pub use models::AppState;
-use ai::{ai_chat, ai_chat_stream, test_ai_connection};
+use chat::{ai_chat, ai_chat_stream, test_ai_connection};
 use history::get_shell_history;
 use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
@@ -21,6 +21,7 @@ use tools::{
     check_port_tool, get_system_info_tool, tail_file_tool, make_directory_tool,
     get_git_diff_tool, calculate_tool, web_search_tool,
 };
+use autocomplete::{init_llm, stop_llm, get_llm_completions, get_llm_inline_completion, llm_health_check, LLMEngine};
 use tauri::Emitter;
 
 #[tauri::command]
@@ -63,7 +64,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
-        .manage(std::sync::Arc::new(tokio::sync::Mutex::new(llm::LLMEngine::new())))
+        .manage(std::sync::Arc::new(tokio::sync::Mutex::new(LLMEngine::new())))
         .invoke_handler(tauri::generate_handler![
             greet,
             emit_event,
@@ -100,11 +101,11 @@ pub fn run() {
             get_git_diff_tool,
             calculate_tool,
             web_search_tool,
-            llm::init_llm,
-            llm::stop_llm,
-            llm::get_llm_completions,
-            llm::get_llm_inline_completion,
-            llm::llm_health_check,
+            init_llm,
+            stop_llm,
+            get_llm_completions,
+            get_llm_inline_completion,
+            llm_health_check,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

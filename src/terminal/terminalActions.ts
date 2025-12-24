@@ -6,7 +6,7 @@ import {
     addSelectionToContext,
     copyCombinedToClipboard,
     copyRangeToClipboard,
-} from './copyContext';
+} from './ui/copyContext';
 
 export interface TerminalActions {
     copyRange: (range: [number, number]) => Promise<void>;

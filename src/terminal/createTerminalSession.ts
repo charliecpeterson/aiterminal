@@ -3,7 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { applyTerminalAppearance, type AppearanceSettings, resolveXtermTheme } from './appearance';
+import { applyTerminalAppearance, type AppearanceSettings, resolveXtermTheme } from './ui/appearance';
 
 export interface TerminalSession {
     term: XTerm;

@@ -1,6 +1,6 @@
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-import type { ContextItem, ContextType } from '../context/AIContext';
+import type { ContextItem, ContextType } from '../../context/AIContext';
 
 export type LineRange = [number, number];
 

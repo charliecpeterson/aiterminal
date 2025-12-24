@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { attachPtyExitListener } from './ptyListeners';
+import { attachPtyExitListener } from '../core/ptyListeners';
 
 export function usePtyAutoClose(params: { id: number; onClose: () => void }): void {
     const { id, onClose } = params;

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
-import type { AppearanceSettings } from './appearance';
-import { applyTerminalAppearance } from './appearance';
+import type { AppearanceSettings } from '../ui/appearance';
+import { applyTerminalAppearance } from '../ui/appearance';
 
 export function useTerminalAppearance(params: {
     termRef: { current: XTermTerminal | null };

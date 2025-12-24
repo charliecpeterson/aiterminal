@@ -9,7 +9,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
 import { isCommandSafe } from './commandSafety';
-import { executeInPty } from '../terminal/executeInPty';
+import { executeInPty } from '../terminal/core/executeInPty';
 import type { PendingApproval } from '../context/AIContext';
 
 // Store pending approval promises

@@ -5,8 +5,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { invoke } from '@tauri-apps/api/core';
-import { HybridAutocomplete } from './autocomplete/hybrid';
-import type { Suggestion } from './autocomplete/llm';
+import { HybridAutocomplete } from '../autocomplete/hybrid';
+import type { Suggestion } from '../autocomplete/llm';
 
 export function useAutocompleteMenu(
   terminalRef: React.RefObject<XTermTerminal | null>,

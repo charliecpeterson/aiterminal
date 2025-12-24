@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { attachAiRunCommandListener } from './aiRunCommand';
+import { attachAiRunCommandListener } from '../core/aiRunCommand';
 
 export function useAiRunCommandListener(params: {
     id: number;
