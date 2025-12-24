@@ -267,3 +267,66 @@ pub async fn llm_health_check(state: State<'_, Arc<Mutex<LLMEngine>>>) -> Result
     let engine = state.lock().await;
     Ok(engine.is_server_healthy().await)
 }
+
+/// Optimized inline completion - returns single best suggestion quickly
+#[tauri::command]
+pub async fn get_llm_inline_completion(
+    context: CompletionContext,
+    state: State<'_, Arc<Mutex<LLMEngine>>>,
+) -> Result<String, String> {
+    let engine = state.lock().await;
+    
+    if !engine.enabled {
+        return Err("LLM not enabled".to_string());
+    }
+
+    // Build prompt with examples showing spaces and context-aware completion
+    let prompt = format!(
+        "Complete the shell command. Provide ONLY the remaining characters needed.\n\n\
+         Examples:\n\
+         Input: e\n\
+         Output: cho\n\n\
+         Input: git\n\
+         Output:  status\n\n\
+         Input: git s\n\
+         Output: tatus\n\n\
+         Input: git c\n\
+         Output: ommit\n\n\
+         Input: cd D\n\
+         Output: ownloads\n\n\
+         Input: ls -\n\
+         Output: la\n\n\
+         Input: doc\n\
+         Output: ker\n\n\
+         Input: {}\n\
+         Output:",
+        context.partial_input
+    );
+
+    let client = reqwest::Client::new();
+
+    let request = CompletionRequest {
+        prompt,
+        n_predict: 15,      // Reduced from 30
+        temperature: 0.1,   // More focused
+        stop: vec!["\n".to_string()], // Stop at first newline
+    };
+
+    let response = client
+        .post(format!("{}/completion", engine.server_url))
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| format!("LLM request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("LLM server error: {}", response.status()));
+    }
+
+    let result: CompletionResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(result.content.trim().to_string())
+}

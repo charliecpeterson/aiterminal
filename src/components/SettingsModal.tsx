@@ -380,6 +380,72 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         Shows command suggestions as gray text after your cursor. Press → (right arrow) to accept.
                                     </div>
                                 </div>
+
+                                {localSettings.autocomplete?.enable_inline && (
+                                    <div className="form-group" style={{ marginLeft: '24px' }}>
+                                        <label>Inline Source</label>
+                                        <select
+                                            value={localSettings.autocomplete?.inline_source ?? 'history'}
+                                            onChange={(e) => handleChange('autocomplete', 'inline_source', e.target.value)}
+                                        >
+                                            <option value="history">History (Fast, ~10ms)</option>
+                                            <option value="llm">AI/LLM (Smart, ~150ms)</option>
+                                            <option value="hybrid">Hybrid (Best of both)</option>
+                                        </select>
+                                        <div className="form-hint">
+                                            <strong>History:</strong> Matches from your shell history<br/>
+                                            <strong>AI/LLM:</strong> Local Qwen3-0.6B model generates smart completions<br/>
+                                            <strong>Hybrid:</strong> Shows history immediately, upgrades to AI if better
+                                        </div>
+                                    </div>
+                                )}
+
+                                {localSettings.autocomplete?.inline_source === 'llm' && (
+                                    <>
+                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                            <label>LLM Temperature (0.0 - 1.0)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="1"
+                                                step="0.1"
+                                                value={localSettings.autocomplete?.llm_temperature ?? 0.1}
+                                                onChange={(e) => handleChange('autocomplete', 'llm_temperature', parseFloat(e.target.value))}
+                                            />
+                                            <div className="form-hint">
+                                                Lower = more focused, Higher = more creative. Recommended: 0.1
+                                            </div>
+                                        </div>
+                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                            <label>Max Tokens</label>
+                                            <input
+                                                type="number"
+                                                min="5"
+                                                max="50"
+                                                value={localSettings.autocomplete?.llm_max_tokens ?? 15}
+                                                onChange={(e) => handleChange('autocomplete', 'llm_max_tokens', parseInt(e.target.value))}
+                                            />
+                                            <div className="form-hint">
+                                                Lower = faster, Higher = longer completions. Recommended: 15
+                                            </div>
+                                        </div>
+                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                            <label>Debounce (ms)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="1000"
+                                                step="50"
+                                                value={localSettings.autocomplete?.llm_debounce_ms ?? 300}
+                                                onChange={(e) => handleChange('autocomplete', 'llm_debounce_ms', parseInt(e.target.value))}
+                                            />
+                                            <div className="form-hint">
+                                                Delay before querying LLM. Lower = more responsive but more queries. Recommended: 300ms
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
                                 <div className="form-group">
                                     <label className="checkbox-label">
                                         <input
@@ -394,7 +460,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     </div>
                                 </div>
                                 <div className="form-hint" style={{ marginTop: '20px', padding: '12px', background: 'rgba(91, 141, 232, 0.1)', borderRadius: '6px' }}>
-                                    💡 <strong>Tip:</strong> Autocomplete uses the Fig specification (600+ commands). Your Tab key still works normally for shell completion (files, PATH, etc.).
+                                    💡 <strong>Tip:</strong> Try "history" first, then experiment with "llm" to compare. AI requires local Qwen3-0.6B model.
                                 </div>
                             </>
                         )}

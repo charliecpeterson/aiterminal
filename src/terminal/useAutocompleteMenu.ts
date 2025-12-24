@@ -38,7 +38,7 @@ export function useAutocompleteMenu(
   // Initialize LLM when enabled
   useEffect(() => {
     if (enabled && engineRef.current) {
-      const modelPath = '~/.config/aiterminal/models/qwen3-0.6b-q4_k_m.gguf';
+      const modelPath = '~/.config/aiterminal/models/qwen3-1.7b-q4_k_m.gguf';
       engineRef.current.initLLM(modelPath).catch((error) => {
         console.error('Failed to initialize LLM:', error);
       });

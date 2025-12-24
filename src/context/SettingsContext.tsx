@@ -22,7 +22,13 @@ export interface TerminalSettings {
 
 export interface AutocompleteSettings {
     enable_inline: boolean; // Fish-style gray text suggestions
+    inline_source: 'history' | 'llm' | 'hybrid'; // Source for inline completions
     enable_menu: boolean; // Ctrl+Space dropdown menu
+    
+    // LLM tuning
+    llm_temperature: number; // 0.0-1.0
+    llm_max_tokens: number; // 10-50
+    llm_debounce_ms: number; // Delay before querying (ms)
 }
 
 export interface StreamingSettings {
@@ -88,7 +94,14 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
                 ai: { provider: 'openai', model: 'gpt-4', api_key: '', url: '' },
                 terminal: { max_markers: 200 },
-                autocomplete: { enable_inline: true, enable_menu: true },
+                autocomplete: { 
+                    enable_inline: true, 
+                    inline_source: 'history' as const,
+                    enable_menu: true,
+                    llm_temperature: 0.1,
+                    llm_max_tokens: 15,
+                    llm_debounce_ms: 300
+                },
                 streaming: { max_tokens: 4096, timeout_secs: 120, buffer_size_limit: 1048576 }
             };
             console.log('📋 Using default settings');

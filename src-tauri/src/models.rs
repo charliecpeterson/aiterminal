@@ -58,6 +58,30 @@ pub struct TerminalSettings {
 pub struct AutocompleteSettings {
     pub enable_inline: bool,
     pub enable_menu: bool,
+    #[serde(default = "default_inline_source")]
+    pub inline_source: String, // 'history', 'llm', or 'hybrid'
+    #[serde(default = "default_llm_temperature")]
+    pub llm_temperature: f32, // 0.0-1.0
+    #[serde(default = "default_llm_max_tokens")]
+    pub llm_max_tokens: u32, // 5-50
+    #[serde(default = "default_llm_debounce_ms")]
+    pub llm_debounce_ms: u32, // 0-1000ms
+}
+
+fn default_inline_source() -> String {
+    "history".to_string()
+}
+
+fn default_llm_temperature() -> f32 {
+    0.1
+}
+
+fn default_llm_max_tokens() -> u32 {
+    15
+}
+
+fn default_llm_debounce_ms() -> u32 {
+    300
 }
 
 impl Default for AutocompleteSettings {
@@ -65,6 +89,10 @@ impl Default for AutocompleteSettings {
         Self {
             enable_inline: true,
             enable_menu: true,
+            inline_source: default_inline_source(),
+            llm_temperature: default_llm_temperature(),
+            llm_max_tokens: default_llm_max_tokens(),
+            llm_debounce_ms: default_llm_debounce_ms(),
         }
     }
 }

@@ -142,7 +142,14 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
   const { latencyMs } = useLatencyProbe(id, 5000); // Poll every 5 seconds
 
   // Simple Fish-style autocomplete (clean rewrite)
-  useAutocompleteSimple(xtermRef, settings?.autocomplete?.enable_inline ?? true, id);
+  useAutocompleteSimple(
+    xtermRef, 
+    settings?.autocomplete?.enable_inline ?? true, 
+    id,
+    settings?.autocomplete?.inline_source ?? 'history',
+    settings?.autocomplete?.llm_debounce_ms ?? 300,
+    terminalReady
+  );
 
   const autocompleteMenu = useAutocompleteMenu(
     xtermRef,

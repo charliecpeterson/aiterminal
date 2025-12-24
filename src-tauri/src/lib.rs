@@ -103,6 +103,7 @@ pub fn run() {
             llm::init_llm,
             llm::stop_llm,
             llm::get_llm_completions,
+            llm::get_llm_inline_completion,
             llm::llm_health_check,
         ])
         .run(tauri::generate_context!())
