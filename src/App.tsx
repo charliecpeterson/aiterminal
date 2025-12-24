@@ -11,12 +11,19 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import "./App.css";
 import "./components/AIPanel.css";
 
+interface Pane {
+  id: number; // PTY ID
+  isRemote?: boolean;
+  remoteHost?: string;
+}
+
 interface Tab {
   id: number;
   title: string;
-  customName?: string; // User-defined name
-  isRemote?: boolean; // Track if terminal is SSH'd
-  remoteHost?: string; // Remote host info
+  customName?: string;
+  panes: Pane[]; // Array of terminal panes in this tab
+  focusedPaneId: number | null; // Which pane has focus
+  splitLayout: 'single' | 'vertical' | 'horizontal'; // How panes are arranged
 }
 
 function AppContent() {
@@ -40,11 +47,17 @@ function AppContent() {
   const createTab = async () => {
     try {
       const id = await invoke<number>("spawn_pty");
-      setTabs((prev) => [...prev, { id, title: `Tab ${prev.length + 1}` }]);
+      const newTab: Tab = {
+        id,
+        title: `Tab ${tabs.length + 1}`,
+        panes: [{ id }],
+        focusedPaneId: id,
+        splitLayout: 'single'
+      };
+      setTabs((prev) => [...prev, newTab]);
       setActiveTabId(id);
     } catch (error) {
       console.error("Failed to spawn PTY:", error);
-      // Show user-visible error in a future error toast/notification system
     }
   };
 
@@ -56,10 +69,75 @@ function AppContent() {
     );
   };
 
-  const updateTabRemoteState = (id: number, isRemote: boolean, remoteHost?: string) => {
+  const updateTabRemoteState = (tabId: number, paneId: number, isRemote: boolean, remoteHost?: string) => {
     setTabs((prev) =>
       prev.map((tab) =>
-        tab.id === id ? { ...tab, isRemote, remoteHost } : tab
+        tab.id === tabId ? {
+          ...tab,
+          panes: tab.panes.map(pane =>
+            pane.id === paneId ? { ...pane, isRemote, remoteHost } : pane
+          )
+        } : tab
+      )
+    );
+  };
+
+  const splitPane = async (tabId: number, direction: 'vertical' | 'horizontal') => {
+    try {
+      const newPtyId = await invoke<number>("spawn_pty");
+      setTabs((prev) =>
+        prev.map((tab) => {
+          if (tab.id !== tabId) return tab;
+          return {
+            ...tab,
+            panes: [...tab.panes, { id: newPtyId }],
+            focusedPaneId: newPtyId,
+            splitLayout: direction
+          };
+        })
+      );
+    } catch (error) {
+      console.error("Failed to spawn PTY for split:", error);
+    }
+  };
+
+  const closePane = (tabId: number, paneId: number) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    // If only one pane, close the whole tab
+    if (tab.panes.length === 1) {
+      closeTab(tabId);
+      return;
+    }
+
+    // Close PTY
+    invoke("close_pty", { id: paneId }).catch((error) => {
+      console.error("Failed to close PTY:", error);
+    });
+
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== tabId) return t;
+        const newPanes = t.panes.filter(p => p.id !== paneId);
+        const newFocusedId = t.focusedPaneId === paneId
+          ? newPanes[newPanes.length - 1]?.id
+          : t.focusedPaneId;
+        
+        return {
+          ...t,
+          panes: newPanes,
+          focusedPaneId: newFocusedId,
+          splitLayout: newPanes.length === 1 ? 'single' as const : t.splitLayout
+        };
+      })
+    );
+  };
+
+  const setFocusedPane = (tabId: number, paneId: number) => {
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === tabId ? { ...tab, focusedPaneId: paneId } : tab
       )
     );
   };
@@ -73,18 +151,26 @@ function AppContent() {
     });
   };
 
-  const closeTab = (id: number) => {
-    invoke("close_pty", { id }).catch((error) => {
-      console.error("Failed to close PTY:", error);
+  const closeTab = (tabId: number) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    // Close all PTYs in all panes
+    tab.panes.forEach(pane => {
+      invoke("close_pty", { id: pane.id }).catch((error) => {
+        console.error("Failed to close PTY:", error);
+      });
     });
+
     setTabs((prev) => {
-      const newTabs = prev.filter((t) => t.id !== id);
+      const newTabs = prev.filter((t) => t.id !== tabId);
 
       setActiveTabId((prevActive) => {
         if (newTabs.length === 0) {
           return null;
         }
-        if (prevActive === id) {
+        // If we're closing the active tab, switch to the last tab
+        if (prevActive === tabId) {
           return newTabs[newTabs.length - 1].id;
         }
         return prevActive;
@@ -113,8 +199,35 @@ function AppContent() {
           createTab();
         } else if (e.key === "w") {
           e.preventDefault();
+          const activeTab = tabs.find(t => t.id === activeTabId);
+          if (activeTab && activeTab.focusedPaneId) {
+            closePane(activeTabId!, activeTab.focusedPaneId);
+          } else if (activeTabId !== null) {
+            closeTab(activeTabId);
+          }
+        } else if (e.key === "d") {
+          e.preventDefault();
           if (activeTabId !== null) {
-              closeTab(activeTabId);
+            const direction = e.shiftKey ? 'horizontal' : 'vertical';
+            splitPane(activeTabId, direction);
+          }
+        } else if (e.key === "[") {
+          e.preventDefault();
+          // Navigate to previous pane
+          const activeTab = tabs.find(t => t.id === activeTabId);
+          if (activeTab && activeTab.panes.length > 1) {
+            const currentIndex = activeTab.panes.findIndex(p => p.id === activeTab.focusedPaneId);
+            const prevIndex = currentIndex > 0 ? currentIndex - 1 : activeTab.panes.length - 1;
+            setFocusedPane(activeTabId!, activeTab.panes[prevIndex].id);
+          }
+        } else if (e.key === "]") {
+          e.preventDefault();
+          // Navigate to next pane
+          const activeTab = tabs.find(t => t.id === activeTabId);
+          if (activeTab && activeTab.panes.length > 1) {
+            const currentIndex = activeTab.panes.findIndex(p => p.id === activeTab.focusedPaneId);
+            const nextIndex = (currentIndex + 1) % activeTab.panes.length;
+            setFocusedPane(activeTabId!, activeTab.panes[nextIndex].id);
           }
         } else if (e.key === ",") {
           e.preventDefault();
@@ -128,7 +241,7 @@ function AppContent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTabId]);
+  }, [activeTabId, tabs]);
 
   // No resizing or attach/detach logic needed for separate window mode
 
@@ -161,9 +274,11 @@ function AppContent() {
 
   useEffect(() => {
     if (isAiWindow) return;
-    // Best-effort: keep detached AI panel aware of the current active terminal.
-    emitTo("ai-panel", "ai-panel:active-terminal", { id: activeTabId }).catch(() => {});
-  }, [activeTabId, isAiWindow]);
+    // Best-effort: keep detached AI panel aware of the current active terminal pane.
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
+    emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId }).catch(() => {});
+  }, [activeTabId, tabs, isAiWindow]);
 
   if (isAiWindow) {
     return (
@@ -195,7 +310,9 @@ function AppContent() {
     });
     panelWindow.once("tauri://created", () => {
       panelWindow.setFocus().catch(() => {});
-      emitTo("ai-panel", "ai-panel:active-terminal", { id: activeTabId }).catch(() => {});
+      const activeTab = tabs.find(t => t.id === activeTabId);
+      const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
+      emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId }).catch(() => {});
     });
     panelWindow.once("tauri://error", (event) => {
       console.error("AI panel window error:", event);
@@ -293,21 +410,46 @@ function AppContent() {
       </div>
       <div className="workbench">
         <div className="terminal-pane">
-          <div className="terminal-container">
-            {tabs.map((tab) => (
-              <div
-                key={tab.id}
-                className={`terminal-wrapper ${tab.id === activeTabId ? "active" : ""}`}
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`tab-content ${tab.id === activeTabId ? "active" : ""}`}
+              style={{ display: tab.id === activeTabId ? 'flex' : 'none' }}
+            >
+              <div 
+                className={`split-container split-${tab.splitLayout}`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: tab.splitLayout === 'vertical' ? '1fr 1fr' : '1fr',
+                  gridTemplateRows: tab.splitLayout === 'horizontal' ? '1fr 1fr' : '1fr',
+                  gap: '2px',
+                  width: '100%',
+                  height: '100%'
+                }}
               >
-                <Terminal 
-                    id={tab.id} 
-                    visible={tab.id === activeTabId}
-                    onUpdateRemoteState={(isRemote, remoteHost) => updateTabRemoteState(tab.id, isRemote, remoteHost)}
-                    onClose={() => closeTab(tab.id)} 
-                />
+                {tab.panes.map((pane) => (
+                  <div
+                    key={pane.id}
+                    className={`terminal-wrapper ${pane.id === tab.focusedPaneId ? "focused" : ""}`}
+                    onClick={() => setFocusedPane(tab.id, pane.id)}
+                    style={{
+                      border: pane.id === tab.focusedPaneId ? '2px solid #007acc' : '2px solid transparent',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                      position: 'relative'
+                    }}
+                  >
+                    <Terminal 
+                      id={pane.id} 
+                      visible={tab.id === activeTabId}
+                      onUpdateRemoteState={(isRemote, remoteHost) => updateTabRemoteState(tab.id, pane.id, isRemote, remoteHost)}
+                      onClose={() => closePane(tab.id, pane.id)} 
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
