@@ -531,3 +531,24 @@ body, html, #root {
   border: 2px solid #007acc !important;
   box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.3);
 }
+
+/* Split Divider Styles */
+.split-divider {
+  background: #2a2a2a;
+  position: relative;
+  transition: background 150ms ease;
+}
+
+.split-divider:hover {
+  background: #007acc;
+}
+
+.split-divider-vertical {
+  cursor: col-resize;
+  width: 4px;
+}
+
+.split-divider-horizontal {
+  cursor: row-resize;
+  height: 4px;
+}

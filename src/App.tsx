@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Terminal from "./components/Terminal";
 import AIPanel from "./components/AIPanel";
 import SettingsModal from "./components/SettingsModal";
@@ -24,6 +24,7 @@ interface Tab {
   panes: Pane[]; // Array of terminal panes in this tab
   focusedPaneId: number | null; // Which pane has focus
   splitLayout: 'single' | 'vertical' | 'horizontal'; // How panes are arranged
+  splitRatio: number; // Split ratio (0-100, percentage for first pane)
 }
 
 function AppContent() {
@@ -52,7 +53,8 @@ function AppContent() {
         title: `Tab ${tabs.length + 1}`,
         panes: [{ id }],
         focusedPaneId: id,
-        splitLayout: 'single'
+        splitLayout: 'single',
+        splitRatio: 50
       };
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(id);
@@ -92,7 +94,8 @@ function AppContent() {
             ...tab,
             panes: [...tab.panes, { id: newPtyId }],
             focusedPaneId: newPtyId,
-            splitLayout: direction
+            splitLayout: direction,
+            splitRatio: 50
           };
         })
       );
@@ -138,6 +141,14 @@ function AppContent() {
     setTabs((prev) =>
       prev.map((tab) =>
         tab.id === tabId ? { ...tab, focusedPaneId: paneId } : tab
+      )
+    );
+  };
+
+  const updateSplitRatio = (tabId: number, ratio: number) => {
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === tabId ? { ...tab, splitRatio: Math.max(10, Math.min(90, ratio)) } : tab
       )
     );
   };
@@ -420,32 +431,63 @@ function AppContent() {
                 className={`split-container split-${tab.splitLayout}`}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: tab.splitLayout === 'vertical' ? '1fr 1fr' : '1fr',
-                  gridTemplateRows: tab.splitLayout === 'horizontal' ? '1fr 1fr' : '1fr',
-                  gap: '2px',
+                  gridTemplateColumns: tab.splitLayout === 'vertical' 
+                    ? `${tab.splitRatio}% 4px ${100 - tab.splitRatio}%` 
+                    : '1fr',
+                  gridTemplateRows: tab.splitLayout === 'horizontal' 
+                    ? `${tab.splitRatio}% 4px ${100 - tab.splitRatio}%` 
+                    : '1fr',
                   width: '100%',
                   height: '100%'
                 }}
               >
-                {tab.panes.map((pane) => (
-                  <div
-                    key={pane.id}
-                    className={`terminal-wrapper ${pane.id === tab.focusedPaneId ? "focused" : ""}`}
-                    onClick={() => setFocusedPane(tab.id, pane.id)}
-                    style={{
-                      border: pane.id === tab.focusedPaneId ? '2px solid #007acc' : '2px solid transparent',
-                      borderRadius: '4px',
-                      overflow: 'hidden',
-                      position: 'relative'
-                    }}
-                  >
-                    <Terminal 
-                      id={pane.id} 
-                      visible={tab.id === activeTabId}
-                      onUpdateRemoteState={(isRemote, remoteHost) => updateTabRemoteState(tab.id, pane.id, isRemote, remoteHost)}
-                      onClose={() => closePane(tab.id, pane.id)} 
-                    />
-                  </div>
+                {tab.panes.map((pane, index) => (
+                  <React.Fragment key={pane.id}>
+                    <div
+                      className={`terminal-wrapper ${pane.id === tab.focusedPaneId ? "focused" : ""}`}
+                      onClick={() => setFocusedPane(tab.id, pane.id)}
+                      style={{
+                        border: pane.id === tab.focusedPaneId ? '2px solid #007acc' : '2px solid transparent',
+                        borderRadius: '4px',
+                        overflow: 'hidden',
+                        position: 'relative'
+                      }}
+                    >
+                      <Terminal 
+                        id={pane.id} 
+                        visible={tab.id === activeTabId}
+                        onUpdateRemoteState={(isRemote, remoteHost) => updateTabRemoteState(tab.id, pane.id, isRemote, remoteHost)}
+                        onClose={() => closePane(tab.id, pane.id)} 
+                      />
+                    </div>
+                    {index === 0 && tab.panes.length > 1 && (
+                      <div
+                        className={`split-divider split-divider-${tab.splitLayout}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const container = e.currentTarget.parentElement;
+                          if (!container) return;
+
+                          const handleMouseMove = (e: MouseEvent) => {
+                            const containerRect = container.getBoundingClientRect();
+                            const containerStart = tab.splitLayout === 'vertical' ? containerRect.left : containerRect.top;
+                            const containerSize = tab.splitLayout === 'vertical' ? containerRect.width : containerRect.height;
+                            const currentPos = tab.splitLayout === 'vertical' ? e.clientX : e.clientY;
+                            const newRatio = ((currentPos - containerStart) / containerSize) * 100;
+                            updateSplitRatio(tab.id, newRatio);
+                          };
+
+                          const handleMouseUp = () => {
+                            document.removeEventListener('mousemove', handleMouseMove);
+                            document.removeEventListener('mouseup', handleMouseUp);
+                          };
+
+                          document.addEventListener('mousemove', handleMouseMove);
+                          document.addEventListener('mouseup', handleMouseUp);
+                        }}
+                      />
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             </div>

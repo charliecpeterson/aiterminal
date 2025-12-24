@@ -214,6 +214,8 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
   }, [id]);
   
   useEffect(() => {
+      console.log(`[Terminal ${id}] Visibility changed to:`, visible, 'xtermRef:', xtermRef.current ? 'exists' : 'null', 'terminalReady:', terminalReady);
+      if (!terminalReady) return; // Don't handle visibility until terminal is initialized
       handleTerminalVisibilityChange({
           id,
           visible,
@@ -221,7 +223,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
           termRef: xtermRef,
           fitAddonRef,
       });
-  }, [visible, id]);
+  }, [visible, id, terminalReady]);
 
   useEffect(() => {
     if (!terminalRef.current || loading || !settings) return;
