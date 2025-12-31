@@ -29,7 +29,7 @@ interface CommandHistoryMenuProps {
 const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
   isOpen,
   onClose,
-  terminal,
+  terminal: _terminal,
   onJumpToCommand,
   onCopyCommand,
   onAddToContext,

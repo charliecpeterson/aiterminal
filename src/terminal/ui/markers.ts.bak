@@ -195,25 +195,11 @@ export function createMarkerManager({
         return;
       }
 
-      // Check if this is a completed command (has exitCode)
-      const meta = markerMeta.get(marker);
-      if (!meta || meta.exitCode === undefined) {
-        // This is the current/pending command (gray marker) - don't highlight
-        if (currentHighlight) {
-          currentHighlight.dispose();
-          currentHighlight = null;
-        }
-        if (currentOutputButton) {
-          currentOutputButton.remove();
-          currentOutputButton = null;
-        }
-        return;
-      }
-
       // Highlight the command block
       highlightCommandBlock(marker);
 
       // Show output button if there's output
+      const meta = markerMeta.get(marker);
       const startLine = marker.marker.line;
       const endLine = computeEndLine(term, markers, marker);
       const outputStartLine = meta?.outputStartMarker?.line ?? null;
@@ -325,8 +311,91 @@ export function createMarkerManager({
         console.error('[Fold] Failed to create output window:', event);
       });
     } catch (err) {
-      console.error('[Fold] Error opening window:', err);
+      console.error('[Fold] Error opening window:', err);\n    }
+  };
+
+  // Helper function to detect terminal theme colors
+  const detectThemeColors = () => {
+    const currentCursorLine = term.buffer.active.cursorY + term.buffer.active.baseY;
+    const notificationTargetLine = startLine + previewLines;
+    const offset = notificationTargetLine - currentCursorLine;
+    
+    console.log('[Fold] Marker placement:', { 
+      startLine, 
+      currentCursorLine, 
+      notificationTargetLine, 
+      offset,
+      previewLines 
+    });
+    
+    const notificationMarker = term.registerMarker(offset);
+    if (!notificationMarker) {
+      console.log('[Fold] Failed to create notification marker');
+      return null;
     }
+
+    const decoration = term.registerDecoration({
+      marker: notificationMarker,
+      x: 0,
+      width: term.cols,
+      height: 1,
+      layer: 'top',
+    });
+
+    if (!decoration) {
+      console.log('[Fold] Failed to create decoration');
+      notificationMarker.dispose();
+      return null;
+    }
+    
+    console.log('[Fold] Decoration created successfully', { 
+      notificationMarkerLine: notificationMarker.line,
+      commandMarkerLine: marker.marker.line,
+      termCols: term.cols,
+      height: 1,
+      decorationElement: decoration.element 
+    });
+
+    decoration.onRender((element: HTMLElement) => {
+      element.className = 'fold-overlay';
+      element.style.height = '36px';
+      element.style.minHeight = '36px';
+      
+      // Get preview lines
+      const previewLines = getRangeText([startLine, Math.min(startLine + 2, endLine)])
+        .split('\n')
+        .slice(0, 3)
+        .join(' ')
+        .substring(0, 60);
+
+      element.innerHTML = `
+        <div class="fold-summary">
+          <span class="fold-icon">💡</span>
+          <span class="fold-info">
+            Large output: <span class="fold-count">${lineCount}</span> lines
+          </span>
+          ${previewLines ? `<span class="fold-preview">${previewLines}...</span>` : ''}
+          <button class="fold-view-window">View in Window</button>
+        </div>
+      `;
+
+      // Add click handler for "View in Window" button
+      const viewButton = element.querySelector('.fold-view-window');
+      viewButton?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openOutputWindow(startLine, endLine, lineCount);
+      });
+    });
+
+    decoration.onDispose(() => {
+      notificationMarker.dispose();
+    });
+
+    meta.foldDecoration = decoration;
+    meta.foldExpanded = false;
+    markerMeta.set(marker, meta);
+
+    return decoration;
   };
 
   const removeMarker = (marker: IDecoration) => {

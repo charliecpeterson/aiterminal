@@ -20,7 +20,6 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
   const [editingAction, setEditingAction] = useState<QuickAction | null>(null);
   const [formName, setFormName] = useState("");
   const [formCommands, setFormCommands] = useState("");
-  const [formStopOnError, setFormStopOnError] = useState(false);
   const [expandedActions, setExpandedActions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -58,7 +57,6 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
     setEditingAction(action);
     setFormName(action.name);
     setFormCommands(action.commands.join("\n"));
-    setFormStopOnError(action.stopOnError ?? false);
   };
 
   const handleDelete = async (id: string) => {
@@ -108,7 +106,6 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
     setEditingAction(null);
     setFormName("");
     setFormCommands("");
-    setFormStopOnError(false);
   };
 
   return (

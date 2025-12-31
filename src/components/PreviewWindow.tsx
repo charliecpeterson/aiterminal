@@ -264,7 +264,7 @@ const PreviewWindow: React.FC = () => {
                   '--w-rjv-edit-color': '#00a0e9',
                   '--w-rjv-info-color': '#9cdcfe',
                   '--w-rjv-copied-color': '#4ec9b0',
-                }}
+                } as React.CSSProperties}
               />
             </div>
           );
@@ -279,7 +279,7 @@ const PreviewWindow: React.FC = () => {
       
       case 'yaml':
         try {
-          const yamlData = yaml.load(content);
+          const yamlData = yaml.load(content) as object;
           return (
             <div className="preview-yaml">
               <JsonView
@@ -309,7 +309,7 @@ const PreviewWindow: React.FC = () => {
                   '--w-rjv-edit-color': '#00a0e9',
                   '--w-rjv-info-color': '#9cdcfe',
                   '--w-rjv-copied-color': '#4ec9b0',
-                }}
+                } as React.CSSProperties}
               />
             </div>
           );

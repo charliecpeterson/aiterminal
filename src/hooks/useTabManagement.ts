@@ -63,7 +63,7 @@ export function useTabManagement(
     }
   }, []);
 
-  const addSSHTab = useCallback((ptyId: number, displayName: string, profileId: string) => {
+  const addSSHTab = useCallback((ptyId: number, displayName: string, _profileId: string) => {
     setTabs((prev) => {
       const newTab: Tab = {
         id: ptyId,
