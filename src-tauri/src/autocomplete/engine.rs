@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::collections::HashSet;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use tokio::sync::Mutex;
 use tauri::State;
 
@@ -37,6 +42,12 @@ pub struct CompletionContext {
     pub last_command: String,
     pub partial_input: String,
     pub shell_history: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DirEntry {
+    pub name: String,
+    pub is_dir: bool,
 }
 
 pub struct LLMEngine {
@@ -245,6 +256,32 @@ impl LLMEngine {
     }
 }
 
+fn expand_tilde_path(path: &str) -> String {
+    if path.starts_with("~") {
+        let home = env::var("HOME").unwrap_or_else(|_| "/Users/charlie".to_string());
+        path.replacen("~", &home, 1)
+    } else {
+        path.to_string()
+    }
+}
+
+fn is_executable(path: &Path) -> bool {
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if !metadata.is_file() {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            return (metadata.permissions().mode() & 0o111) != 0;
+        }
+        #[cfg(not(unix))]
+        {
+            return true;
+        }
+    }
+    false
+}
+
 // Tauri commands
 
 #[tauri::command]
@@ -289,26 +326,15 @@ pub async fn get_llm_inline_completion(
         return Err("LLM not enabled".to_string());
     }
 
-    // Build prompt with examples showing spaces and context-aware completion
+    // Strict, minimal prompt to reduce bias in small models.
     let prompt = format!(
-        "Complete the shell command. Provide ONLY the remaining characters needed.\n\n\
-         Examples:\n\
-         Input: e\n\
-         Output: cho\n\n\
-         Input: git\n\
-         Output:  status\n\n\
-         Input: git s\n\
-         Output: tatus\n\n\
-         Input: git c\n\
-         Output: ommit\n\n\
-         Input: cd D\n\
-         Output: ownloads\n\n\
-         Input: ls -\n\
-         Output: la\n\n\
-         Input: doc\n\
-         Output: ker\n\n\
-         Input: {}\n\
-         Output:",
+        "You complete shell commands.\n\
+Return ONLY the full completed command (not the suffix).\n\
+No explanations. No quotes. No markdown.\n\
+If no completion, return an empty string.\n\
+\n\
+INPUT:\n{}\n\
+OUTPUT:\n",
         context.partial_input
     );
 
@@ -338,4 +364,104 @@ pub async fn get_llm_inline_completion(
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
     Ok(result.content.trim().to_string())
+}
+
+#[tauri::command]
+pub async fn get_path_commands() -> Result<Vec<String>, String> {
+    let path_var = env::var("PATH").unwrap_or_default();
+    let mut commands: HashSet<String> = HashSet::new();
+
+    for dir in path_var.split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let path = Path::new(dir);
+        if !path.is_dir() {
+            continue;
+        }
+
+        let entries = match std::fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !is_executable(&path) {
+                continue;
+            }
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                commands.insert(name.to_string());
+            }
+        }
+    }
+
+    let mut list: Vec<String> = commands.into_iter().collect();
+    list.sort();
+    Ok(list)
+}
+
+#[tauri::command]
+pub async fn list_dir_entries(path: String, show_hidden: bool) -> Result<Vec<DirEntry>, String> {
+    let expanded = expand_tilde_path(&path);
+    let dir_path = Path::new(&expanded);
+
+    if !dir_path.exists() {
+        return Err(format!("Directory does not exist: {}", dir_path.display()));
+    }
+    if !dir_path.is_dir() {
+        return Err(format!("Path is not a directory: {}", dir_path.display()));
+    }
+
+    let entries = std::fs::read_dir(dir_path)
+        .map_err(|e| format!("Failed to read directory: {}", e))?;
+
+    let mut result: Vec<DirEntry> = Vec::new();
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+        if !show_hidden && name.starts_with('.') {
+            continue;
+        }
+
+        let is_dir = entry
+            .metadata()
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+
+        result.push(DirEntry {
+            name: name.to_string(),
+            is_dir,
+        });
+    }
+
+    result.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn is_command_in_path(cmd: String) -> Result<bool, String> {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return Ok(false);
+    }
+
+    let expanded = expand_tilde_path(trimmed);
+
+    if expanded.contains('/') {
+        return Ok(is_executable(Path::new(&expanded)));
+    }
+
+    let path_var = env::var("PATH").unwrap_or_default();
+    for dir in path_var.split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let candidate = Path::new(dir).join(&expanded);
+        if is_executable(&candidate) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }

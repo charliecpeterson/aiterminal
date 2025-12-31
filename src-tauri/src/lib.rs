@@ -6,6 +6,7 @@ mod history;
 mod models;
 mod pty;
 mod settings;
+mod ssh;
 mod tools;
 
 // Re-export models and commands
@@ -14,6 +15,7 @@ use chat::{ai_chat, ai_chat_stream, test_ai_connection};
 use history::get_shell_history;
 use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
+use ssh::{get_ssh_config_hosts, save_ssh_profiles, load_ssh_profiles};
 use tools::{
     execute_tool_command, read_file_tool, list_directory_tool,
     search_files_tool, get_current_directory_tool, get_env_var_tool,
@@ -21,7 +23,17 @@ use tools::{
     check_port_tool, get_system_info_tool, tail_file_tool, make_directory_tool,
     get_git_diff_tool, calculate_tool, web_search_tool,
 };
-use autocomplete::{init_llm, stop_llm, get_llm_completions, get_llm_inline_completion, llm_health_check, LLMEngine};
+use autocomplete::{
+    init_llm,
+    stop_llm,
+    get_llm_completions,
+    get_llm_inline_completion,
+    llm_health_check,
+    is_command_in_path,
+    get_path_commands,
+    list_dir_entries,
+    LLMEngine,
+};
 use tauri::Emitter;
 
 #[tauri::command]
@@ -81,6 +93,9 @@ pub fn run() {
             get_api_key,
             save_api_key,
             delete_api_key,
+            get_ssh_config_hosts,
+            save_ssh_profiles,
+            load_ssh_profiles,
             test_ai_connection,
             ai_chat,
             ai_chat_stream,
@@ -106,6 +121,9 @@ pub fn run() {
             get_llm_completions,
             get_llm_inline_completion,
             llm_health_check,
+            is_command_in_path,
+            get_path_commands,
+            list_dir_entries,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

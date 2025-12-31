@@ -20,6 +20,7 @@ export class LLMInlineAutocomplete {
   private isQuerying: boolean = false;
   private debounceTimer: number | null = null;
   private enabled: boolean = false;
+  private commandAllowedCache = new Map<string, boolean>();
 
   constructor() {
     console.log('🤖 LLM Inline Autocomplete initialized');
@@ -98,10 +99,27 @@ export class LLMInlineAutocomplete {
 
       // Only update if input hasn't changed
       if (this.lastQueryInput === input) {
-        const completion = this.extractCompletion(result, input);
-        this.currentSuggestion = completion;
-        console.log(`[LLM result] input="${input}" raw="${result}" completion="${completion}"`);
-        return completion;
+        const parsed = this.parseCompletion(result, input);
+        if (!parsed) {
+          this.currentSuggestion = '';
+          return '';
+        }
+
+        const { full, suffix } = parsed;
+        if (!this.isSuggestionAcceptable(input, full, suffix)) {
+          this.currentSuggestion = '';
+          return '';
+        }
+
+        const allowed = await this.isCommandAllowed(full);
+        if (!allowed) {
+          this.currentSuggestion = '';
+          return '';
+        }
+
+        this.currentSuggestion = suffix;
+        console.log(`[LLM result] input="${input}" raw="${result}" completion="${suffix}"`);
+        return suffix;
       }
       
       return this.currentSuggestion;
@@ -114,7 +132,7 @@ export class LLMInlineAutocomplete {
     }
   }
 
-  private extractCompletion(llmOutput: string, input: string): string {
+  private parseCompletion(llmOutput: string, input: string): { full: string; suffix: string } | null {
     // Get first line of output
     const firstLine = llmOutput.split('\n')[0].trim();
 
@@ -131,12 +149,66 @@ export class LLMInlineAutocomplete {
     if (cleaned.startsWith(input)) {
       const completion = cleaned.substring(input.length);
       console.log(`[LLM extract] completion="${completion}"`);
-      return completion;
+      return { full: cleaned, suffix: completion };
     }
 
-    // If it's just the completion part, return as-is
-    console.log(`[LLM extract] using as-is: "${cleaned}"`);
-    return cleaned;
+    // Full-command mode expects the model to echo the input.
+    console.log('[LLM extract] output does not start with input, dropping');
+    return null;
+  }
+
+  private isSuggestionAcceptable(input: string, full: string, suffix: string): boolean {
+    if (!suffix) return false;
+    const trimmed = full.trim();
+    if (!trimmed) return false;
+
+    if (!input.includes(' ')) {
+      if (/\s/.test(suffix)) return false;
+      if (suffix.length > 24) return false;
+      const tokenCount = trimmed.split(/\s+/).length;
+      if (tokenCount > 1) return false;
+      if (/[|&;<>`'"]/.test(trimmed)) return false;
+    }
+
+    return true;
+  }
+
+  private async isCommandAllowed(full: string): Promise<boolean> {
+    const primary = this.getPrimaryCommand(full);
+    if (!primary) return false;
+    if (this.isBuiltin(primary)) return true;
+
+    const cached = this.commandAllowedCache.get(primary);
+    if (cached !== undefined) return cached;
+
+    try {
+      const allowed = await invoke<boolean>('is_command_in_path', { cmd: primary });
+      this.commandAllowedCache.set(primary, allowed);
+      return allowed;
+    } catch (error) {
+      console.error('[LLM inline] Failed to validate command:', error);
+      return false;
+    }
+  }
+
+  private getPrimaryCommand(full: string): string | null {
+    const tokens = full.trim().split(/\s+/);
+    if (tokens.length === 0) return null;
+
+    if (tokens[0] === 'sudo') {
+      return tokens[1] ?? null;
+    }
+
+    return tokens[0] || null;
+  }
+
+  private isBuiltin(cmd: string): boolean {
+    const builtins = new Set([
+      '.', 'alias', 'bg', 'cd', 'command', 'echo', 'eval', 'exec', 'exit',
+      'export', 'fg', 'history', 'jobs', 'pwd', 'read', 'set', 'source', 'type',
+      'unalias', 'unset', 'wait',
+    ]);
+    return builtins.has(cmd);
   }
 
   /**
@@ -215,6 +287,7 @@ export class LLMInlineAutocomplete {
   render(terminal: any, suggestion?: string): void {
     const text = suggestion !== undefined ? suggestion : this.currentSuggestion;
     if (!text) {
+      console.log('[render] No text to render');
       return;
     }
 
@@ -223,10 +296,44 @@ export class LLMInlineAutocomplete {
       this.currentSuggestion = suggestion;
     }
 
+    // Get the actual visible text on the current line (stripping escape sequences)
+    const buffer = terminal.buffer.active;
+    const cursorY = buffer.cursorY;
+    const line = buffer.getLine(cursorY);
+    if (!line) {
+      console.log('[render] No line at cursorY');
+      return;
+    }
+
+    // Get the visible text content (translateToString strips escape codes)
+    const lineText = line.translateToString(true);
+    const terminalWidth = terminal.cols;
+    
+    // The current input length tells us the visual cursor position
+    const visualCursorPos = this.currentInput.length;
+    
+    // Calculate available space from the current visual position to end of line
+    const promptLength = lineText.length - this.currentInput.length;
+    const totalUsed = promptLength + visualCursorPos;
+    const availableSpace = terminalWidth - totalUsed;
+    
+    console.log(`[render] currentInput="${this.currentInput}" lineText="${lineText}" promptLen=${promptLength} visualCursor=${visualCursorPos} totalUsed=${totalUsed} avail=${availableSpace} termWidth=${terminalWidth}`);
+    
+    // Truncate suggestion if it would wrap to next line
+    const displayText = availableSpace > 0 && text.length > availableSpace 
+      ? text.substring(0, availableSpace) 
+      : text;
+
+    if (displayText.length === 0) {
+      console.log('[render] displayText is empty after truncation');
+      return;
+    }
+
+    console.log(`[render] Writing gray text: "${displayText}"`);
+
     // Save cursor position, write gray text, restore cursor
-    // This way the cursor stays where the user is typing
     terminal.write(`\x1b7`); // Save cursor position (ESC 7)
-    terminal.write(`\x1b[2m\x1b[97m${text}\x1b[0m`); // Write dimmed bright white
+    terminal.write(`\x1b[2m\x1b[97m${displayText}\x1b[0m`); // Write dimmed bright white
     terminal.write(`\x1b8`); // Restore cursor position (ESC 8)
   }
 

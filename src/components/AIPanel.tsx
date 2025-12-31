@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import "./AIPanel.css";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
@@ -23,7 +23,6 @@ const AIPanel = ({
 }: AIPanelProps) => {
   const [activeTab, setActiveTab] = useState<PanelTab>("chat");
   const [prompt, setPrompt] = useState("");
-  console.log("[AIPanel] Component rendering", { activeTerminalId, isRemote });
   const [expandedContextId, setExpandedContextId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -33,10 +32,6 @@ const AIPanel = ({
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const { settings } = useSettings();
 
-  // Debug: Log when activeTerminalId changes
-  useEffect(() => {
-    console.log('🔍 AIPanel activeTerminalId changed:', activeTerminalId);
-  }, [activeTerminalId]);
   const {
     contextItems,
     messages,

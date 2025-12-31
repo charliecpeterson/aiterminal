@@ -3,10 +3,10 @@
  * Supports: history-only, LLM-only, or hybrid
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { invoke } from '@tauri-apps/api/core';
-import { SimpleAutocomplete } from '../autocomplete/simple';
+import { SimpleAutocomplete, type DirEntry } from '../autocomplete/simple';
 import { LLMInlineAutocomplete } from '../autocomplete/llm-inline';
 
 export function useAutocompleteSimple(
@@ -20,6 +20,9 @@ export function useAutocompleteSimple(
   const historyEngineRef = useRef<SimpleAutocomplete | null>(null);
   const llmEngineRef = useRef<LLMInlineAutocomplete | null>(null);
   const onKeyDisposerRef = useRef<{ dispose: () => void } | null>(null);
+  const pathCommandsRef = useRef<string[]>([]);
+  const homeDirRef = useRef<string>('');
+  const dirRequestRef = useRef<{ path: string; input: string } | null>(null);
 
 
   console.log('🎯 Autocomplete inline source:', source);
@@ -60,6 +63,81 @@ export function useAutocompleteSimple(
     const interval = setInterval(loadHistory, 10000);
     return () => clearInterval(interval);
   }, [enabled, source]);
+
+  // Load PATH commands and HOME directory (for history/hybrid)
+  useEffect(() => {
+    if (!enabled || !historyEngineRef.current) return;
+
+    const loadPathCommands = async () => {
+      try {
+        const commands = await invoke<string[]>('get_path_commands');
+        pathCommandsRef.current = commands;
+        historyEngineRef.current?.setPathCommands(commands);
+      } catch (error) {
+        console.error('Failed to load PATH commands:', error);
+      }
+    };
+
+    const loadHomeDir = async () => {
+      try {
+        const home = await invoke<string | null>('get_env_var_tool', { variable: 'HOME' });
+        if (home) {
+          homeDirRef.current = home;
+          historyEngineRef.current?.setHomeDir(home);
+        }
+      } catch (error) {
+        console.error('Failed to load HOME:', error);
+      }
+    };
+
+    loadPathCommands();
+    loadHomeDir();
+  }, [enabled, source]);
+
+  // Track CWD for deterministic file completion
+  useEffect(() => {
+    if (!enabled || !historyEngineRef.current) return;
+
+    const getCwd = async () => {
+      try {
+        const cwd = await invoke<string>('get_pty_cwd', { id: ptyId });
+        historyEngineRef.current?.setCwd(cwd);
+      } catch (error) {
+        historyEngineRef.current?.setCwd('/');
+      }
+    };
+
+    getCwd();
+    const interval = setInterval(getCwd, 5000);
+    return () => clearInterval(interval);
+  }, [enabled, ptyId, source]);
+
+  const refreshDirEntries = useCallback((engine: SimpleAutocomplete, terminal: XTermTerminal) => {
+    const { dirPath, prefix, showHidden } = engine.getFileCompletionContext();
+    if (!dirPath || !prefix) {
+      return;
+    }
+
+    if (dirRequestRef.current?.path === dirPath && dirRequestRef.current?.input === engine.getCurrentInput()) {
+      return;
+    }
+
+    dirRequestRef.current = { path: dirPath, input: engine.getCurrentInput() };
+
+    invoke<DirEntry[]>('list_dir_entries', { path: dirPath, showHidden })
+      .then((entries) => {
+        if (dirRequestRef.current?.input !== engine.getCurrentInput()) {
+          return;
+        }
+        engine.setDirEntries(dirPath, entries);
+        engine.refreshSuggestion();
+        engine.clearRender(terminal);
+        engine.render(terminal);
+      })
+      .catch((error) => {
+        console.error('Failed to list directory entries:', error);
+      });
+  }, []);
 
   // Get CWD for LLM context
   useEffect(() => {
@@ -105,15 +183,24 @@ export function useAutocompleteSimple(
       console.log(`[Router] key="${key}" source="${source}" llmEngine=${!!llmEngine} historyEngine=${!!historyEngine}`);
 
       // Route to appropriate handler based on source
-      if (source === 'history' && historyEngine) {
-        handleHistoryKey(event, key, terminal, historyEngine, ptyId);
-      } else if (source === 'llm' && llmEngine) {
-        console.log('[Router] Routing to LLM handler');
-        handleLLMKey(event, key, terminal, llmEngine, ptyId, debounceMs);
+      if (historyEngine) {
+        handleHistoryKey(event, key, terminal, historyEngine, ptyId, refreshDirEntries);
+      }
+
+      if (source === 'llm' && llmEngine) {
+        const currentInput = historyEngine?.getCurrentInput() ?? '';
+        const trimmed = currentInput.trimEnd();
+        const tokens = trimmed.split(/\s+/).filter(Boolean);
+        const lastToken = tokens[tokens.length - 1] ?? '';
+        const allowLLM = tokens.length >= 2 && lastToken.length >= 2;
+        if (allowLLM) {
+          console.log('[Router] Routing to LLM handler');
+          handleLLMKey(event, key, terminal, llmEngine, ptyId, debounceMs);
+        }
       } else if (source === 'hybrid') {
         // TODO: Hybrid mode (history instant + LLM upgrade)
         if (historyEngine) {
-          handleHistoryKey(event, key, terminal, historyEngine, ptyId);
+          handleHistoryKey(event, key, terminal, historyEngine, ptyId, refreshDirEntries);
         }
       }
     });
@@ -133,8 +220,33 @@ function handleHistoryKey(
   key: string,
   terminal: XTermTerminal,
   engine: SimpleAutocomplete,
-  ptyId: number
+  ptyId: number,
+  refreshDirEntries: (engine: SimpleAutocomplete, terminal: XTermTerminal) => void
 ) {
+  const scheduleRenderAfterCursorMove = () => {
+    const raf = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback) => window.setTimeout(cb, 16);
+    const startX = terminal.buffer.active.cursorX;
+    const startY = terminal.buffer.active.cursorY;
+    let attempts = 0;
+
+    const tryRender = () => {
+      const { cursorX, cursorY } = terminal.buffer.active;
+      const moved = cursorX !== startX || cursorY !== startY;
+
+      if (moved || attempts >= 5) {
+        engine.render(terminal);
+        return;
+      }
+
+      attempts += 1;
+      raf(tryRender);
+    };
+
+    raf(tryRender);
+  };
+
   if (key === 'ArrowRight') {
     const toInsert = engine.acceptSuggestion();
     if (toInsert) {
@@ -155,7 +267,8 @@ function handleHistoryKey(
   if (key === 'Backspace') {
     engine.clearRender(terminal);
     engine.onBackspace();
-    engine.render(terminal);
+    scheduleRenderAfterCursorMove();
+    refreshDirEntries(engine, terminal);
     return;
   }
 
@@ -163,7 +276,9 @@ function handleHistoryKey(
   if (key.length === 1 && !event.domEvent.ctrlKey && !event.domEvent.altKey) {
     engine.clearRender(terminal);
     engine.onChar(key);
-    engine.render(terminal);
+    // Defer render until the terminal cursor advances.
+    scheduleRenderAfterCursorMove();
+    refreshDirEntries(engine, terminal);
   }
 }
 
@@ -235,11 +350,15 @@ function handleLLMKey(
     engine.onChar(key);
     const currentInput = engine.getCurrentInput();
     
-    // Show cached suggestion immediately if available
-    const cached = engine.getCachedSuggestion(currentInput);
-    if (cached) {
-      engine.render(terminal, cached);
-    }
+    // Wait for terminal to process the character before rendering gray text
+    // This ensures cursor position is updated
+    setTimeout(() => {
+      // Show cached suggestion immediately if available
+      const cached = engine.getCachedSuggestion(currentInput);
+      if (cached) {
+        engine.render(terminal, cached);
+      }
+    }, 0);
     
     // Debounced LLM query for new/updated suggestion
     clearTimeout(debounceTimerRef.current!);

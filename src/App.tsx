@@ -1,15 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Terminal from "./components/Terminal";
 import AIPanel from "./components/AIPanel";
+import SSHSessionWindow from "./components/SSHSessionWindow";
 import SettingsModal from "./components/SettingsModal";
 import { SettingsProvider } from "./context/SettingsContext";
 import { AIProvider } from "./context/AIContext";
+import { SSHProfilesProvider, useSSHProfiles } from "./context/SSHProfilesContext";
+import { SSHProfile } from "./types/ssh";
+import { connectSSHProfileNewTab, getProfileDisplayName } from "./utils/sshConnect";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import "./App.css";
 import "./components/AIPanel.css";
+import "./components/SSHSessionWindow.css";
 
 interface Pane {
   id: number; // PTY ID
@@ -37,12 +42,19 @@ function AppContent() {
   const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
+  const { updateProfile, updateConnection } = useSSHProfiles();
+  
+  // Map PTY ID to Profile ID for connection tracking
+  const [ptyToProfileMap, setPtyToProfileMap] = useState<Map<number, string>>(new Map());
   
   let isAiWindow = false;
+  let isSSHWindow = false;
   try {
     isAiWindow = window.location.hash.startsWith("#/ai-panel");
+    isSSHWindow = window.location.hash.startsWith("#/ssh-panel");
   } catch {
     isAiWindow = false;
+    isSSHWindow = false;
   }
 
   const createTab = async () => {
@@ -62,6 +74,70 @@ function AppContent() {
       console.error("Failed to spawn PTY:", error);
     }
   };
+
+  const connectSSHProfile = async (profile: SSHProfile) => {
+    try {
+      const ptyId = await connectSSHProfileNewTab(profile);
+      const displayName = getProfileDisplayName(profile);
+      
+      const newTab: Tab = {
+        id: ptyId,
+        title: displayName,
+        customName: profile.name,
+        panes: [{ id: ptyId, isRemote: true, remoteHost: profile.sshConfigHost || profile.manualConfig?.hostname }],
+        focusedPaneId: ptyId,
+        splitLayout: 'single',
+        splitRatio: 50
+      };
+      
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(ptyId);
+      
+      // Link PTY to Profile for health tracking
+      setPtyToProfileMap(prev => new Map(prev).set(ptyId, profile.id));
+      
+      // Update connection state (keyed by ptyId)
+      updateConnection(String(ptyId), {
+        profileId: profile.id,
+        tabId: String(ptyId),
+        tabName: newTab.title,
+        status: 'connecting',
+        connectedAt: new Date(),
+        lastActivity: new Date(),
+      });
+      
+      // Broadcast to SSH window
+      emitTo("ssh-panel", "connection-status-update", {
+        ptyId: String(ptyId),
+        profileId: profile.id,
+        tabName: newTab.title,
+        status: 'connecting',
+        tabId: String(ptyId),
+      }).catch(() => {});
+      
+      // Update profile connection stats
+      await updateProfile(profile.id, {
+        lastConnectedAt: new Date().toISOString(),
+        connectionCount: (profile.connectionCount || 0) + 1,
+      });
+    } catch (error) {
+      console.error("Failed to connect SSH profile:", error);
+    }
+  };
+
+  const handleGoToTab = useCallback((tabId: string) => {
+    console.log('[Main Window] handleGoToTab called with tabId:', tabId);
+    const ptyId = parseInt(tabId);
+    console.log('[Main Window] Parsed ptyId:', ptyId);
+    const tab = tabs.find(t => t.panes.some(p => p.id === ptyId));
+    console.log('[Main Window] Found tab:', tab?.id, 'with panes:', tab?.panes.map(p => p.id));
+    if (tab) {
+      console.log('[Main Window] Switching to tab:', tab.id);
+      setActiveTabId(tab.id);
+    } else {
+      console.log('[Main Window] No tab found for ptyId:', ptyId);
+    }
+  }, [tabs]);
 
   const renameTab = (id: number, newName: string) => {
     setTabs((prev) =>
@@ -112,6 +188,24 @@ function AppContent() {
     if (tab.panes.length === 1) {
       closeTab(tabId);
       return;
+    }
+
+    // Update connection status for this pane
+    const profileId = ptyToProfileMap.get(paneId);
+    if (profileId) {
+      updateConnection(String(paneId), {
+        profileId,
+        tabId: String(paneId),
+        status: 'disconnected',
+      });
+      
+      // Broadcast to SSH window
+      emitTo("ssh-panel", "connection-status-update", {
+        ptyId: String(paneId),
+        profileId,
+        status: 'disconnected',
+        tabId: String(paneId),
+      }).catch(() => {});
     }
 
     // Close PTY
@@ -166,6 +260,26 @@ function AppContent() {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab) return;
 
+    // Update connection status to disconnected for all panes
+    tab.panes.forEach(pane => {
+      const profileId = ptyToProfileMap.get(pane.id);
+      if (profileId) {
+        updateConnection(String(pane.id), {
+          profileId,
+          tabId: String(pane.id),
+          status: 'disconnected',
+        });
+        
+        // Broadcast to SSH window
+        emitTo("ssh-panel", "connection-status-update", {
+          ptyId: String(pane.id),
+          profileId,
+          status: 'disconnected',
+          tabId: String(pane.id),
+        }).catch(() => {});
+      }
+    });
+
     // Close all PTYs in all panes
     tab.panes.forEach(pane => {
       invoke("close_pty", { id: pane.id }).catch((error) => {
@@ -201,6 +315,95 @@ function AppContent() {
   useEffect(() => {
     createTab().then(() => setIsInitialized(true));
   }, []);
+
+  // Monitor connection health for SSH sessions
+  useEffect(() => {
+    if (ptyToProfileMap.size === 0) return;
+
+    const monitorConnections = async () => {
+      for (const [ptyId, profileId] of ptyToProfileMap.entries()) {
+        try {
+          // Get PTY info
+          const ptyInfo = await invoke<any>('get_pty_info', { id: ptyId });
+          
+          // Get latency
+          const latency = await invoke<number>('measure_pty_latency', { id: ptyId });
+          
+          // Get tab name
+          const tab = tabs.find(t => t.panes.some(p => p.id === ptyId));
+          const tabName = tab?.customName || tab?.title || 'Unknown';
+          
+          // Determine status
+          let status: 'connected' | 'disconnected' | 'error' = 'disconnected';
+          if (ptyInfo && ptyInfo.pty_type === 'ssh') {
+            status = 'connected';
+          }
+          
+          // Update connection health (keyed by ptyId)
+          updateConnection(String(ptyId), {
+            profileId,
+            tabId: String(ptyId),
+            tabName,
+            status,
+            latency: latency > 0 ? latency : undefined,
+            lastActivity: new Date(),
+          });
+          
+          // Broadcast to SSH window
+          emitTo("ssh-panel", "connection-status-update", {
+            ptyId: String(ptyId),
+            profileId,
+            tabName,
+            status,
+            latency: latency > 0 ? latency : undefined,
+            tabId: String(ptyId),
+          }).catch(() => {});
+        } catch (error) {
+          // PTY might be closed
+          updateConnection(String(ptyId), {
+            profileId,
+            tabId: String(ptyId),
+            status: 'disconnected',
+          });
+          
+          // Broadcast to SSH window
+          emitTo("ssh-panel", "connection-status-update", {
+            ptyId: String(ptyId),
+            profileId,
+            status: 'disconnected',
+            tabId: String(ptyId),
+          }).catch(() => {});
+        }
+      }
+    };
+
+    // Monitor immediately
+    monitorConnections();
+
+    // Then monitor every 5 seconds
+    const intervalId = setInterval(monitorConnections, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [ptyToProfileMap, updateConnection]);
+
+  // Clean up connection tracking when tabs close
+  useEffect(() => {
+    const activePtyIds = new Set(tabs.flatMap(tab => tab.panes.map(pane => pane.id)));
+    
+    setPtyToProfileMap(prev => {
+      const updated = new Map(prev);
+      let changed = false;
+      
+      for (const ptyId of prev.keys()) {
+        if (!activePtyIds.has(ptyId)) {
+          updated.delete(ptyId);
+          changed = true;
+        }
+      }
+      
+      return changed ? updated : prev;
+    });
+  }, [tabs]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -246,6 +449,9 @@ function AppContent() {
         } else if (e.key === "b") {
           e.preventDefault();
           openAIPanelWindow();
+        } else if (e.key === "o" && e.shiftKey) {
+          e.preventDefault();
+          openSSHPanelWindow();
         }
       }
     };
@@ -259,12 +465,16 @@ function AppContent() {
   useEffect(() => {
     if (isAiWindow) return; // Only run in main window
     
-    // Close AI Panel window when main window closes
+    // Close AI Panel and SSH Panel windows when main window closes
     const currentWindow = getCurrentWindow();
     const unlistenPromise = currentWindow.onCloseRequested(async () => {
       const aiPanel = await WebviewWindow.getByLabel("ai-panel").catch(() => null);
       if (aiPanel) {
         await aiPanel.close().catch(() => {});
+      }
+      const sshPanel = await WebviewWindow.getByLabel("ssh-panel").catch(() => null);
+      if (sshPanel) {
+        await sshPanel.close().catch(() => {});
       }
     });
 
@@ -272,6 +482,57 @@ function AppContent() {
       unlistenPromise.then((unlisten) => unlisten());
     };
   }, [isAiWindow]);
+
+  useEffect(() => {
+    if (isAiWindow || isSSHWindow) return; // Only run in main window
+
+    // Listen for SSH connection events from SSH window
+    const unlistenConnect = listen<{ profile: SSHProfile }>("ssh:connect", async (event) => {
+      await connectSSHProfile(event.payload.profile);
+    });
+
+    const unlistenNewTab = listen<{ profile: SSHProfile }>("ssh:connect-new-tab", async (event) => {
+      await connectSSHProfile(event.payload.profile);
+    });
+
+    const unlistenGoToTab = listen<{ ptyId: string }>("ssh:goto-tab", (event) => {
+      console.log('[Main Window] Received ssh:goto-tab event:', event.payload);
+      handleGoToTab(event.payload.ptyId);
+    });
+
+    // Listen for status requests from SSH window
+    const unlistenStatusRequest = listen("ssh:request-status", async () => {
+      // Send current connection status for all tracked PTYs
+      for (const [ptyId, profileId] of ptyToProfileMap.entries()) {
+        try {
+          const ptyInfo = await invoke<any>('get_pty_info', { id: ptyId });
+          const latency = await invoke<number>('measure_pty_latency', { id: ptyId });
+          
+          let status: 'connected' | 'disconnected' | 'error' = 'disconnected';
+          if (ptyInfo && ptyInfo.pty_type === 'ssh') {
+            status = 'connected';
+          }
+          
+          emitTo("ssh-panel", "connection-status-update", {
+            ptyId: String(ptyId),
+            profileId,
+            status,
+            latency: latency > 0 ? latency : undefined,
+            tabId: String(ptyId),
+          }).catch(() => {});
+        } catch (error) {
+          // PTY closed
+        }
+      }
+    });
+
+    return () => {
+      unlistenConnect.then((unlisten) => unlisten());
+      unlistenNewTab.then((unlisten) => unlisten());
+      unlistenGoToTab.then((unlisten) => unlisten());
+      unlistenStatusRequest.then((unlisten) => unlisten());
+    };
+  }, [handleGoToTab]); // Include handleGoToTab which depends on tabs
 
   useEffect(() => {
     if (!isAiWindow) return;
@@ -294,13 +555,17 @@ function AppContent() {
   if (isAiWindow) {
     return (
       <div className="ai-window">
-        <SettingsProvider>
-          <AIProvider>
-            <AIPanel
-              activeTerminalId={mainActiveTabId}
-            />
-          </AIProvider>
-        </SettingsProvider>
+        <AIPanel
+          activeTerminalId={mainActiveTabId}
+        />
+      </div>
+    );
+  }
+
+  if (isSSHWindow) {
+    return (
+      <div className="ssh-window">
+        <SSHSessionWindow />
       </div>
     );
   }
@@ -327,6 +592,29 @@ function AppContent() {
     });
     panelWindow.once("tauri://error", (event) => {
       console.error("AI panel window error:", event);
+    });
+  };
+
+  const openSSHPanelWindow = async () => {
+    const existing = await WebviewWindow.getByLabel("ssh-panel");
+    if (existing) {
+      // If window exists, close it (toggle behavior)
+      await existing.close().catch(() => {});
+      return;
+    }
+
+    const sshWindow = new WebviewWindow("ssh-panel", {
+      title: "SSH Sessions",
+      width: 350,
+      height: 600,
+      resizable: true,
+      url: "/#/ssh-panel",
+    });
+    sshWindow.once("tauri://created", () => {
+      sshWindow.setFocus().catch(() => {});
+    });
+    sshWindow.once("tauri://error", (event) => {
+      console.error("SSH panel window error:", event);
     });
   };
 
@@ -405,6 +693,13 @@ function AppContent() {
         </div>
         <div style={{ flex: 1 }} /> {/* Spacer */}
         <div
+          className="ssh-panel-button"
+          onClick={openSSHPanelWindow}
+          title="SSH Sessions (Cmd/Ctrl+Shift+O)"
+        >
+          📡 SSH
+        </div>
+        <div
           className="ai-panel-button"
           onClick={openAIPanelWindow}
           title="Open AI Panel (Cmd/Ctrl+B)"
@@ -419,8 +714,8 @@ function AppContent() {
             Settings
         </div>
       </div>
-      <div className="workbench">
-        <div className="terminal-pane">
+      <div className="workbench" style={{ display: 'flex', height: '100%' }}>
+        <div className="terminal-pane" style={{ flex: 1 }}>
           {tabs.map((tab) => (
             <div
               key={tab.id}
@@ -502,7 +797,9 @@ function App() {
     return (
         <SettingsProvider>
             <AIProvider>
-                <AppContent />
+                <SSHProfilesProvider>
+                    <AppContent />
+                </SSHProfilesProvider>
             </AIProvider>
         </SettingsProvider>
     );

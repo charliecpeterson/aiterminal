@@ -8,5 +8,8 @@ pub use engine::{
     get_llm_completions, 
     get_llm_inline_completion, 
     llm_health_check,
+    is_command_in_path,
+    get_path_commands,
+    list_dir_entries,
     LLMEngine,
 };

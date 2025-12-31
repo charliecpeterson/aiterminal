@@ -6,6 +6,7 @@ A modern, AI-ready terminal emulator built with Tauri, React, and TypeScript.
 
 - **Multi-Tab Support**: Manage multiple shell sessions in a single window.
 - **Split Panes**: Split terminals vertically or horizontally within a tab.
+- **SSH Session Management**: Save SSH profiles with one-click connections and auto-run startup commands.
 - **Shell Integration**: Automatic detection of command start/end with visual markers.
 - **Smart Copy**: Easily copy command output or command text via markers.
 - **AI Integration**: Separate AI panel window for chat and context management.
@@ -26,6 +27,10 @@ A modern, AI-ready terminal emulator built with Tauri, React, and TypeScript.
 - **Cmd/Ctrl + Shift + D** - Split horizontally
 - **Cmd/Ctrl + [** - Focus previous pane
 - **Cmd/Ctrl + ]** - Focus next pane
+
+### SSH Sessions
+- **Cmd/Ctrl + Shift + O** - Toggle SSH session panel window
+- **📡 SSH button** - Click to open/close SSH panel
 
 ### Other
 - **Cmd/Ctrl + B** - Open AI Panel
