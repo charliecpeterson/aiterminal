@@ -28,7 +28,7 @@ export interface MarkerManagerParams {
   addContextItem: AddContextItem;
   pendingFileCaptureRef: PendingFileCaptureRef;
   onCommandStart?: () => void;  // Called when command execution starts
-  onCommandEnd?: () => void;    // Called when command execution ends
+  onCommandEnd?: (exitCode?: number) => void;    // Called when command execution ends
 }
 
 interface MarkerMeta {
@@ -82,6 +82,16 @@ export interface MarkerManager {
   captureLast: (count: number) => void;
   cleanup: () => void;
   attachTerminalClickHandler: () => () => void;
+  getCommandHistory: () => Array<{
+    line: number;
+    command: string;
+    exitCode?: number;
+    timestamp: number;
+    hasOutput: boolean;
+  }>;
+  jumpToLine: (line: number) => void;
+  copyCommandAtLine: (line: number) => void;
+  addCommandToContext: (line: number) => void;
 }
 
 export function createMarkerManager({
@@ -595,8 +605,8 @@ export function createMarkerManager({
           if (meta) {
             meta.streamingOutput = false;
             
-            // Notify that command ended
-            onCommandEnd?.();
+            // Notify that command ended with exit code
+            onCommandEnd?.(meta.exitCode);
           }
 
           currentMarker = null;
@@ -669,5 +679,76 @@ export function createMarkerManager({
     osc133.dispose();
   };
 
-  return { captureLast, cleanup, attachTerminalClickHandler };
+  const getCommandHistory = () => {
+    return markers.map((marker) => {
+      const { commandRange, outputRange } = computeRanges(term, markers, markerMeta, marker);
+      const commandText = getRangeText(commandRange);
+      const meta = markerMeta.get(marker);
+      
+      return {
+        line: marker.marker.line,
+        command: commandText.trim(),
+        exitCode: meta?.exitCode,
+        timestamp: meta?.startTime || Date.now(),
+        hasOutput: outputRange !== null,
+      };
+    }).filter(item => item.command.length > 0);
+  };
+
+  const jumpToLine = (line: number) => {
+    term.scrollToLine(line);
+  };
+
+  const copyCommandAtLine = (line: number) => {
+    const marker = markers.find(m => m.marker.line === line);
+    if (!marker) return;
+    
+    const { commandRange, outputRange } = computeRanges(term, markers, markerMeta, marker);
+    const commandText = getRangeText(commandRange);
+    const outputText = outputRange ? getRangeText(outputRange) : '';
+    
+    const fullText = outputText ? `${commandText}\n${outputText}` : commandText;
+    navigator.clipboard.writeText(fullText);
+  };
+
+  const addCommandToContext = (line: number) => {
+    const marker = markers.find(m => m.marker.line === line);
+    if (!marker) return;
+    
+    const { commandRange, outputRange } = computeRanges(term, markers, markerMeta, marker);
+    const commandText = getRangeText(commandRange).trim();
+    const outputText = outputRange ? getRangeText(outputRange).trim() : '';
+    
+    if (!commandText && !outputText) return;
+    
+    if (outputText) {
+      addContextItem({
+        id: crypto.randomUUID(),
+        type: 'command_output',
+        content: outputText,
+        timestamp: Date.now(),
+        metadata: {
+          command: commandText || undefined,
+          output: outputText,
+        },
+      });
+    } else if (commandText) {
+      addContextItem({
+        id: crypto.randomUUID(),
+        type: 'command',
+        content: commandText,
+        timestamp: Date.now(),
+      });
+    }
+  };
+
+  return { 
+    captureLast, 
+    cleanup, 
+    attachTerminalClickHandler,
+    getCommandHistory,
+    jumpToLine,
+    copyCommandAtLine,
+    addCommandToContext,
+  };
 }

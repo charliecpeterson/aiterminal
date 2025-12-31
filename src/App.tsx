@@ -3,11 +3,13 @@ import Terminal from "./components/Terminal";
 import AIPanel from "./components/AIPanel";
 import SSHSessionWindow from "./components/SSHSessionWindow";
 import OutputViewer from "./components/OutputViewer";
+import QuickActionsWindow from "./components/QuickActionsWindow";
 import SettingsModal from "./components/SettingsModal";
 import { SettingsProvider } from "./context/SettingsContext";
 import { AIProvider } from "./context/AIContext";
 import { SSHProfilesProvider, useSSHProfiles } from "./context/SSHProfilesContext";
 import { SSHProfile } from "./types/ssh";
+import { QuickAction } from "./components/QuickActionsWindow";
 import { connectSSHProfileNewTab, getProfileDisplayName } from "./utils/sshConnect";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -55,14 +57,17 @@ function AppContent() {
   let isAiWindow = false;
   let isSSHWindow = false;
   let isOutputViewer = false;
+  let isQuickActionsWindow = false;
   try {
     isAiWindow = window.location.hash.startsWith("#/ai-panel");
     isSSHWindow = window.location.hash.startsWith("#/ssh-panel");
     isOutputViewer = window.location.hash.startsWith("#/output-viewer");
+    isQuickActionsWindow = window.location.hash.startsWith("#/quick-actions");
   } catch {
     isAiWindow = false;
     isSSHWindow = false;
     isOutputViewer = false;
+    isQuickActionsWindow = false;
   }
 
   const createTab = async () => {
@@ -156,7 +161,7 @@ function AppContent() {
   };
 
   // Handle command running state for tabs
-  const handleCommandRunning = useCallback((ptyId: number, isRunning: boolean, startTime?: number) => {
+  const handleCommandRunning = useCallback((ptyId: number, isRunning: boolean, startTime?: number, exitCode?: number) => {
     if (isRunning && startTime) {
       setRunningCommands(prev => {
         const newMap = new Map(prev);
@@ -545,7 +550,7 @@ function AppContent() {
   }, [isAiWindow]);
 
   useEffect(() => {
-    if (isAiWindow || isSSHWindow || isOutputViewer) return; // Only run in main window
+    if (isAiWindow || isSSHWindow || isOutputViewer || isQuickActionsWindow) return; // Only run in main window
 
     // Listen for SSH connection events from SSH window
     const unlistenConnect = listen<{ profile: SSHProfile }>("ssh:connect", async (event) => {
@@ -606,34 +611,101 @@ function AppContent() {
   }, [isAiWindow]);
 
   useEffect(() => {
-    if (isAiWindow) return;
-    // Best-effort: keep detached AI panel aware of the current active terminal pane.
+    if (!isQuickActionsWindow) return;
+    console.log('[Quick Actions] Setting up listener for active terminal updates');
+    const unlistenPromise = listen<{ id: number | null }>("quick-actions:active-terminal", (event) => {
+      console.log('[Quick Actions] Received active terminal event:', event.payload);
+      setMainActiveTabId(event.payload?.id ?? null);
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [isQuickActionsWindow]);
+
+  useEffect(() => {
+    if (isAiWindow || isQuickActionsWindow) return;
+    // Best-effort: keep detached AI panel and Quick Actions aware of the current active terminal pane.
     const activeTab = tabs.find(t => t.id === activeTabId);
     const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
     emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId }).catch(() => {});
-  }, [activeTabId, tabs, isAiWindow]);
+    emitTo("quick-actions", "quick-actions:active-terminal", { id: focusedPaneId }).catch(() => {});
+  }, [activeTabId, tabs, isAiWindow, isQuickActionsWindow]);
 
-  if (isAiWindow) {
-    return (
-      <div className="ai-window">
-        <AIPanel
-          activeTerminalId={mainActiveTabId}
-        />
-      </div>
-    );
-  }
+  const executeQuickAction = async (action: QuickAction) => {
+    // Get the active terminal's PTY ID
+    let activePty: number | null = null;
+    
+    if (isQuickActionsWindow) {
+      // In popup window: use mainActiveTabId from events, default to null if not set yet
+      // We'll wait a moment for the event to arrive if it's null
+      activePty = mainActiveTabId;
+      
+      if (activePty === null || activePty === undefined) {
+        // Try waiting briefly for the event to arrive
+        await new Promise(resolve => setTimeout(resolve, 100));
+        activePty = mainActiveTabId;
+      }
+    } else {
+      // In main window: use the focused pane
+      activePty = tabs.find(t => t.id === activeTabId)?.focusedPaneId || activeTabId;
+    }
+    
+    console.log('[Quick Actions] Execute called:', {
+      isQuickActionsWindow,
+      mainActiveTabId,
+      activeTabId,
+      activePty,
+      action: action.name
+    });
+    
+    if (activePty === null || activePty === undefined) {
+      console.error("No active terminal - mainActiveTabId:", mainActiveTabId, "activeTabId:", activeTabId);
+      alert("No active terminal found. Please make sure a terminal is active in the main window and try again.");
+      return;
+    }
+    
+    // Execute commands sequentially
+    for (let i = 0; i < action.commands.length; i++) {
+      const command = action.commands[i];
+      console.log(`[Quick Action: ${action.name}] Executing command ${i + 1}/${action.commands.length}: ${command}`);
+      
+      try {
+        // Send command to PTY (with newline to execute)
+        await invoke("write_to_pty", { 
+          id: activePty, 
+          data: command + "\r" 
+        });
+        
+        // Wait for command to complete
+        await waitForCommandComplete(activePty);
+        
+        console.log(`[Quick Action: ${action.name}] Command ${i + 1} finished`);
+        
+      } catch (error) {
+        console.error(`[Quick Action: ${action.name}] Failed to execute command: ${command}`, error);
+      }
+    }
+    
+    console.log(`[Quick Action: ${action.name}] Completed`);
+  };
 
-  if (isSSHWindow) {
-    return (
-      <div className="ssh-window">
-        <SSHSessionWindow />
-      </div>
-    );
-  }
-
-  if (isOutputViewer) {
-    return <OutputViewer />;
-  }
+  const waitForCommandComplete = (ptyId: number): Promise<void> => {
+    return new Promise((resolve) => {
+      const checkInterval = setInterval(() => {
+        // Check if command is still running
+        if (!runningCommands.has(ptyId)) {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 100);
+      
+      // Safety timeout (10 minutes max per command)
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        resolve();
+      }, 10 * 60 * 1000);
+    });
+  };
 
   const openAIPanelWindow = async () => {
     const existing = await WebviewWindow.getByLabel("ai-panel");
@@ -660,6 +732,39 @@ function AppContent() {
     });
   };
 
+  const openQuickActionsWindow = async () => {
+    const existing = await WebviewWindow.getByLabel("quick-actions");
+    if (existing) {
+      await existing.setFocus();
+      return;
+    }
+
+    const qaWindow = new WebviewWindow("quick-actions", {
+      title: "Quick Actions",
+      width: 600,
+      height: 600,
+      resizable: true,
+      url: "/#/quick-actions",
+    });
+    qaWindow.once("tauri://created", async () => {
+      await qaWindow.setFocus().catch(() => {});
+      
+      // Wait a moment for the window to fully initialize and set up listeners
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      const activeTab = tabs.find(t => t.id === activeTabId);
+      const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
+      console.log('[Quick Actions] Sending initial active terminal:', focusedPaneId);
+      
+      await emitTo("quick-actions", "quick-actions:active-terminal", { id: focusedPaneId }).catch((err) => {
+        console.error('[Quick Actions] Failed to emit active terminal:', err);
+      });
+    });
+    qaWindow.once("tauri://error", (event) => {
+      console.error("Quick Actions window error:", event);
+    });
+  };
+
   const openSSHPanelWindow = async () => {
     const existing = await WebviewWindow.getByLabel("ssh-panel");
     if (existing) {
@@ -682,6 +787,42 @@ function AppContent() {
       console.error("SSH panel window error:", event);
     });
   };
+
+  if (isAiWindow) {
+    return (
+      <div className="ai-window">
+        <AIPanel
+          activeTerminalId={mainActiveTabId}
+        />
+      </div>
+    );
+  }
+
+  if (isSSHWindow) {
+    return (
+      <div className="ssh-window">
+        <SSHSessionWindow />
+      </div>
+    );
+  }
+
+  if (isQuickActionsWindow) {
+    return (
+      <div className="quick-actions-window-wrapper">
+        <QuickActionsWindow
+          onClose={async () => {
+            const window = await WebviewWindow.getByLabel("quick-actions");
+            await window?.close();
+          }}
+          onExecute={executeQuickAction}
+        />
+      </div>
+    );
+  }
+
+  if (isOutputViewer) {
+    return <OutputViewer />;
+  }
 
   return (
     <div className="app-container">
@@ -777,6 +918,20 @@ function AppContent() {
           title="Open AI Panel (Cmd/Ctrl+B)"
         >
           AI Panel
+        </div>
+        <div
+          className="quick-actions-button"
+          onClick={openQuickActionsWindow}
+          title="Quick Actions"
+        >
+          ⚡ Quick Actions
+        </div>
+        <div
+          className="quick-actions-button"
+          onClick={() => window.dispatchEvent(new CustomEvent('toggle-command-history'))}
+          title="Command History (Cmd+R)"
+        >
+          📜 History
         </div>
         <div 
             className="settings-button" 

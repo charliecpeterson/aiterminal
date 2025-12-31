@@ -5,6 +5,7 @@ mod health_check;
 mod history;
 mod models;
 mod pty;
+mod quick_actions;
 mod settings;
 mod ssh;
 mod tools;
@@ -14,6 +15,7 @@ pub use models::AppState;
 use chat::{ai_chat, ai_chat_stream, test_ai_connection};
 use history::get_shell_history;
 use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
+use quick_actions::{load_quick_actions, save_quick_actions};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
 use ssh::{get_ssh_config_hosts, save_ssh_profiles, load_ssh_profiles};
 use tools::{
@@ -96,6 +98,8 @@ pub fn run() {
             get_ssh_config_hosts,
             save_ssh_profiles,
             load_ssh_profiles,
+            load_quick_actions,
+            save_quick_actions,
             test_ai_connection,
             ai_chat,
             ai_chat_stream,

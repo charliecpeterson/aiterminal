@@ -23,6 +23,8 @@ import { useLatencyProbe } from '../terminal/hooks/useLatencyProbe';
 import { useAutocompleteSimple } from '../terminal/hooks/useAutocompleteSimple';
 import { useAutocompleteMenu } from '../terminal/hooks/useAutocompleteMenu';
 import { AutocompleteMenu } from './AutocompleteMenu';
+import CommandHistoryMenu from './CommandHistoryMenu';
+import type { MarkerManager } from '../terminal/ui/markers';
 
 // Format duration in ms to human-readable string
 function formatDuration(ms: number): string {
@@ -46,7 +48,7 @@ interface TerminalProps {
     visible: boolean;
     onUpdateRemoteState?: (isRemote: boolean, remoteHost?: string) => void;
     onClose: () => void;
-    onCommandRunning?: (isRunning: boolean, startTime?: number) => void;  // Notify parent of command status
+    onCommandRunning?: (isRunning: boolean, startTime?: number, exitCode?: number) => void;  // Notify parent of command status
 }
 
 const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning }: TerminalProps) => {
@@ -77,6 +79,8 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
     const selectionMenuRef = useRef<HTMLDivElement | null>(null);
     const selectionPointRef = useRef<{ x: number; y: number } | null>(null);
     const pendingFileCaptureRef = useRef<PendingFileCapture | null>(null);
+    const [commandHistoryOpen, setCommandHistoryOpen] = useState(false);
+    const markerManagerRef = useRef<MarkerManager | null>(null);
 
     const hideCopyMenu = useCallback(() => setCopyMenu(null), []);
     const hideSelectionMenu = useCallback(() => setSelectionMenu(null), []);
@@ -265,11 +269,14 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
           commandStartTimeRef.current = startTime;
           onCommandRunning?.(true, startTime);
         },
-        onCommandEnd: () => {
+        onCommandEnd: (exitCode?: number) => {
           commandStartTimeRef.current = null;
-          onCommandRunning?.(false);
+          onCommandRunning?.(false, undefined, exitCode);
         },
     });
+
+    // Store marker manager for command history
+    markerManagerRef.current = wiring.markerManager;
 
     // Signal that terminal is ready for keyboard listeners
     setTerminalReady(true);
@@ -277,11 +284,33 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
       return () => {
       wiring.cleanup();
       setTerminalReady(false);
+      markerManagerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.
 
   usePtyAutoClose({ id, onClose });
+
+  // Keyboard shortcut for command history (Cmd+R)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'r' && !e.shiftKey) {
+        e.preventDefault();
+        setCommandHistoryOpen(prev => !prev);
+      }
+    };
+
+    const handleToggleEvent = () => {
+      setCommandHistoryOpen(prev => !prev);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('toggle-command-history', handleToggleEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('toggle-command-history', handleToggleEvent);
+    };
+  }, []);
 
   useAiRunCommandListener({
       id,
@@ -497,6 +526,16 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                     </>
                 )}
             </div>
+            
+            <CommandHistoryMenu
+                isOpen={commandHistoryOpen}
+                onClose={() => setCommandHistoryOpen(false)}
+                terminal={xtermRef.current}
+                onJumpToCommand={(line) => markerManagerRef.current?.jumpToLine(line)}
+                onCopyCommand={(line) => markerManagerRef.current?.copyCommandAtLine(line)}
+                onAddToContext={(line) => markerManagerRef.current?.addCommandToContext(line)}
+                getCommandHistory={() => markerManagerRef.current?.getCommandHistory() || []}
+            />
         </div>
     );
 };

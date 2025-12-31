@@ -5,7 +5,8 @@
   "windows": [
     "main",
     "ai-panel",
-    "ssh-panel"
+    "ssh-panel",
+    "quick-actions"
   ],
   "permissions": [
     "core:default",

@@ -299,7 +299,6 @@
 ## Quick Wins (Easy to Implement)
 
 2. **Working Directory in Tab Title**: Show `~/projects/ai-terminal`
-3. **Exit Code Visual Indicator**: Red/green dot on command marker
 5. **Command Execution Timing**: Show duration next to each marker
 7. **Custom Tab Colors**: Color-code production/staging/dev environments
 8. **Clipboard History**: Access last 10 copied items
