@@ -102,11 +102,33 @@
 }
 
 .ssh-group-name {
+  flex: 1;
   font-weight: 500;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-secondary, #888);
+}
+
+.ssh-group-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.ssh-group-header:hover .ssh-group-delete-btn {
+  opacity: 1;
+}
+
+.ssh-group-delete-btn:hover {
+  background: rgba(255, 0, 0, 0.1);
+  color: #ff4444;
 }
 
 /* Active Connections Section */

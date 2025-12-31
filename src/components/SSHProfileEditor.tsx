@@ -16,14 +16,18 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
   onClose,
   onSave,
 }) => {
-  const { sshConfigHosts } = useSSHProfiles();
+  const { sshConfigHosts, profiles } = useSSHProfiles();
   const isEdit = Boolean(profile);
+
+  // Get all existing groups from profiles
+  const existingGroups = React.useMemo(() => {
+    const groups = new Set(profiles.map(p => p.group).filter(g => g));
+    return Array.from(groups).sort();
+  }, [profiles]);
 
   // Form state
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState('');
   const [group, setGroup] = useState('');
-  const [tabColor, setTabColor] = useState('#0078d4');
   const [connectionType, setConnectionType] = useState<'ssh-config' | 'manual'>('ssh-config');
   const [sshConfigHost, setSSHConfigHost] = useState('');
   
@@ -47,9 +51,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
   useEffect(() => {
     if (profile) {
       setName(profile.name);
-      setIcon(profile.icon || '');
       setGroup(profile.group || '');
-      setTabColor(profile.tabColor || '#0078d4');
       setConnectionType(profile.connectionType);
       setSSHConfigHost(profile.sshConfigHost || '');
       
@@ -73,9 +75,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
     const newProfile: SSHProfile = {
       id: profile?.id || `ssh-${Date.now()}`,
       name: name.trim(),
-      icon: icon.trim() || undefined,
       group: group.trim() || undefined,
-      tabColor: tabColor || undefined,
       connectionType,
       sshConfigHost: connectionType === 'ssh-config' ? sshConfigHost : undefined,
       manualConfig: connectionType === 'manual' ? {
@@ -160,35 +160,28 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                 />
               </label>
             </div>
-            <div className="ssh-form-row ssh-form-row-split">
-              <label>
-                Icon
-                <input
-                  type="text"
-                  value={icon}
-                  onChange={e => setIcon(e.target.value)}
-                  placeholder="🖥️"
-                  maxLength={2}
-                />
-              </label>
-              <label>
-                Color
-                <input
-                  type="color"
-                  value={tabColor}
-                  onChange={e => setTabColor(e.target.value)}
-                />
-              </label>
-            </div>
             <div className="ssh-form-row">
               <label>
                 Group
-                <input
-                  type="text"
-                  value={group}
-                  onChange={e => setGroup(e.target.value)}
-                  placeholder="e.g., Production, Development"
-                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    value={group}
+                    onChange={e => setGroup(e.target.value)}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="">Ungrouped</option>
+                    {existingGroups.map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={group}
+                    onChange={e => setGroup(e.target.value)}
+                    placeholder="Or create new group"
+                    style={{ flex: 1 }}
+                  />
+                </div>
               </label>
             </div>
           </section>

@@ -20,8 +20,9 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
 }) => {
   const { profiles, deleteProfile, isLoading, getProfileConnections } = useSSHProfiles();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [showRecent, setShowRecent] = useState(true);
   const [showActive, setShowActive] = useState(true);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
 
   // Get all active connections across all profiles
   const activeConnections = useMemo(() => {
@@ -55,16 +56,10 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
     }));
   }, [profiles, collapsedGroups]);
 
-  // Recent connections (sorted by lastConnectedAt)
-  const recentProfiles = useMemo(() => {
-    return [...profiles]
-      .filter(p => p.lastConnectedAt)
-      .sort((a, b) => {
-        const aTime = new Date(a.lastConnectedAt!).getTime();
-        const bTime = new Date(b.lastConnectedAt!).getTime();
-        return bTime - aTime;
-      })
-      .slice(0, 5);
+  // Get all unique group names
+  const allGroups = useMemo(() => {
+    const groups = new Set(profiles.map(p => p.group || 'Ungrouped'));
+    return Array.from(groups).sort();
   }, [profiles]);
 
   const toggleGroup = (groupName: string) => {
@@ -134,7 +129,6 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
       <div key={profile.id} className="ssh-profile-item">
         <div className="ssh-profile-header">
           <span className="ssh-status-icon">{statusIcon}</span>
-          {profile.icon && <span className="ssh-profile-icon">{profile.icon}</span>}
           <span className="ssh-profile-name">{profile.name}</span>
           <button
             className="ssh-profile-action-btn"
@@ -222,7 +216,6 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
                         ? (connection.latency && connection.latency > 500 ? '🟡' : '🟢')
                         : '🔵'}
                     </span>
-                    {profile.icon && <span className="ssh-profile-icon">{profile.icon}</span>}
                     <span className="ssh-profile-name">{connection.tabName || profile.name}</span>
                     {connection.latency && (
                       <span className="ssh-latency-badge">{connection.latency}ms</span>
@@ -245,14 +238,28 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
           <div key={group.name} className="ssh-group">
             <div 
               className="ssh-group-header"
-              onClick={() => toggleGroup(group.name)}
             >
-              <span className="ssh-group-toggle">
+              <span className="ssh-group-toggle" onClick={() => toggleGroup(group.name)}>
                 {collapsedGroups.has(group.name) ? '▶' : '▼'}
               </span>
-              <span className="ssh-group-name">
+              <span className="ssh-group-name" onClick={() => toggleGroup(group.name)}>
                 {group.name} ({group.profiles.length})
               </span>
+              {group.name !== 'Ungrouped' && (
+                <button 
+                  className="ssh-group-delete-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(`Delete group "${group.name}"? Profiles will be moved to Ungrouped.`)) {
+                      // Move all profiles in this group to Ungrouped
+                      // This will be handled by parent component through a callback
+                    }
+                  }}
+                  title="Delete group"
+                >
+                  🗑️
+                </button>
+              )}
             </div>
             
             {!collapsedGroups.has(group.name) && (
@@ -262,41 +269,6 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
             )}
           </div>
         ))}
-
-        {/* Recent */}
-        {recentProfiles.length > 0 && (
-          <div className="ssh-group">
-            <div 
-              className="ssh-group-header"
-              onClick={() => setShowRecent(!showRecent)}
-            >
-              <span className="ssh-group-toggle">
-                {showRecent ? '▼' : '▶'}
-              </span>
-              <span className="ssh-group-name">
-                Recent ({recentProfiles.length})
-              </span>
-            </div>
-            
-            {showRecent && (
-              <div className="ssh-group-profiles">
-                {recentProfiles.map(profile => (
-                  <div key={profile.id} className="ssh-profile-item ssh-profile-recent">
-                    <span className="ssh-status-icon">{getStatusIcon(profile)}</span>
-                    {profile.icon && <span className="ssh-profile-icon">{profile.icon}</span>}
-                    <span className="ssh-profile-name">{profile.name}</span>
-                    <button 
-                      className="ssh-action-btn"
-                      onClick={() => onConnect(profile)}
-                    >
-                      Connect
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {profiles.length === 0 && (
