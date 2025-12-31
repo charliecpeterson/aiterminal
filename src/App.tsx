@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Terminal from "./components/Terminal";
 import AIPanel from "./components/AIPanel";
 import SSHSessionWindow from "./components/SSHSessionWindow";
@@ -47,6 +47,10 @@ function AppContent() {
   
   // Map PTY ID to Profile ID for connection tracking
   const [ptyToProfileMap, setPtyToProfileMap] = useState<Map<number, string>>(new Map());
+  
+  // Track running commands per tab: Map<ptyId, { startTime: number, elapsed: number }>
+  const [runningCommands, setRunningCommands] = useState<Map<number, { startTime: number; elapsed: number }>>(new Map());
+  const elapsedTimerRef = useRef<number | null>(null);
   
   let isAiWindow = false;
   let isSSHWindow = false;
@@ -149,6 +153,59 @@ function AppContent() {
         tab.id === id ? { ...tab, customName: newName || undefined } : tab
       )
     );
+  };
+
+  // Handle command running state for tabs
+  const handleCommandRunning = useCallback((ptyId: number, isRunning: boolean, startTime?: number) => {
+    if (isRunning && startTime) {
+      setRunningCommands(prev => {
+        const newMap = new Map(prev);
+        newMap.set(ptyId, { startTime, elapsed: 0 });
+        return newMap;
+      });
+    } else {
+      setRunningCommands(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(ptyId);
+        return newMap;
+      });
+    }
+  }, []);
+
+  // Update elapsed time every second for running commands
+  useEffect(() => {
+    if (runningCommands.size === 0) {
+      if (elapsedTimerRef.current) {
+        clearInterval(elapsedTimerRef.current);
+        elapsedTimerRef.current = null;
+      }
+      return;
+    }
+
+    elapsedTimerRef.current = setInterval(() => {
+      setRunningCommands(prev => {
+        const newMap = new Map(prev);
+        const now = Date.now();
+        for (const [ptyId, state] of newMap.entries()) {
+          newMap.set(ptyId, { ...state, elapsed: now - state.startTime });
+        }
+        return newMap;
+      });
+    }, 1000);
+
+    return () => {
+      if (elapsedTimerRef.current) {
+        clearInterval(elapsedTimerRef.current);
+        elapsedTimerRef.current = null;
+      }
+    };
+  }, [runningCommands.size]);
+
+  const formatElapsedTime = (ms: number): string => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
   };
 
   const updateTabRemoteState = (tabId: number, paneId: number, isRemote: boolean, remoteHost?: string) => {
@@ -683,7 +740,14 @@ function AppContent() {
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              tab.customName || tab.title
+              <>
+                {runningCommands.has(tab.id) && (
+                  <span className="tab-running-indicator" title="Command running">
+                    ⏳ {formatElapsedTime(runningCommands.get(tab.id)!.elapsed)}
+                  </span>
+                )}
+                {tab.customName || tab.title}
+              </>
             )}
             <span
               className="close-tab"
@@ -760,7 +824,8 @@ function AppContent() {
                         id={pane.id} 
                         visible={tab.id === activeTabId}
                         onUpdateRemoteState={(isRemote, remoteHost) => updateTabRemoteState(tab.id, pane.id, isRemote, remoteHost)}
-                        onClose={() => closePane(tab.id, pane.id)} 
+                        onClose={() => closePane(tab.id, pane.id)}
+                        onCommandRunning={(isRunning, startTime) => handleCommandRunning(pane.id, isRunning, startTime)}
                       />
                     </div>
                     {index === 0 && tab.panes.length > 1 && (

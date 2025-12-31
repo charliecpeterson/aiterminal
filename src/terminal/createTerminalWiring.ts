@@ -58,6 +58,9 @@ export function createTerminalWiring(params: {
     termRef?: { current: XTermTerminal | null };
     fitAddonRef?: { current: FitAddon | null };
     searchAddonRef?: { current: SearchAddon | null };
+    
+    onCommandStart?: () => void;
+    onCommandEnd?: () => void;
 }): TerminalWiring {
     const {
         id,
@@ -79,6 +82,8 @@ export function createTerminalWiring(params: {
         termRef,
         fitAddonRef,
         searchAddonRef,
+        onCommandStart,
+        onCommandEnd,
     } = params;
 
     const session = createTerminalSession({ container, appearance });
@@ -115,6 +120,8 @@ export function createTerminalWiring(params: {
         getRangeText: (range) => getRangeText(term, range),
         addContextItem,
         pendingFileCaptureRef,
+        onCommandStart,
+        onCommandEnd,
     });
 
     const markerManagerRef = { current: markerManager };

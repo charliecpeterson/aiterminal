@@ -24,6 +24,15 @@ import { useAutocompleteSimple } from '../terminal/hooks/useAutocompleteSimple';
 import { useAutocompleteMenu } from '../terminal/hooks/useAutocompleteMenu';
 import { AutocompleteMenu } from './AutocompleteMenu';
 
+// Format duration in ms to human-readable string
+function formatDuration(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
+    const minutes = Math.floor(ms / 60000);
+    const seconds = ((ms % 60000) / 1000).toFixed(0);
+    return `${minutes}m ${seconds}s`;
+}
+
 interface PtyInfo {
     pty_type: string;
     remote_host: string | null;
@@ -37,9 +46,10 @@ interface TerminalProps {
     visible: boolean;
     onUpdateRemoteState?: (isRemote: boolean, remoteHost?: string) => void;
     onClose: () => void;
+    onCommandRunning?: (isRunning: boolean, startTime?: number) => void;  // Notify parent of command status
 }
 
-const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) => {
+const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning }: TerminalProps) => {
   const { settings, loading } = useSettings();
   const { addContextItem } = useAIContext();
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -50,6 +60,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
   const [showSearch, setShowSearch] = useState(false);
   const [terminalReady, setTerminalReady] = useState(false);
     const [hostLabel, setHostLabel] = useState('Local');
+    const commandStartTimeRef = useRef<number | null>(null);
     
     const setHostLabelAndRemoteState = useCallback((label: string) => {
         setHostLabel(label);
@@ -249,6 +260,15 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
                 termRef: xtermRef,
                 fitAddonRef,
                 searchAddonRef,
+        onCommandStart: () => {
+          const startTime = Date.now();
+          commandStartTimeRef.current = startTime;
+          onCommandRunning?.(true, startTime);
+        },
+        onCommandEnd: () => {
+          commandStartTimeRef.current = null;
+          onCommandRunning?.(false);
+        },
     });
 
     // Signal that terminal is ready for keyboard listeners
@@ -314,6 +334,17 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
                     style={{ top: copyMenu.y, left: copyMenu.x }}
                     ref={copyMenuRef}
                 >
+                    {/* Show duration if available */}
+                    {copyMenu.duration !== undefined && (
+                        <div className="marker-duration">
+                            ⏱️ {formatDuration(copyMenu.duration)}
+                            {copyMenu.exitCode !== undefined && (
+                                <span className={copyMenu.exitCode === 0 ? 'success' : 'error'}>
+                                    {' '}• Exit: {copyMenu.exitCode}
+                                </span>
+                            )}
+                        </div>
+                    )}
                     <button disabled={copyMenu.disabled} onClick={() => copyRange(copyMenu.commandRange)}>
                         Copy Command
                     </button>

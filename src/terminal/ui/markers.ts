@@ -13,6 +13,7 @@ export interface CopyMenuState {
   exitCode?: number;
   commandText?: string;
   outputText?: string;
+  duration?: number;  // Command duration in ms
 }
 
 export type AddContextItem = (item: ContextItem) => void;
@@ -26,6 +27,8 @@ export interface MarkerManagerParams {
   getRangeText: (range: [number, number]) => string;
   addContextItem: AddContextItem;
   pendingFileCaptureRef: PendingFileCaptureRef;
+  onCommandStart?: () => void;  // Called when command execution starts
+  onCommandEnd?: () => void;    // Called when command execution ends
 }
 
 interface MarkerMeta {
@@ -35,6 +38,9 @@ interface MarkerMeta {
   streamingOutput?: boolean;
   foldDecoration?: IDecoration;
   foldExpanded?: boolean;
+  startTime?: number;  // When command started (ms timestamp)
+  endTime?: number;    // When command finished (ms timestamp)
+  duration?: number;   // Duration in ms
 }
 
 function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
@@ -87,6 +93,8 @@ export function createMarkerManager({
   getRangeText,
   addContextItem,
   pendingFileCaptureRef,
+  onCommandStart,
+  onCommandEnd,
 }: MarkerManagerParams): MarkerManager {
   let currentMarker: IDecoration | null = null;
   const markers: IDecoration[] = [];
@@ -431,8 +439,10 @@ export function createMarkerManager({
       const commandText = getRangeText(commandRange);
       const outputText = outputRange ? getRangeText(outputRange) : undefined;
       
-      // Get exitCode from marker metadata (reuse meta from above)
+      // Get metadata from marker
+      const meta = markerMeta.get(marker);
       const storedExitCode = meta?.exitCode;
+      const duration = meta?.duration;
 
       const rect = element.getBoundingClientRect();
       setCopyMenu({
@@ -445,6 +455,7 @@ export function createMarkerManager({
         exitCode: storedExitCode,
         commandText,
         outputText,
+        duration,
       });
     });
   };
@@ -517,7 +528,11 @@ export function createMarkerManager({
           if (!meta.outputStartMarker) {
             meta.outputStartMarker = term.registerMarker(0);
             meta.streamingOutput = true; // Mark as streaming
+            meta.startTime = Date.now(); // Record start time
             markerMeta.set(currentMarker, meta);
+            
+            // Notify that command started
+            onCommandStart?.();
           }
         }
       } else if (type === 'D') {
@@ -531,9 +546,13 @@ export function createMarkerManager({
         if (currentMarker) {
           const marker = currentMarker;
           
-          // Store exitCode in metadata
+          // Store exitCode and timing in metadata
           const meta = markerMeta.get(marker) || {};
           meta.exitCode = exitCode;
+          meta.endTime = Date.now();
+          if (meta.startTime) {
+            meta.duration = meta.endTime - meta.startTime;
+          }
           markerMeta.set(marker, meta);
           
           marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));
@@ -575,6 +594,9 @@ export function createMarkerManager({
           // Mark output as complete (no automatic notification)
           if (meta) {
             meta.streamingOutput = false;
+            
+            // Notify that command ended
+            onCommandEnd?.();
           }
 
           currentMarker = null;

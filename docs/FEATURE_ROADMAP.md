@@ -193,24 +193,7 @@
 
 **Benefit**: Manage complex module dependencies easily
 
-### 13. **Output Folding for Large Results** ⭐⭐
-**Priority**: Important for HPC workloads
-**Why**: HPC commands produce massive outputs (1000s of lines)
-**Implementation**:
-- Auto-collapse outputs >1000 lines
-- Show: "First 50 lines / Last 50 lines / [Expand 2847 hidden lines]"
-- Fold by sections:
-  - Separate stdout/stderr
-  - Fold by pattern (stack traces, repeated lines)
-- Jump to errors/warnings:
-  - Scan for "Error:", "Warning:", "FATAL"
-  - Quick-jump buttons
-- Configurable threshold in settings
 
-**Use cases**:
-- Tame verbose build outputs
-- Review slurm logs efficiently
-- Find errors in massive outputs
 
 ### 14. **Session Bookmarks & Profiles** ⭐⭐
 **Priority**: High for managing multiple environments
@@ -315,12 +298,9 @@
 
 ## Quick Wins (Easy to Implement)
 
-1. **Tab Renaming**: Right-click tab → rename (better than "Terminal 1")
 2. **Working Directory in Tab Title**: Show `~/projects/ai-terminal`
 3. **Exit Code Visual Indicator**: Red/green dot on command marker
-4. **Copy with Full Context**: Include command + output + timestamp in clipboard
 5. **Command Execution Timing**: Show duration next to each marker
-6. **Tab Icons/Emojis**: Customize tab with emoji for quick visual identification
 7. **Custom Tab Colors**: Color-code production/staging/dev environments
 8. **Clipboard History**: Access last 10 copied items
 9. **Tab Zoom**: Cmd+Scroll to adjust font size per tab
@@ -328,7 +308,6 @@
    - Send partial command + context to LLM
    - Display as ghost text
    - Fast inference (<200ms) using existing AI providers or local Ollama
-11. **Quick SSH Profiles**: Save frequently used SSH connections
 12. **URL Detection**: Cmd+Click to open URLs in browser (already implemented?)
 13. **Working Directory Breadcrumbs**: Show full path in status bar with folder navigation
 14. **Reconnect to SSH**: Auto-retry on connection drops
