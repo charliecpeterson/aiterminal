@@ -6,7 +6,8 @@
     "main",
     "ai-panel",
     "ssh-panel",
-    "quick-actions"
+    "quick-actions",
+    "preview-*"
   ],
   "permissions": [
     "core:default",

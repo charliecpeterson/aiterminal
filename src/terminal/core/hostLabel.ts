@@ -56,6 +56,16 @@ export function attachHostLabelOsc(
           // Empty = local session
           setHostLabel('Local');
         }
+      } else if (data.startsWith('PreviewFile=')) {
+        // Handle preview file command
+        const filePath = data.substring('PreviewFile='.length);
+        if (filePath) {
+          import('@tauri-apps/api/core').then(({ invoke }) => {
+            invoke('open_preview_window', { filePath }).catch((err: unknown) => {
+              console.error('[Preview] Failed to open window:', err);
+            });
+          });
+        }
       }
     } catch (e) {
       // eslint-disable-next-line no-console

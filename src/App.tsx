@@ -4,6 +4,7 @@ import AIPanel from "./components/AIPanel";
 import SSHSessionWindow from "./components/SSHSessionWindow";
 import OutputViewer from "./components/OutputViewer";
 import QuickActionsWindow from "./components/QuickActionsWindow";
+import PreviewWindow from "./components/PreviewWindow";
 import SettingsModal from "./components/SettingsModal";
 import { SettingsProvider } from "./context/SettingsContext";
 import { AIProvider } from "./context/AIContext";
@@ -58,16 +59,19 @@ function AppContent() {
   let isSSHWindow = false;
   let isOutputViewer = false;
   let isQuickActionsWindow = false;
+  let isPreviewWindow = false;
   try {
     isAiWindow = window.location.hash.startsWith("#/ai-panel");
     isSSHWindow = window.location.hash.startsWith("#/ssh-panel");
     isOutputViewer = window.location.hash.startsWith("#/output-viewer");
     isQuickActionsWindow = window.location.hash.startsWith("#/quick-actions");
+    isPreviewWindow = window.location.search.includes("preview=");
   } catch {
     isAiWindow = false;
     isSSHWindow = false;
     isOutputViewer = false;
     isQuickActionsWindow = false;
+    isPreviewWindow = false;
   }
 
   const createTab = async () => {
@@ -818,6 +822,10 @@ function AppContent() {
         />
       </div>
     );
+  }
+
+  if (isPreviewWindow) {
+    return <PreviewWindow />;
   }
 
   if (isOutputViewer) {

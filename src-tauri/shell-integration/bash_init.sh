@@ -225,3 +225,39 @@ if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
         echo "AI Terminal OSC 133 shell integration active ($(basename "$SHELL"))"
     fi
 fi
+
+# aiterm_render - Preview files in a popup window
+aiterm_render() {
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then
+        echo "aiterm_render: This command only works in AI Terminal"
+        return 1
+    fi
+    
+    if [ $# -eq 0 ]; then
+        echo "Usage: aiterm_render <file>"
+        echo "Supported formats: .md, .html, .txt"
+        return 1
+    fi
+    
+    local file="$1"
+    
+    if [ ! -f "$file" ]; then
+        echo "aiterm_render: File not found: $file"
+        return 1
+    fi
+    
+    # Get absolute path
+    local abs_path
+    if [[ "$file" = /* ]]; then
+        abs_path="$file"
+    else
+        abs_path="$(pwd)/$file"
+    fi
+    
+    # Emit OSC sequence to open preview window
+    printf "\033]1337;PreviewFile=%s\007" "$abs_path"
+    
+    return 0
+}
+
+export -f aiterm_render 2>/dev/null || true
