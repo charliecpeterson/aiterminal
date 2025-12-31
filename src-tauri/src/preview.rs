@@ -7,6 +7,7 @@ use notify_debouncer_mini::{new_debouncer, DebouncedEvent};
 use std::time::Duration;
 
 type WatcherMap = Arc<Mutex<HashMap<String, notify_debouncer_mini::Debouncer<notify::RecommendedWatcher>>>>;
+type ContentStore = Arc<Mutex<HashMap<String, (String, String)>>>; // Maps window_label -> (filename, content)
 
 #[derive(Clone, serde::Serialize)]
 struct FileChangedPayload {
@@ -15,6 +16,7 @@ struct FileChangedPayload {
 
 pub fn init_preview_watchers(app: &AppHandle) {
     app.manage(WatcherMap::new(Mutex::new(HashMap::new())));
+    app.manage(ContentStore::new(Mutex::new(HashMap::new())));
 }
 
 #[tauri::command]
@@ -25,9 +27,12 @@ pub async fn open_preview_window(
 ) -> Result<(), String> {
     let window_label = format!("preview-{}", uuid::Uuid::new_v4());
     
-    // Content is already base64 encoded, pass it to the frontend
-    let encoded_filename = urlencoding::encode(&filename);
-    let url = format!("index.html?preview={}&content={}", encoded_filename, content);
+    // Store content in app state to avoid URL length limits
+    let content_store: tauri::State<ContentStore> = app.state();
+    content_store.lock().unwrap().insert(window_label.clone(), (filename.clone(), content));
+    
+    // Pass only the window label in URL
+    let url = format!("index.html?preview={}", urlencoding::encode(&window_label));
     
     // Create window
     WebviewWindowBuilder::new(
@@ -41,10 +46,20 @@ pub async fn open_preview_window(
     .build()
     .map_err(|e| e.to_string())?;
     
-    // File watcher not needed - content is passed directly
-    // Future enhancement: detect if file is local and set up watcher for hot reload
-    
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_preview_content(
+    app: AppHandle,
+    window_label: String,
+) -> Result<(String, String), String> {
+    let content_store: tauri::State<ContentStore> = app.state();
+    let store = content_store.lock().unwrap();
+    
+    store.get(&window_label)
+        .cloned()
+        .ok_or_else(|| "Preview content not found".to_string())
 }
 
 #[tauri::command]

@@ -399,11 +399,22 @@ View and monitor files directly from the terminal with live rendering in a separ
 
 #### Features
 - **Command-Line Preview**: Use `aiterm_render <file>` to open any file in a dedicated preview window
-- **Multiple Formats**: Supports Markdown, HTML, and plain text files
+- **Multiple Formats**: Supports Markdown, R Markdown, Quarto, HTML, PDFs, Jupyter notebooks, Word documents, JSON, YAML, LaTeX, reStructuredText, AsciiDoc, images, and plain text files
 - **Remote File Support**: Works seamlessly over SSH - file content is transferred automatically
 - **Clean Rendering**:
   - **Markdown**: Full GitHub-flavored markdown with syntax highlighting for code blocks
+  - **R Markdown (.rmd)**: Rendered as markdown with R code chunks displayed as code blocks
+  - **Quarto (.qmd)**: Rendered as markdown with multi-language code chunks
   - **HTML**: Sandboxed iframe rendering with proper styling
+  - **PDFs**: Native browser PDF viewer with zoom, search, and navigation
+  - **Jupyter Notebooks**: Full notebook rendering with markdown cells, code cells, and outputs (including plots)
+  - **Word Documents (.docx)**: Converted to HTML with formatting, tables, images, and styles preserved
+  - **JSON**: Interactive tree view with collapsible nodes, syntax highlighting, and object size indicators
+  - **YAML**: Parsed and displayed as interactive tree view with collapsible nodes
+  - **LaTeX (.tex)**: Source view with monospace formatting for reviewing LaTeX documents
+  - **reStructuredText (.rst)**: Source view for Sphinx and Python documentation
+  - **AsciiDoc (.adoc, .asciidoc)**: Full HTML rendering with proper formatting
+  - **Images**: PNG, JPG, GIF, SVG, WebP, BMP, ICO with proper scaling and transparency
   - **Text**: Monospace display for logs, configs, and other plain text
 - **Auto-Detection**: File type detected automatically from extension
 - **Separate Window**: Preview opens in its own window, keeping your terminal clean
@@ -414,9 +425,51 @@ View and monitor files directly from the terminal with live rendering in a separ
 aiterm_render README.md
 aiterm_render docs/guide.md
 
+# Preview R Markdown files
+aiterm_render analysis.rmd
+aiterm_render report.rmd
+
+# Preview Quarto documents
+aiterm_render presentation.qmd
+aiterm_render manuscript.qmd
+
+# Preview LaTeX documents
+aiterm_render paper.tex
+aiterm_render thesis.latex
+
+# Preview reStructuredText
+aiterm_render documentation.rst
+aiterm_render index.rst
+
+# Preview AsciiDoc
+aiterm_render manual.adoc
+aiterm_render guide.asciidoc
+
 # Preview HTML files
 aiterm_render index.html
 aiterm_render report.html
+
+# Preview PDFs
+aiterm_render document.pdf
+aiterm_render report.pdf
+
+# Preview Word documents
+aiterm_render report.docx
+aiterm_render proposal.docx
+
+# Preview Jupyter notebooks
+aiterm_render analysis.ipynb
+aiterm_render experiment.ipynb
+
+# Preview images
+aiterm_render screenshot.png
+aiterm_render logo.svg
+aiterm_render diagram.jpg
+
+# Preview JSON/YAML with collapsible tree view
+aiterm_render config.json
+aiterm_render docker-compose.yml
+aiterm_render settings.yaml
 
 # Preview text/log files
 aiterm_render server.log
@@ -439,8 +492,17 @@ The file content is automatically:
 No temporary files needed - everything happens through the terminal connection!
 
 #### Supported File Types
-- **Markdown**: `.md`, `.markdown`
+- **Markdown**: `.md`, `.markdown`, `.rmd` (R Markdown), `.qmd` (Quarto)
 - **HTML**: `.html`, `.htm`
+- **PDF**: `.pdf`
+- **Word Documents**: `.docx`
+- **Jupyter Notebook**: `.ipynb`
+- **LaTeX**: `.tex`, `.latex`
+- **reStructuredText**: `.rst`
+- **AsciiDoc**: `.adoc`, `.asciidoc`, `.asc`
+- **JSON**: `.json` (with collapsible tree view and syntax highlighting)
+- **YAML**: `.yaml`, `.yml` (with collapsible tree view and syntax highlighting)
+- **Images**: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`, `.ico`
 - **Text**: Any other extension (`.txt`, `.log`, `.conf`, `.json`, etc.)
 
 #### Notes
@@ -451,6 +513,17 @@ No temporary files needed - everything happens through the terminal connection!
 - For remote files, the file must be readable by your SSH user
 
 #### Example Workflows
+
+**Debugging Configuration Files**:
+```bash
+# View JSON config with collapsible tree
+aiterm_render package.json
+aiterm_render tsconfig.json
+
+# View YAML configs
+aiterm_render .github/workflows/ci.yml
+aiterm_render docker-compose.yml
+```
 **Documentation Review**
 ```bash
 # Clone a repo and preview the README
@@ -478,6 +551,69 @@ aiterm_render dist/index.html
 # Review remote server config
 ssh admin@server
 aiterm_render /etc/nginx/nginx.conf
+```
+
+**Image Review**
+```bash
+# View generated charts or diagrams
+python generate_chart.py
+aiterm_render output/chart.png
+
+# Check screenshots from remote server
+ssh user@server
+aiterm_render ~/screenshots/error-state.png
+```
+
+**PDF Documents**
+```bash
+# Review generated reports
+aiterm_render quarterly-report.pdf
+
+# View documentation
+ssh docs-server
+aiterm_render /var/docs/manual.pdf
+```
+
+**Jupyter Notebooks**
+```bash
+# Review data analysis notebooks
+aiterm_render data-exploration.ipynb
+
+# Check notebook outputs from remote server
+ssh jupyter-server
+aiterm_render ~/notebooks/experiment-results.ipynb
+```
+
+**R Markdown & Quarto**
+```bash
+# Preview R Markdown reports (source view)
+aiterm_render statistical-analysis.rmd
+
+# Preview Quarto documents
+aiterm_render research-paper.qmd
+aiterm_render presentation.qmd
+
+# Review documents from remote R server
+ssh rstudio-server
+aiterm_render ~/projects/report.rmd
+```
+
+**LaTeX & Technical Documentation**
+```bash
+# Review LaTeX source before compilation
+aiterm_render paper.tex
+aiterm_render chapter1.tex
+
+# Preview reStructuredText documentation
+aiterm_render index.rst
+aiterm_render api_reference.rst
+
+# Review AsciiDoc technical docs
+aiterm_render user-guide.adoc
+
+# Check documentation on remote server
+ssh docs-server
+aiterm_render ~/sphinx-docs/index.rst
 ```
 
 ## Keyboard Shortcuts
