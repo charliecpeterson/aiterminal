@@ -38,6 +38,8 @@
       "signingIdentity": null,
       "providerShortName": null,
       "hardenedRuntime": true
-    }
+    },
+    "resources": [],
+    "externalBin": []
   }
 }

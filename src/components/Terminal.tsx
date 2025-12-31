@@ -53,7 +53,7 @@ interface TerminalProps {
 
 const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning }: TerminalProps) => {
   const { settings, loading } = useSettings();
-  const { addContextItem } = useAIContext();
+  const { addContextItem, addContextItemWithScan } = useAIContext();
   const terminalRef = useRef<HTMLDivElement>(null);
         const xtermRef = useRef<XTermTerminal | null>(null);
         const fitAddonRef = useRef<FitAddon | null>(null);
@@ -94,17 +94,14 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                 exitCode,
             });
 
-            // Add the command/output to context first
-            addContextItem({
-                id: crypto.randomUUID(),
-                type: 'command_output',
-                content: outputText || commandText,
-                timestamp: Date.now(),
-                metadata: {
-                    command: commandText,
-                    output: outputText,
-                    exitCode,
-                },
+            // Add the command/output to context first with secret scanning
+            const content = outputText || commandText;
+            addContextItemWithScan(content, 'command_output', {
+                command: commandText,
+                output: outputText,
+                exitCode,
+            }).catch(err => {
+                console.error('Failed to scan and add context for quick action:', err);
             });
 
             // Close the menu
@@ -123,15 +120,16 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                 console.warn('Failed to emit quick action event:', err);
             });
         },
-        [addContextItem, hideCopyMenu, id]
+        [addContextItem, addContextItemWithScan, hideCopyMenu, id]
     );
 
     const actions = useMemo(() => createTerminalActions({
         termRef: xtermRef,
         addContextItem,
+        addContextItemWithScan,
         hideCopyMenu,
         hideSelectionMenu,
-    }), [addContextItem, hideCopyMenu, hideSelectionMenu]);
+    }), [addContextItem, addContextItemWithScan, hideCopyMenu, hideSelectionMenu]);
 
     const {
         copyRange,
@@ -259,6 +257,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         setShowSearch,
         setHostLabel: setHostLabelAndRemoteState,
         addContextItem,
+        addContextItemWithScan,
         hideCopyMenu,
         hideSelectionMenu,
                 termRef: xtermRef,

@@ -51,6 +51,7 @@ export function createTerminalWiring(params: {
     setHostLabel: (value: string) => void;
 
     addContextItem: (item: ContextItem) => void;
+    addContextItemWithScan?: (content: string, type: import('../context/AIContext').ContextType, metadata?: ContextItem['metadata']) => Promise<void>;
 
     hideCopyMenu: () => void;
     hideSelectionMenu: () => void;
@@ -77,6 +78,7 @@ export function createTerminalWiring(params: {
         setShowSearch,
         setHostLabel,
         addContextItem,
+        addContextItemWithScan,
         hideCopyMenu,
         hideSelectionMenu,
         termRef,
@@ -119,6 +121,7 @@ export function createTerminalWiring(params: {
         setCopyMenu,
         getRangeText: (range) => getRangeText(term, range),
         addContextItem,
+        addContextItemWithScan,
         pendingFileCaptureRef,
         onCommandStart,
         onCommandEnd,

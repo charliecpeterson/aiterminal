@@ -8,6 +8,7 @@ mod models;
 mod preview;
 mod pty;
 mod quick_actions;
+mod secret_scanner;
 mod settings;
 mod ssh;
 mod tools;
@@ -20,6 +21,7 @@ use keychain::{save_api_key_to_keychain, get_api_key_from_keychain, delete_api_k
 use preview::{open_preview_window, read_preview_file, stop_preview_watcher, get_preview_content};
 use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
 use quick_actions::{load_quick_actions, save_quick_actions};
+use secret_scanner::scan_content_for_secrets;
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
 use ssh::{get_ssh_config_hosts, save_ssh_profiles, load_ssh_profiles};
 use tools::{
@@ -144,6 +146,7 @@ pub fn run() {
             is_command_in_path,
             get_path_commands,
             list_dir_entries,
+            scan_content_for_secrets,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

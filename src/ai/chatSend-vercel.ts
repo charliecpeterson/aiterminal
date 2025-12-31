@@ -16,8 +16,7 @@ export interface ChatSendDeps {
   prompt: string;
   settingsAi: AiSettings | null | undefined;
   messages: ChatMessage[]; // Full message history
-  contextItems: ContextItem[]; // Context from terminal
-  terminalId: number; // Active terminal ID
+  contextItems: ContextItem[]; // Context from terminal  formattedContextItems: string[]; // Pre-formatted context with redaction  terminalId: number; // Active terminal ID
 
   addMessage: (message: ChatMessage) => void;
   appendMessage: (id: string, content: string) => void;
@@ -58,7 +57,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     prompt,
     settingsAi,
     messages,
-    contextItems,
+    formattedContextItems,
     terminalId,
     addMessage,
     appendMessage,
@@ -84,19 +83,8 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     return;
   }
 
-  // Format context items for AI
-  const formattedContext = contextItems.map((item) => {
-    if (item.type === 'command_output') {
-      const command = item.metadata?.command || '';
-      const output = item.metadata?.output || item.content;
-      return `Command: ${command}\nOutput:\n${output}`;
-    }
-    if (item.type === 'file') {
-      const path = item.metadata?.path ? ` (${item.metadata.path})` : '';
-      return `File${path}:\n${item.content}`;
-    }
-    return `${item.type}: ${item.content}`;
-  }).join('\n\n---\n\n');
+  // Use pre-formatted context (already handles redaction)
+  const formattedContext = formattedContextItems.join('\n\n---\n\n');
 
   // Add user message
   addMessage({

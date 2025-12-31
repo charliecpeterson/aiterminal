@@ -1,5 +1,5 @@
 import type { Terminal as XTerm } from '@xterm/xterm';
-import type { ContextItem } from '../context/AIContext';
+import type { ContextItem, ContextType } from '../context/AIContext';
 import {
     addContextFromCombinedRanges,
     addContextFromRange,
@@ -19,10 +19,11 @@ export interface TerminalActions {
 export function createTerminalActions(params: {
     termRef: { current: XTerm | null };
     addContextItem: (item: ContextItem) => void;
+    addContextItemWithScan?: (content: string, type: ContextType, metadata?: ContextItem['metadata']) => Promise<void>;
     hideCopyMenu: () => void;
     hideSelectionMenu: () => void;
 }): TerminalActions {
-    const { termRef, addContextItem, hideCopyMenu, hideSelectionMenu } = params;
+    const { termRef, addContextItem, addContextItemWithScan, hideCopyMenu, hideSelectionMenu } = params;
 
     const focus = () => termRef.current?.focus();
 
@@ -44,21 +45,21 @@ export function createTerminalActions(params: {
         addContextFromLineRange: (type, range) => {
             const term = termRef.current;
             if (!term) return;
-            addContextFromRange({ term, type, range, addContextItem });
+            addContextFromRange({ term, type, range, addContextItem, addContextItemWithScan });
             hideCopyMenu();
             focus();
         },
         addContextFromCombined: (commandRange, outputRange) => {
             const term = termRef.current;
             if (!term) return;
-            addContextFromCombinedRanges({ term, commandRange, outputRange, addContextItem });
+            addContextFromCombinedRanges({ term, commandRange, outputRange, addContextItem, addContextItemWithScan });
             hideCopyMenu();
             focus();
         },
         addSelection: () => {
             const term = termRef.current;
             if (!term) return;
-            addSelectionToContext({ term, addContextItem });
+            addSelectionToContext({ term, addContextItem, addContextItemWithScan });
             hideSelectionMenu();
             focus();
         },

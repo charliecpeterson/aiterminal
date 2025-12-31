@@ -17,6 +17,7 @@ export interface CopyMenuState {
 }
 
 export type AddContextItem = (item: ContextItem) => void;
+export type AddContextItemWithScan = (content: string, type: import('../../context/AIContext').ContextType, metadata?: ContextItem['metadata']) => Promise<void>;
 
 export interface MarkerManagerParams {
   term: XTermTerminal;
@@ -26,6 +27,7 @@ export interface MarkerManagerParams {
   setCopyMenu: (value: CopyMenuState | null) => void;
   getRangeText: (range: [number, number]) => string;
   addContextItem: AddContextItem;
+  addContextItemWithScan?: AddContextItemWithScan;
   pendingFileCaptureRef: PendingFileCaptureRef;
   onCommandStart?: () => void;  // Called when command execution starts
   onCommandEnd?: (exitCode?: number) => void;    // Called when command execution ends
@@ -102,6 +104,7 @@ export function createMarkerManager({
   setCopyMenu,
   getRangeText,
   addContextItem,
+  addContextItemWithScan,
   pendingFileCaptureRef,
   onCommandStart,
   onCommandEnd,
@@ -503,17 +506,42 @@ export function createMarkerManager({
                 Math.max(safeOutputStart, endLine),
               ]).trim();
               if (outputText) {
-                addContextItem({
-                  id: crypto.randomUUID(),
-                  type: 'file',
-                  content: outputText,
-                  timestamp: Date.now(),
-                  metadata: {
+                if (addContextItemWithScan) {
+                  addContextItemWithScan(outputText, 'file', {
                     path,
                     truncated: outputText.length >= maxBytes,
                     byte_count: outputText.length,
-                  },
-                });
+                  }).catch(err => {
+                    console.error('Failed to scan file capture:', err);
+                    addContextItem({
+                      id: crypto.randomUUID(),
+                      type: 'file',
+                      content: outputText,
+                      timestamp: Date.now(),
+                      metadata: {
+                        path,
+                        truncated: outputText.length >= maxBytes,
+                        byte_count: outputText.length,
+                      },
+                      hasSecrets: false,
+                      secretsRedacted: false,
+                    });
+                  });
+                } else {
+                  addContextItem({
+                    id: crypto.randomUUID(),
+                    type: 'file',
+                    content: outputText,
+                    timestamp: Date.now(),
+                    metadata: {
+                      path,
+                      truncated: outputText.length >= maxBytes,
+                      byte_count: outputText.length,
+                    },
+                    hasSecrets: false,
+                    secretsRedacted: false,
+                  });
+                }
               }
             }
             pendingFileCaptureRef.current = null;
@@ -571,24 +599,65 @@ export function createMarkerManager({
 
       if (!commandText && !outputText) return;
 
-      if (outputText) {
-        addContextItem({
-          id: crypto.randomUUID(),
-          type: 'command_output',
-          content: outputText,
-          timestamp: Date.now() + index,
-          metadata: {
-            command: commandText || undefined,
-            output: outputText,
-          },
+      const content = outputText || commandText;
+      const type = outputText ? 'command_output' : 'command';
+      const metadata = outputText ? {
+        command: commandText || undefined,
+        output: outputText,
+      } : undefined;
+
+      if (addContextItemWithScan) {
+        addContextItemWithScan(content, type as any, metadata).catch(err => {
+          console.error('Failed to scan context in captureLast:', err);
+          // Fallback to direct add
+          if (outputText) {
+            addContextItem({
+              id: crypto.randomUUID(),
+              type: 'command_output',
+              content: outputText,
+              timestamp: Date.now() + index,
+              metadata: {
+                command: commandText || undefined,
+                output: outputText,
+              },
+              hasSecrets: false,
+              secretsRedacted: false,
+            });
+          } else if (commandText) {
+            addContextItem({
+              id: crypto.randomUUID(),
+              type: 'command',
+              content: commandText,
+              timestamp: Date.now() + index,
+              hasSecrets: false,
+              secretsRedacted: false,
+            });
+          }
         });
-      } else if (commandText) {
-        addContextItem({
-          id: crypto.randomUUID(),
-          type: 'command',
-          content: commandText,
-          timestamp: Date.now() + index,
-        });
+      } else {
+        if (outputText) {
+          addContextItem({
+            id: crypto.randomUUID(),
+            type: 'command_output',
+            content: outputText,
+            timestamp: Date.now() + index,
+            metadata: {
+              command: commandText || undefined,
+              output: outputText,
+            },
+            hasSecrets: false,
+            secretsRedacted: false,
+          });
+        } else if (commandText) {
+          addContextItem({
+            id: crypto.randomUUID(),
+            type: 'command',
+            content: commandText,
+            timestamp: Date.now() + index,
+            hasSecrets: false,
+            secretsRedacted: false,
+          });
+        }
       }
     });
   };
@@ -639,24 +708,65 @@ export function createMarkerManager({
     
     if (!commandText && !outputText) return;
     
-    if (outputText) {
-      addContextItem({
-        id: crypto.randomUUID(),
-        type: 'command_output',
-        content: outputText,
-        timestamp: Date.now(),
-        metadata: {
-          command: commandText || undefined,
-          output: outputText,
-        },
+    const content = outputText || commandText;
+    const type = outputText ? 'command_output' : 'command';
+    const metadata = outputText ? {
+      command: commandText || undefined,
+      output: outputText,
+    } : undefined;
+
+    if (addContextItemWithScan) {
+      addContextItemWithScan(content, type as any, metadata).catch(err => {
+        console.error('Failed to scan context in addCommandToContext:', err);
+        // Fallback
+        if (outputText) {
+          addContextItem({
+            id: crypto.randomUUID(),
+            type: 'command_output',
+            content: outputText,
+            timestamp: Date.now(),
+            metadata: {
+              command: commandText || undefined,
+              output: outputText,
+            },
+            hasSecrets: false,
+            secretsRedacted: false,
+          });
+        } else if (commandText) {
+          addContextItem({
+            id: crypto.randomUUID(),
+            type: 'command',
+            content: commandText,
+            timestamp: Date.now(),
+            hasSecrets: false,
+            secretsRedacted: false,
+          });
+        }
       });
-    } else if (commandText) {
-      addContextItem({
-        id: crypto.randomUUID(),
-        type: 'command',
-        content: commandText,
-        timestamp: Date.now(),
-      });
+    } else {
+      if (outputText) {
+        addContextItem({
+          id: crypto.randomUUID(),
+          type: 'command_output',
+          content: outputText,
+          timestamp: Date.now(),
+          metadata: {
+            command: commandText || undefined,
+            output: outputText,
+          },
+          hasSecrets: false,
+          secretsRedacted: false,
+        });
+      } else if (commandText) {
+        addContextItem({
+          id: crypto.randomUUID(),
+          type: 'command',
+          content: commandText,
+          timestamp: Date.now(),
+          hasSecrets: false,
+          secretsRedacted: false,
+        });
+      }
     }
   };
 

@@ -8,6 +8,7 @@ export function AIContextTab(props: {
   setExpandedContextId: (value: string | null) => void;
   removeContextItem: (id: string) => void;
   clearContext: () => void;
+  toggleSecretRedaction: (id: string) => void;
 
   captureCount: number;
   setCaptureCount: (value: number) => void;
@@ -26,6 +27,7 @@ export function AIContextTab(props: {
     setExpandedContextId,
     removeContextItem,
     clearContext,
+    toggleSecretRedaction,
     captureCount,
     setCaptureCount,
     onCaptureLast,
@@ -40,14 +42,42 @@ export function AIContextTab(props: {
   const renderedContextItems = useMemo(() => {
     return contextItems.map((item) => {
       const isExpanded = expandedContextId === item.id;
+      const contentToDisplay = (item.hasSecrets && item.secretsRedacted && item.redactedContent)
+        ? item.redactedContent
+        : item.content;
+
       return (
         <div key={item.id} className="ai-panel-context-card">
           <div className="ai-panel-context-header">
             <div>
-              <div className="ai-panel-context-type">{item.type}</div>
+              <div className="ai-panel-context-type">
+                {item.type}
+                {item.hasSecrets && (
+                  <span style={{ marginLeft: '8px', color: '#ffa500', fontSize: '14px' }} title="Contains sensitive data">
+                    ⚠️
+                  </span>
+                )}
+              </div>
               <div className="ai-panel-context-time">{formatChatTime(item.timestamp)}</div>
+              {item.hasSecrets && (
+                <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
+                  {item.secretsRedacted 
+                    ? `${item.secretFindings?.length || 0} secret(s) hidden`
+                    : `${item.secretFindings?.length || 0} secret(s) visible`
+                  }
+                </div>
+              )}
             </div>
             <div className="ai-panel-context-actions">
+              {item.hasSecrets && (
+                <button
+                  className="ai-panel-link"
+                  onClick={() => toggleSecretRedaction(item.id)}
+                  style={{ marginRight: '8px' }}
+                >
+                  {item.secretsRedacted ? '🔒 Show' : '🔓 Hide'}
+                </button>
+              )}
               <button
                 className="ai-panel-link"
                 onClick={() => setExpandedContextId(isExpanded ? null : item.id)}
@@ -75,7 +105,7 @@ export function AIContextTab(props: {
                       {item.metadata?.output && (
                         <div className="ai-panel-context-block">
                           <div className="ai-panel-context-label">Output</div>
-                          <div className="ai-panel-context-content">{item.metadata.output}</div>
+                          <div className="ai-panel-context-content">{contentToDisplay}</div>
                         </div>
                       )}
                     </>
@@ -89,17 +119,17 @@ export function AIContextTab(props: {
                       )}
                       <div className="ai-panel-context-block">
                         <div className="ai-panel-context-label">Content</div>
-                        <div className="ai-panel-context-content">{item.content}</div>
+                        <div className="ai-panel-context-content">{contentToDisplay}</div>
                       </div>
                     </>
                   ) : (
-                    item.content
+                    contentToDisplay
                   )}
                 </div>
               </div>
             );
         });
-    }, [contextItems, expandedContextId, setExpandedContextId, removeContextItem]);
+    }, [contextItems, expandedContextId, setExpandedContextId, removeContextItem, toggleSecretRedaction]);
 
   return (
     <div className="ai-panel-section">

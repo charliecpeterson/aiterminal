@@ -34,16 +34,19 @@ const AIPanel = ({
 
   const {
     contextItems,
+    formattedContextItems,
     messages,
     addMessage,
     appendMessage,
     removeContextItem,
-    addContextItem,
+    // addContextItem, // Not used directly, we use addContextItemWithScan
+    addContextItemWithScan,
     clearContext,
     clearChat,
     addPendingApproval,
     pendingApprovals,
     removePendingApproval,
+    toggleSecretRedaction,
   } = useAIContext();
 
   const handleApprove = useCallback(async (id: string) => {
@@ -112,6 +115,7 @@ const AIPanel = ({
       settingsAi: settings?.ai,
       messages,
       contextItems,
+      formattedContextItems,
       terminalId: activeTerminalId || 0, // Default to terminal 0
       addMessage,
       appendMessage,
@@ -121,7 +125,7 @@ const AIPanel = ({
       abortController: controller,
       addPendingApproval,
     });
-  }, [prompt, settings?.ai, messages, contextItems, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval]);
+  }, [prompt, settings?.ai, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval]);
 
   const handleCancel = useCallback(() => {
     if (abortController) {
@@ -153,25 +157,21 @@ const AIPanel = ({
         workingDirectory: undefined,
       });
 
-      // Add to context
-      const contextItem = {
-        id: crypto.randomUUID(),
-        type: 'file' as const,
-        content: result.content,
-        timestamp: Date.now(),
-        metadata: {
+      // Add to context with secret scanning
+      await addContextItemWithScan(
+        result.content,
+        'file',
+        {
           path: filePath,
           source: result.source,
           sizeKb: Math.round(result.content.length / 1024),
-        },
-      };
-
-      addContextItem(contextItem);
+        }
+      );
 
       addMessage({
         id: crypto.randomUUID(),
         role: 'system',
-        content: `Captured file: ${filePath} (${contextItem.metadata.sizeKb}KB, ${result.source})`,
+        content: `Captured file: ${filePath} (${Math.round(result.content.length / 1024)}KB, ${result.source})`,
         timestamp: Date.now(),
       });
 
@@ -268,6 +268,7 @@ const AIPanel = ({
             setExpandedContextId={setExpandedContextId}
             removeContextItem={removeContextItem}
             clearContext={clearContext}
+            toggleSecretRedaction={toggleSecretRedaction}
             captureCount={captureCount}
             setCaptureCount={setCaptureCount}
             onCaptureLast={handleCaptureLast}
