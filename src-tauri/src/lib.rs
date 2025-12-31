@@ -3,6 +3,7 @@ mod chat;
 mod autocomplete;
 mod health_check;
 mod history;
+mod keychain;
 mod models;
 mod preview;
 mod pty;
@@ -15,6 +16,7 @@ mod tools;
 pub use models::AppState;
 use chat::{ai_chat, ai_chat_stream, test_ai_connection};
 use history::get_shell_history;
+use keychain::{save_api_key_to_keychain, get_api_key_from_keychain, delete_api_key_from_keychain, check_keychain_available};
 use preview::{open_preview_window, read_preview_file, stop_preview_watcher, get_preview_content};
 use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
 use quick_actions::{load_quick_actions, save_quick_actions};
@@ -101,6 +103,10 @@ pub fn run() {
             get_api_key,
             save_api_key,
             delete_api_key,
+            save_api_key_to_keychain,
+            get_api_key_from_keychain,
+            delete_api_key_from_keychain,
+            check_keychain_available,
             get_ssh_config_hosts,
             save_ssh_profiles,
             load_ssh_profiles,

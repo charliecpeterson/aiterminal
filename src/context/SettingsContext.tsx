@@ -14,6 +14,7 @@ export interface AiSettings {
     embedding_model?: string;
     url?: string;
     require_command_approval?: boolean; // New: Require approval before executing commands
+    api_key_in_keychain?: boolean; // Track if key is stored in keychain
 }
 
 export interface TerminalSettings {
@@ -79,7 +80,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const loadSettings = async () => {
         try {
             const loadedSettings = await invoke<AppSettings>('load_settings');
-            // API key is already loaded from keychain/cache by load_settings
+            
+            // Check if API key should be loaded from keychain
+            if (loadedSettings.ai?.api_key_in_keychain && !loadedSettings.ai?.api_key) {
+                try {
+                    const keychainKey = await invoke<string>('get_api_key_from_keychain');
+                    loadedSettings.ai.api_key = keychainKey;
+                    console.log('✅ API key loaded from keychain');
+                } catch (err) {
+                    console.warn('⚠️ Failed to load API key from keychain:', err);
+                    // Key might have been deleted from keychain - that's okay
+                }
+            }
+            
             console.log('✅ Settings loaded successfully:', { 
                 provider: loadedSettings.ai?.provider, 
                 model: loadedSettings.ai?.model,

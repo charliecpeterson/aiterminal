@@ -16,6 +16,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [aiTestError, setAiTestError] = useState<string | null>(null);
     const [aiModelOptions, setAiModelOptions] = useState<string[]>([]);
     const [aiEmbeddingOptions, setAiEmbeddingOptions] = useState<string[]>([]);
+    const [keychainStatus, setKeychainStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+    const [keychainMessage, setKeychainMessage] = useState<string | null>(null);
 
     // Load settings when modal opens
     useEffect(() => {
@@ -96,6 +98,46 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             setAiTestError(message);
         }
     }, [localSettings, handleChange]);
+
+    const handleSaveToKeychain = useCallback(async () => {
+        if (!localSettings?.ai?.api_key) {
+            setKeychainStatus('error');
+            setKeychainMessage('No API key to save');
+            return;
+        }
+
+        setKeychainStatus('saving');
+        setKeychainMessage(null);
+
+        try {
+            await invoke('save_api_key_to_keychain', { key: localSettings.ai.api_key });
+            
+            // Update local settings to reflect keychain storage
+            setLocalSettings(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    ai: {
+                        ...prev.ai,
+                        api_key_in_keychain: true
+                    }
+                };
+            });
+
+            setKeychainStatus('success');
+            setKeychainMessage('✓ Saved to macOS Keychain');
+
+            // Clear message after 3 seconds
+            setTimeout(() => {
+                setKeychainStatus('idle');
+                setKeychainMessage(null);
+            }, 3000);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setKeychainStatus('error');
+            setKeychainMessage(`Failed: ${message}`);
+        }
+    }, [localSettings]);
 
     // Early returns AFTER all hooks
     if (!isOpen) return null;
@@ -305,6 +347,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     {aiTestError && (
                                         <div className="ai-connection-error">{aiTestError}</div>
                                     )}
+                                </div>
+                                <div className="form-group">
+                                    <label>Secure Storage</label>
+                                    <div className="ai-connection-row">
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={handleSaveToKeychain}
+                                            disabled={!localSettings.ai.api_key || keychainStatus === 'saving'}
+                                        >
+                                            {keychainStatus === 'saving' ? 'Saving...' : 'Save to Keychain'}
+                                        </button>
+                                        <span className={`ai-connection-status ${keychainStatus}`}>
+                                            {keychainStatus === 'success'
+                                                ? keychainMessage || 'Saved'
+                                                : keychainStatus === 'error'
+                                                ? keychainMessage || 'Failed'
+                                                : 'Store API key securely'}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="form-group">
                                     <label>Model</label>
