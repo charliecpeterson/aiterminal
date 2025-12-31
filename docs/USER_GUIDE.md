@@ -394,6 +394,92 @@ Quickly jump to any previous command in your terminal history with a searchable,
 - Exit codes and timestamps come from OSC 133 sequences
 - Overlay appears centered and dismisses on click outside
 
+### 11. File Preview
+View and monitor files directly from the terminal with live rendering in a separate window. Perfect for viewing documentation, logs, HTML previews, or any text-based files.
+
+#### Features
+- **Command-Line Preview**: Use `aiterm_render <file>` to open any file in a dedicated preview window
+- **Multiple Formats**: Supports Markdown, HTML, and plain text files
+- **Remote File Support**: Works seamlessly over SSH - file content is transferred automatically
+- **Clean Rendering**:
+  - **Markdown**: Full GitHub-flavored markdown with syntax highlighting for code blocks
+  - **HTML**: Sandboxed iframe rendering with proper styling
+  - **Text**: Monospace display for logs, configs, and other plain text
+- **Auto-Detection**: File type detected automatically from extension
+- **Separate Window**: Preview opens in its own window, keeping your terminal clean
+
+#### Using File Preview
+```bash
+# Preview markdown files
+aiterm_render README.md
+aiterm_render docs/guide.md
+
+# Preview HTML files
+aiterm_render index.html
+aiterm_render report.html
+
+# Preview text/log files
+aiterm_render server.log
+aiterm_render config.txt
+```
+
+#### Remote Files (SSH)
+The preview feature works transparently across SSH connections:
+```bash
+ssh user@server
+cd /var/log
+aiterm_render nginx/access.log
+```
+
+The file content is automatically:
+1. Read on the remote machine (wherever you're currently SSH'd)
+2. Base64 encoded and transferred through the terminal
+3. Decoded and rendered in a local preview window
+
+No temporary files needed - everything happens through the terminal connection!
+
+#### Supported File Types
+- **Markdown**: `.md`, `.markdown`
+- **HTML**: `.html`, `.htm`
+- **Text**: Any other extension (`.txt`, `.log`, `.conf`, `.json`, etc.)
+
+#### Notes
+- Preview windows are independent - you can open multiple files simultaneously
+- File path can be relative or absolute
+- The `aiterm_render` command is available automatically with shell integration
+- Hot reload is not currently supported (close and re-open to see file changes)
+- For remote files, the file must be readable by your SSH user
+
+#### Example Workflows
+**Documentation Review**
+```bash
+# Clone a repo and preview the README
+git clone https://github.com/user/repo
+cd repo
+aiterm_render README.md
+```
+
+**Log Monitoring**
+```bash
+# Check application logs
+ssh prod-server
+aiterm_render /var/log/app/error.log
+```
+
+**HTML Preview**
+```bash
+# Build and preview static site
+npm run build
+aiterm_render dist/index.html
+```
+
+**Configuration Review**
+```bash
+# Review remote server config
+ssh admin@server
+aiterm_render /etc/nginx/nginx.conf
+```
+
 ## Keyboard Shortcuts
 
 | Action | Shortcut (macOS) | Shortcut (Windows/Linux) |
@@ -479,3 +565,11 @@ The AI system is built on:
 - **History incomplete?** Only commands with markers appear. Some bootstrap/login commands may not be captured.
 - **Can't copy output?** Ensure the command has output (look for "has output" indicator in the history item).
 - **Search not working?** Try exact phrases or command keywords rather than output content.
+
+### File Preview
+- **`aiterm_render` command not found?** Shell integration must be active. Open a fresh terminal tab or restart your terminal session.
+- **Preview window not opening?** Check console logs (View → Developer → Developer Tools) for errors. Ensure the file exists and is readable.
+- **File content not displaying?** Verify the file has content and isn't binary. Only text-based files are supported (markdown, HTML, text).
+- **Remote file preview fails?** Ensure `base64` or `openssl` is available on the remote system for encoding. Check that the file path is correct and readable.
+- **Garbled content?** File may be binary or use incompatible encoding. Preview is designed for UTF-8 text files.
+- **Multiple preview windows?** Each `aiterm_render` call opens a new window. Close unused windows manually.

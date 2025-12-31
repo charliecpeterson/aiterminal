@@ -12,6 +12,7 @@ import { SSHProfilesProvider, useSSHProfiles } from "./context/SSHProfilesContex
 import { SSHProfile } from "./types/ssh";
 import { QuickAction } from "./components/QuickActionsWindow";
 import { connectSSHProfileNewTab, getProfileDisplayName } from "./utils/sshConnect";
+import { useTabManagement } from "./hooks/useTabManagement";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -20,25 +21,7 @@ import "./App.css";
 import "./components/AIPanel.css";
 import "./components/SSHSessionWindow.css";
 
-interface Pane {
-  id: number; // PTY ID
-  isRemote?: boolean;
-  remoteHost?: string;
-}
-
-interface Tab {
-  id: number;
-  title: string;
-  customName?: string;
-  panes: Pane[]; // Array of terminal panes in this tab
-  focusedPaneId: number | null; // Which pane has focus
-  splitLayout: 'single' | 'vertical' | 'horizontal'; // How panes are arranged
-  splitRatio: number; // Split ratio (0-100, percentage for first pane)
-}
-
 function AppContent() {
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const [mainActiveTabId, setMainActiveTabId] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -50,6 +33,23 @@ function AppContent() {
   
   // Map PTY ID to Profile ID for connection tracking
   const [ptyToProfileMap, setPtyToProfileMap] = useState<Map<number, string>>(new Map());
+  
+  // Use tab management hook
+  const {
+    tabs,
+    activeTabId,
+    setActiveTabId,
+    createTab,
+    closeTab,
+    renameTab,
+    reorderTabs,
+    splitPane,
+    closePane,
+    setFocusedPane,
+    updateSplitRatio,
+    updateTabRemoteState,
+    addSSHTab,
+  } = useTabManagement(isInitialized, ptyToProfileMap, updateConnection);
   
   // Track running commands per tab: Map<ptyId, { startTime: number, elapsed: number }>
   const [runningCommands, setRunningCommands] = useState<Map<number, { startTime: number; elapsed: number }>>(new Map());
@@ -74,41 +74,13 @@ function AppContent() {
     isPreviewWindow = false;
   }
 
-  const createTab = async () => {
-    try {
-      const id = await invoke<number>("spawn_pty");
-      const newTab: Tab = {
-        id,
-        title: `Tab ${tabs.length + 1}`,
-        panes: [{ id }],
-        focusedPaneId: id,
-        splitLayout: 'single',
-        splitRatio: 50
-      };
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(id);
-    } catch (error) {
-      console.error("Failed to spawn PTY:", error);
-    }
-  };
-
   const connectSSHProfile = async (profile: SSHProfile) => {
     try {
       const ptyId = await connectSSHProfileNewTab(profile);
       const displayName = getProfileDisplayName(profile);
       
-      const newTab: Tab = {
-        id: ptyId,
-        title: displayName,
-        customName: profile.name,
-        panes: [{ id: ptyId, isRemote: true, remoteHost: profile.sshConfigHost || profile.manualConfig?.hostname }],
-        focusedPaneId: ptyId,
-        splitLayout: 'single',
-        splitRatio: 50
-      };
-      
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(ptyId);
+      // Use hook to add SSH tab
+      addSSHTab(ptyId, displayName, profile.id);
       
       // Link PTY to Profile for health tracking
       setPtyToProfileMap(prev => new Map(prev).set(ptyId, profile.id));
@@ -117,7 +89,7 @@ function AppContent() {
       updateConnection(String(ptyId), {
         profileId: profile.id,
         tabId: String(ptyId),
-        tabName: newTab.title,
+        tabName: displayName,
         status: 'connecting',
         connectedAt: new Date(),
         lastActivity: new Date(),
@@ -127,7 +99,7 @@ function AppContent() {
       emitTo("ssh-panel", "connection-status-update", {
         ptyId: String(ptyId),
         profileId: profile.id,
-        tabName: newTab.title,
+        tabName: displayName,
         status: 'connecting',
         tabId: String(ptyId),
       }).catch(() => {});
@@ -156,16 +128,8 @@ function AppContent() {
     }
   }, [tabs]);
 
-  const renameTab = (id: number, newName: string) => {
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === id ? { ...tab, customName: newName || undefined } : tab
-      )
-    );
-  };
-
   // Handle command running state for tabs
-  const handleCommandRunning = useCallback((ptyId: number, isRunning: boolean, startTime?: number, exitCode?: number) => {
+  const handleCommandRunning = useCallback((ptyId: number, isRunning: boolean, startTime?: number) => {
     if (isRunning && startTime) {
       setRunningCommands(prev => {
         const newMap = new Map(prev);
@@ -217,174 +181,9 @@ function AppContent() {
     return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
   };
 
-  const updateTabRemoteState = (tabId: number, paneId: number, isRemote: boolean, remoteHost?: string) => {
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === tabId ? {
-          ...tab,
-          panes: tab.panes.map(pane =>
-            pane.id === paneId ? { ...pane, isRemote, remoteHost } : pane
-          )
-        } : tab
-      )
-    );
-  };
-
-  const splitPane = async (tabId: number, direction: 'vertical' | 'horizontal') => {
-    try {
-      const newPtyId = await invoke<number>("spawn_pty");
-      setTabs((prev) =>
-        prev.map((tab) => {
-          if (tab.id !== tabId) return tab;
-          return {
-            ...tab,
-            panes: [...tab.panes, { id: newPtyId }],
-            focusedPaneId: newPtyId,
-            splitLayout: direction,
-            splitRatio: 50
-          };
-        })
-      );
-    } catch (error) {
-      console.error("Failed to spawn PTY for split:", error);
-    }
-  };
-
-  const closePane = (tabId: number, paneId: number) => {
-    const tab = tabs.find(t => t.id === tabId);
-    if (!tab) return;
-
-    // If only one pane, close the whole tab
-    if (tab.panes.length === 1) {
-      closeTab(tabId);
-      return;
-    }
-
-    // Update connection status for this pane
-    const profileId = ptyToProfileMap.get(paneId);
-    if (profileId) {
-      updateConnection(String(paneId), {
-        profileId,
-        tabId: String(paneId),
-        status: 'disconnected',
-      });
-      
-      // Broadcast to SSH window
-      emitTo("ssh-panel", "connection-status-update", {
-        ptyId: String(paneId),
-        profileId,
-        status: 'disconnected',
-        tabId: String(paneId),
-      }).catch(() => {});
-    }
-
-    // Close PTY
-    invoke("close_pty", { id: paneId }).catch((error) => {
-      console.error("Failed to close PTY:", error);
-    });
-
-    setTabs((prev) =>
-      prev.map((t) => {
-        if (t.id !== tabId) return t;
-        const newPanes = t.panes.filter(p => p.id !== paneId);
-        const newFocusedId = t.focusedPaneId === paneId
-          ? newPanes[newPanes.length - 1]?.id
-          : t.focusedPaneId;
-        
-        return {
-          ...t,
-          panes: newPanes,
-          focusedPaneId: newFocusedId,
-          splitLayout: newPanes.length === 1 ? 'single' as const : t.splitLayout
-        };
-      })
-    );
-  };
-
-  const setFocusedPane = (tabId: number, paneId: number) => {
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === tabId ? { ...tab, focusedPaneId: paneId } : tab
-      )
-    );
-  };
-
-  const updateSplitRatio = (tabId: number, ratio: number) => {
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === tabId ? { ...tab, splitRatio: Math.max(10, Math.min(90, ratio)) } : tab
-      )
-    );
-  };
-
-  const reorderTabs = (fromIndex: number, toIndex: number) => {
-    setTabs((prev) => {
-      const newTabs = [...prev];
-      const [movedTab] = newTabs.splice(fromIndex, 1);
-      newTabs.splice(toIndex, 0, movedTab);
-      return newTabs;
-    });
-  };
-
-  const closeTab = (tabId: number) => {
-    const tab = tabs.find(t => t.id === tabId);
-    if (!tab) return;
-
-    // Update connection status to disconnected for all panes
-    tab.panes.forEach(pane => {
-      const profileId = ptyToProfileMap.get(pane.id);
-      if (profileId) {
-        updateConnection(String(pane.id), {
-          profileId,
-          tabId: String(pane.id),
-          status: 'disconnected',
-        });
-        
-        // Broadcast to SSH window
-        emitTo("ssh-panel", "connection-status-update", {
-          ptyId: String(pane.id),
-          profileId,
-          status: 'disconnected',
-          tabId: String(pane.id),
-        }).catch(() => {});
-      }
-    });
-
-    // Close all PTYs in all panes
-    tab.panes.forEach(pane => {
-      invoke("close_pty", { id: pane.id }).catch((error) => {
-        console.error("Failed to close PTY:", error);
-      });
-    });
-
-    setTabs((prev) => {
-      const newTabs = prev.filter((t) => t.id !== tabId);
-
-      setActiveTabId((prevActive) => {
-        if (newTabs.length === 0) {
-          return null;
-        }
-        // If we're closing the active tab, switch to the last tab
-        if (prevActive === tabId) {
-          return newTabs[newTabs.length - 1].id;
-        }
-        return prevActive;
-      });
-
-      if (isInitialized && newTabs.length === 0) {
-        const currentWindow = getCurrentWindow();
-        currentWindow.close().catch((err) => {
-          console.error("Failed to close window", err);
-        });
-      }
-
-      return newTabs;
-    });
-  };
-
   useEffect(() => {
     createTab().then(() => setIsInitialized(true));
-  }, []);
+  }, [createTab]);
 
   // Monitor connection health for SSH sessions
   useEffect(() => {
