@@ -57,14 +57,21 @@ export function attachHostLabelOsc(
           setHostLabel('Local');
         }
       } else if (data.startsWith('PreviewFile=')) {
-        // Handle preview file command
-        const filePath = data.substring('PreviewFile='.length);
-        if (filePath) {
+        // Handle preview file command - format: name=filename;content=base64data
+        const params = data.substring('PreviewFile='.length);
+        const nameMatch = params.match(/name=([^;]+)/);
+        const contentMatch = params.match(/content=(.+)/);
+        
+        if (nameMatch && contentMatch) {
+          const filename = nameMatch[1];
+          const content = contentMatch[1];
           import('@tauri-apps/api/core').then(({ invoke }) => {
-            invoke('open_preview_window', { filePath }).catch((err: unknown) => {
+            invoke('open_preview_window', { filename, content }).catch((err: unknown) => {
               console.error('[Preview] Failed to open window:', err);
             });
           });
+        } else {
+          console.error('[Preview] Invalid preview format');
         }
       }
     } catch (e) {

@@ -20,40 +20,29 @@ pub fn init_preview_watchers(app: &AppHandle) {
 #[tauri::command]
 pub async fn open_preview_window(
     app: AppHandle,
-    file_path: String,
+    filename: String,
+    content: String,
 ) -> Result<(), String> {
     let window_label = format!("preview-{}", uuid::Uuid::new_v4());
     
-    // Verify file exists and get absolute path
-    let path = PathBuf::from(&file_path);
-    let abs_path = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir()
-            .map_err(|e| e.to_string())?
-            .join(&path)
-    };
-    
-    if !abs_path.exists() {
-        return Err(format!("File not found: {}", abs_path.display()));
-    }
-    
-    let abs_path_str = abs_path.to_string_lossy().to_string();
+    // Content is already base64 encoded, pass it to the frontend
+    let encoded_filename = urlencoding::encode(&filename);
+    let url = format!("index.html?preview={}&content={}", encoded_filename, content);
     
     // Create window
     WebviewWindowBuilder::new(
         &app,
         &window_label,
-        WebviewUrl::App(format!("index.html?preview={}", urlencoding::encode(&abs_path_str)).into()),
+        WebviewUrl::App(url.into()),
     )
-    .title(format!("Preview: {}", abs_path.file_name().unwrap_or_default().to_string_lossy()))
+    .title(format!("Preview: {}", filename))
     .inner_size(900.0, 700.0)
     .resizable(true)
     .build()
     .map_err(|e| e.to_string())?;
     
-    // Start file watcher
-    start_file_watcher(app.clone(), window_label.clone(), abs_path_str)?;
+    // File watcher not needed - content is passed directly
+    // Future enhancement: detect if file is local and set up watcher for hot reload
     
     Ok(())
 }

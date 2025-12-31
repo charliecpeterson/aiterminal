@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { AIMarkdown } from './AIMarkdown';
 import './PreviewWindow.css';
 
@@ -12,43 +10,26 @@ const PreviewWindow: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Get file path from URL query parameter
+    // Get filename and content from URL query parameters
     const params = new URLSearchParams(window.location.search);
-    const preview = params.get('preview');
+    const filename = params.get('preview');
+    const encodedContent = params.get('content');
     
-    if (!preview) {
+    if (!filename || !encodedContent) {
       setError('No file specified');
       setLoading(false);
       return;
     }
 
-    setFilePath(preview);
-    loadFile(preview);
-
-    // Listen for file changes
-    const currentWindow = getCurrentWebviewWindow();
-    const unlisten = currentWindow.listen<{ path: string }>('preview-file-changed', (event) => {
-      console.log('[Preview] File changed, reloading:', event.payload.path);
-      loadFile(event.payload.path);
-    });
-
-    return () => {
-      unlisten.then(fn => fn());
-      // Stop watcher when window closes
-      invoke('stop_preview_watcher', { windowLabel: currentWindow.label });
-    };
-  }, []);
-
-  const loadFile = async (path: string) => {
+    setFilePath(filename);
+    
+    // Decode base64 content
     try {
-      setLoading(true);
-      setError(null);
-      
-      const fileContent = await invoke<string>('read_preview_file', { filePath: path });
-      setContent(fileContent);
+      const decoded = atob(encodedContent);
+      setContent(decoded);
       
       // Detect file type from extension
-      const ext = path.split('.').pop()?.toLowerCase();
+      const ext = filename.split('.').pop()?.toLowerCase();
       if (ext === 'md' || ext === 'markdown') {
         setFileType('markdown');
       } else if (ext === 'html' || ext === 'htm') {
@@ -59,11 +40,13 @@ const PreviewWindow: React.FC = () => {
       
       setLoading(false);
     } catch (err) {
-      console.error('[Preview] Failed to load file:', err);
-      setError(err as string);
+      setError('Failed to decode file content');
       setLoading(false);
     }
-  };
+
+    // Note: Hot reload not supported for remote files
+    // Future enhancement: detect local files and set up watcher
+  }, []);
 
   const renderContent = () => {
     if (loading) {

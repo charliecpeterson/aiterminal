@@ -254,8 +254,22 @@ aiterm_render() {
         abs_path="$(pwd)/$file"
     fi
     
-    # Emit OSC sequence to open preview window
-    printf "\033]1337;PreviewFile=%s\007" "$abs_path"
+    # Read file content and base64 encode it
+    local content
+    if command -v base64 >/dev/null 2>&1; then
+        content="$(cat "$file" | base64 | tr -d '\n')"
+    elif command -v openssl >/dev/null 2>&1; then
+        content="$(cat "$file" | openssl base64 | tr -d '\n')"
+    else
+        echo "aiterm_render: base64 command not found" >&2
+        return 1
+    fi
+    
+    # Get just the filename for display
+    local filename="${file##*/}"
+    
+    # Emit OSC sequence with filename and base64 content
+    printf "\033]1337;PreviewFile=name=%s;content=%s\007" "$filename" "$content"
     
     return 0
 }
