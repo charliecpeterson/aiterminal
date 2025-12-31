@@ -3,6 +3,7 @@ import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import '../terminal/ui/fold.css';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
@@ -233,6 +234,8 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose }: TerminalProps) 
         container: terminalRef.current,
         appearance: settings.appearance,
         maxMarkers: settings?.terminal?.max_markers ?? 200,
+        foldThreshold: settings?.fold?.threshold ?? 50,
+        foldEnabled: settings?.fold?.enabled ?? true,
         visibleRef,
         selectionPointRef,
         pendingFileCaptureRef,

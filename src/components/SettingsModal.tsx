@@ -11,7 +11,7 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { settings, updateSettings } = useSettings();
     const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
-    const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai' | 'autocomplete'>('appearance');
+    const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai' | 'autocomplete' | 'fold'>('appearance');
     const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [aiTestError, setAiTestError] = useState<string | null>(null);
     const [aiModelOptions, setAiModelOptions] = useState<string[]>([]);
@@ -53,7 +53,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         }
     }, [localSettings, updateSettings, onClose]);
 
-    const handleChange = useCallback((section: 'appearance' | 'terminal' | 'ai' | 'autocomplete', key: string, value: string | number | boolean) => {
+    const handleChange = useCallback((section: 'appearance' | 'terminal' | 'ai' | 'autocomplete' | 'fold', key: string, value: string | number | boolean) => {
         setLocalSettings(prev => {
             if (!prev) return null;
             return {
@@ -168,6 +168,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                             onClick={() => setActiveTab('autocomplete')}
                         >
                             Autocomplete
+                        </div>
+                        <div 
+                            className={`settings-tab ${activeTab === 'fold' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('fold')}
+                        >
+                            Output Folding
                         </div>
                     </div>
 
@@ -462,6 +468,84 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                 <div className="form-hint" style={{ marginTop: '20px', padding: '12px', background: 'rgba(91, 141, 232, 0.1)', borderRadius: '6px' }}>
                                     💡 <strong>Tip:</strong> Try "history" first, then experiment with "llm" to compare. AI requires local Qwen3-0.6B model.
                                 </div>
+                            </>
+                        )}
+
+                        {activeTab === 'fold' && (
+                            <>
+                                <div className="form-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={localSettings.fold?.enabled ?? true}
+                                            onChange={(e) => handleChange('fold', 'enabled', e.target.checked as any)}
+                                        />
+                                        <span>Enable output folding</span>
+                                    </label>
+                                    <div className="form-hint">
+                                        Show a notification bar when commands produce large outputs, with option to view in a separate window.
+                                    </div>
+                                </div>
+
+                                {localSettings.fold?.enabled && (
+                                    <>
+                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                            <label>Notification threshold (lines)</label>
+                                            <input
+                                                type="number"
+                                                min="10"
+                                                max="500"
+                                                value={localSettings.fold?.threshold ?? 30}
+                                                onChange={(e) => handleChange('fold', 'threshold', parseInt(e.target.value))}
+                                            />
+                                            <div className="form-hint">
+                                                Show notification bar when output exceeds this many lines. Default: 30
+                                            </div>
+                                        </div>
+
+                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                            <label>Preview lines</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="10"
+                                                value={localSettings.fold?.show_preview_lines ?? 3}
+                                                onChange={(e) => handleChange('fold', 'show_preview_lines', parseInt(e.target.value))}
+                                            />
+                                            <div className="form-hint">
+                                                Number of output lines to show in notification preview. Default: 3
+                                            </div>
+                                        </div>
+
+                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                            <label>Large output threshold (lines)</label>
+                                            <input
+                                                type="number"
+                                                min="100"
+                                                max="5000"
+                                                value={localSettings.fold?.large_threshold ?? 500}
+                                                onChange={(e) => handleChange('fold', 'large_threshold', parseInt(e.target.value))}
+                                            />
+                                            <div className="form-hint">
+                                                Outputs larger than this are considered "very large". Default: 500
+                                            </div>
+                                        </div>
+
+                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                            <label className="checkbox-label">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={localSettings.fold?.auto_open_window ?? false}
+                                                    onChange={(e) => handleChange('fold', 'auto_open_window', e.target.checked as any)}
+                                                />
+                                                <span>Auto-open window for large outputs</span>
+                                            </label>
+                                            <div className="form-hint">
+                                                Automatically open viewer window when output exceeds large threshold.
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </>
                         )}
                     </div>

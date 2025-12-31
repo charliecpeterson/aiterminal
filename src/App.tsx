@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import Terminal from "./components/Terminal";
 import AIPanel from "./components/AIPanel";
 import SSHSessionWindow from "./components/SSHSessionWindow";
+import OutputViewer from "./components/OutputViewer";
 import SettingsModal from "./components/SettingsModal";
 import { SettingsProvider } from "./context/SettingsContext";
 import { AIProvider } from "./context/AIContext";
@@ -49,12 +50,15 @@ function AppContent() {
   
   let isAiWindow = false;
   let isSSHWindow = false;
+  let isOutputViewer = false;
   try {
     isAiWindow = window.location.hash.startsWith("#/ai-panel");
     isSSHWindow = window.location.hash.startsWith("#/ssh-panel");
+    isOutputViewer = window.location.hash.startsWith("#/output-viewer");
   } catch {
     isAiWindow = false;
     isSSHWindow = false;
+    isOutputViewer = false;
   }
 
   const createTab = async () => {
@@ -484,7 +488,7 @@ function AppContent() {
   }, [isAiWindow]);
 
   useEffect(() => {
-    if (isAiWindow || isSSHWindow) return; // Only run in main window
+    if (isAiWindow || isSSHWindow || isOutputViewer) return; // Only run in main window
 
     // Listen for SSH connection events from SSH window
     const unlistenConnect = listen<{ profile: SSHProfile }>("ssh:connect", async (event) => {
@@ -568,6 +572,10 @@ function AppContent() {
         <SSHSessionWindow />
       </div>
     );
+  }
+
+  if (isOutputViewer) {
+    return <OutputViewer />;
   }
 
   const openAIPanelWindow = async () => {

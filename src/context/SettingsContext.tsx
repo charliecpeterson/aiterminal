@@ -20,6 +20,14 @@ export interface TerminalSettings {
     max_markers: number;
 }
 
+export interface FoldSettings {
+    enabled: boolean; // Enable output folding
+    threshold: number; // Lines before showing notification (default: 50)
+    show_preview_lines: number; // Lines to show in preview (default: 3)
+    auto_open_window: boolean; // Automatically open window for very large outputs
+    large_threshold: number; // Lines to suggest window (default: 500)
+}
+
 export interface AutocompleteSettings {
     enable_inline: boolean; // Fish-style gray text suggestions
     inline_source: 'history' | 'llm' | 'hybrid'; // Source for inline completions
@@ -41,6 +49,7 @@ export interface AppSettings {
     appearance: AppearanceSettings;
     ai: AiSettings;
     terminal: TerminalSettings;
+    fold?: FoldSettings; // Optional for backward compatibility
     autocomplete?: AutocompleteSettings; // Optional for backward compatibility
     streaming?: StreamingSettings; // Optional for backward compatibility
 }
@@ -84,6 +93,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
                 ai: { provider: 'openai', model: 'gpt-4', api_key: '', url: '' },
                 terminal: { max_markers: 200 },
+                fold: {
+                    enabled: true,
+                    threshold: 30,
+                    show_preview_lines: 3,
+                    auto_open_window: false,
+                    large_threshold: 500
+                },
                 autocomplete: { 
                     enable_inline: true, 
                     inline_source: 'history' as const,

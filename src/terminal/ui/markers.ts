@@ -1,6 +1,7 @@
 import type { IDecoration, IDisposable, IMarker, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { ContextItem } from '../../context/AIContext';
 import type { PendingFileCaptureRef } from '../core/fileCapture';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 export interface CopyMenuState {
   x: number;
@@ -19,6 +20,8 @@ export type AddContextItem = (item: ContextItem) => void;
 export interface MarkerManagerParams {
   term: XTermTerminal;
   maxMarkers: number;
+  foldThreshold: number;
+  foldEnabled: boolean;
   setCopyMenu: (value: CopyMenuState | null) => void;
   getRangeText: (range: [number, number]) => string;
   addContextItem: AddContextItem;
@@ -29,6 +32,9 @@ interface MarkerMeta {
   outputStartMarker?: IMarker;
   isBootstrap?: boolean;
   exitCode?: number;
+  streamingOutput?: boolean;
+  foldDecoration?: IDecoration;
+  foldExpanded?: boolean;
 }
 
 function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
@@ -69,11 +75,14 @@ function computeRanges(
 export interface MarkerManager {
   captureLast: (count: number) => void;
   cleanup: () => void;
+  attachTerminalClickHandler: () => () => void;
 }
 
 export function createMarkerManager({
   term,
   maxMarkers,
+  foldThreshold,
+  foldEnabled,
   setCopyMenu,
   getRangeText,
   addContextItem,
@@ -83,6 +92,306 @@ export function createMarkerManager({
   const markers: IDecoration[] = [];
   const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
   let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
+  let currentHighlight: IDecoration | null = null;
+
+  let currentOutputButton: HTMLDivElement | null = null;
+
+  // Find which command block contains a given line
+  const findMarkerAtLine = (lineNumber: number): IDecoration | null => {
+    for (const marker of markers) {
+      const startLine = marker.marker.line;
+      const endLine = computeEndLine(term, markers, marker);
+      if (lineNumber >= startLine && lineNumber <= endLine) {
+        return marker;
+      }
+    }
+    return null;
+  };
+
+  // Highlight a command block
+  const highlightCommandBlock = (marker: IDecoration) => {
+    // Remove previous highlight
+    if (currentHighlight) {
+      currentHighlight.dispose();
+      currentHighlight = null;
+    }
+
+    const startLine = marker.marker.line;
+    const endLine = computeEndLine(term, markers, marker);
+    const height = endLine - startLine + 1;
+
+    // Create highlight decoration
+    const highlight = term.registerDecoration({
+      marker: marker.marker,
+      x: 0,
+      width: term.cols,
+      height: height,
+      layer: 'bottom',
+    });
+
+    if (!highlight) return;
+
+    highlight.onRender((element: HTMLElement) => {
+      element.style.backgroundColor = 'rgba(91, 141, 232, 0.1)';
+      element.style.border = '1px solid rgba(91, 141, 232, 0.3)';
+      element.style.borderRadius = '4px';
+      element.style.pointerEvents = 'none';
+    });
+
+    currentHighlight = highlight;
+  };
+
+  // Terminal click handler
+  const attachTerminalClickHandler = () => {
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // Only handle clicks on terminal viewport
+      if (!target.closest('.xterm-viewport') && !target.closest('.xterm-screen')) {
+        return;
+      }
+
+      // Get click position relative to terminal
+      const terminalElement = term.element;
+      if (!terminalElement) return;
+
+      const rect = terminalElement.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      
+      // Estimate line number from Y position
+      const cellHeight = term.element!.querySelector('.xterm-rows')?.firstElementChild?.getBoundingClientRect().height || 17;
+      const clickedLine = Math.floor(y / cellHeight) + term.buffer.active.viewportY;
+      
+      // Find marker at this line
+      const marker = findMarkerAtLine(clickedLine);
+      if (!marker) {
+        // Clicked outside any command block - remove highlight and button
+        if (currentHighlight) {
+          currentHighlight.dispose();
+          currentHighlight = null;
+        }
+        if (currentOutputButton) {
+          currentOutputButton.remove();
+          currentOutputButton = null;
+        }
+        return;
+      }
+
+      // Highlight the command block
+      highlightCommandBlock(marker);
+
+      // Show output button if there's output
+      const meta = markerMeta.get(marker);
+      const startLine = marker.marker.line;
+      const endLine = computeEndLine(term, markers, marker);
+      const outputStartLine = meta?.outputStartMarker?.line ?? null;
+      const hasOutput = outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
+      
+      if (hasOutput) {
+        const safeOutputStart = Math.max(outputStartLine, startLine + 1);
+        const outputLineCount = Math.max(safeOutputStart, endLine) - safeOutputStart + 1;
+        showOutputButton(marker, safeOutputStart, Math.max(safeOutputStart, endLine), outputLineCount);
+      }
+    };
+
+    term.element?.addEventListener('click', handleClick);
+
+    return () => {
+      term.element?.removeEventListener('click', handleClick);
+      if (currentHighlight) {
+        currentHighlight.dispose();
+        currentHighlight = null;
+      }
+      if (currentOutputButton) {
+        currentOutputButton.remove();
+        currentOutputButton = null;
+      }
+    };
+  };
+
+  const showOutputButton = (marker: IDecoration, startLine: number, endLine: number, lineCount: number) => {
+    // Remove existing button
+    if (currentOutputButton) {
+      currentOutputButton.remove();
+      currentOutputButton = null;
+    }
+
+    // Create floating button
+    const button = document.createElement('div');
+    button.className = 'output-actions-button';
+    button.innerHTML = `
+      <div class="output-actions-info">
+        <span class="output-lines-count">${lineCount} lines</span>
+      </div>
+      <button class="output-view-window">View in Window</button>
+    `;
+
+    // Position in top-right corner of terminal
+    button.style.position = 'fixed';
+    button.style.top = '80px';
+    button.style.right = '20px';
+    button.style.zIndex = '1000';
+
+    // Add to body
+    document.body.appendChild(button);
+    currentOutputButton = button;
+
+    // Handle button click
+    const viewBtn = button.querySelector('.output-view-window');
+    viewBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openOutputWindow(startLine, endLine, lineCount);
+      button.remove();
+      currentOutputButton = null;
+    });
+
+    // Remove on outside click
+    const removeButton = (e: MouseEvent) => {
+      if (!button.contains(e.target as Node)) {
+        button.remove();
+        currentOutputButton = null;
+        document.removeEventListener('mousedown', removeButton);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', removeButton), 100);
+  };
+
+  const openOutputWindow = async (startLine: number, endLine: number, lineCount: number) => {
+    // Get the output content
+    const content = getRangeText([startLine, endLine]);
+    
+    console.log('[Fold] Opening output window with', lineCount, 'lines');
+    console.log('[Fold] Content preview:', content.substring(0, 500));
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(content).then(() => {
+      console.log('[Fold] Output copied to clipboard!');
+    }).catch(err => {
+      console.error('[Fold] Failed to copy:', err);
+    });
+    
+    // Open a new window with the content passed via URL
+    // Use base64 encoding to avoid URL length limits and special characters
+    try {
+      const contentBase64 = btoa(encodeURIComponent(content));
+      const label = `output-viewer-${Date.now()}`;
+      const outputWindow = new WebviewWindow(label, {
+        url: `#/output-viewer?lines=${lineCount}&content=${contentBase64}`,
+        title: `Output (${lineCount} lines)`,
+        width: 800,
+        height: 600,
+        center: true,
+        resizable: true,
+        decorations: true,
+      });
+
+      outputWindow.once('tauri://created', () => {
+        console.log('[Fold] Output window created');
+      });
+
+      outputWindow.once('tauri://error', (event) => {
+        console.error('[Fold] Failed to create output window:', event);
+      });
+    } catch (err) {
+      console.error('[Fold] Error opening window:', err);
+    }
+  };
+
+  const createFoldDecoration = (
+    marker: IDecoration,
+    startLine: number,
+    endLine: number,
+    lineCount: number
+  ): IDecoration | null => {
+    const meta = markerMeta.get(marker);
+    if (!meta || meta.foldDecoration) return null;
+
+    console.log('[Fold] Creating decoration at buffer lines:', { startLine, endLine, lineCount, baseY: term.buffer.active.baseY, cursorY: term.buffer.active.cursorY });
+
+    // Place notification after first 5 lines of output
+    // This shows a preview of the output before the notification
+    const previewLines = 5;
+    const currentCursorLine = term.buffer.active.cursorY + term.buffer.active.baseY;
+    const notificationTargetLine = startLine + previewLines;
+    const offset = notificationTargetLine - currentCursorLine;
+    
+    console.log('[Fold] Marker placement:', { 
+      startLine, 
+      currentCursorLine, 
+      notificationTargetLine, 
+      offset,
+      previewLines 
+    });
+    
+    const notificationMarker = term.registerMarker(offset);
+    if (!notificationMarker) {
+      console.log('[Fold] Failed to create notification marker');
+      return null;
+    }
+
+    const decoration = term.registerDecoration({
+      marker: notificationMarker,
+      x: 0,
+      width: term.cols,
+      height: 1,
+      layer: 'top',
+    });
+
+    if (!decoration) {
+      console.log('[Fold] Failed to create decoration');
+      notificationMarker.dispose();
+      return null;
+    }
+    
+    console.log('[Fold] Decoration created successfully', { 
+      notificationMarkerLine: notificationMarker.line,
+      commandMarkerLine: marker.marker.line,
+      termCols: term.cols,
+      height: 1,
+      decorationElement: decoration.element 
+    });
+
+    decoration.onRender((element: HTMLElement) => {
+      element.className = 'fold-overlay';
+      element.style.height = '36px';
+      element.style.minHeight = '36px';
+      
+      // Get preview lines
+      const previewLines = getRangeText([startLine, Math.min(startLine + 2, endLine)])
+        .split('\n')
+        .slice(0, 3)
+        .join(' ')
+        .substring(0, 60);
+
+      element.innerHTML = `
+        <div class="fold-summary">
+          <span class="fold-icon">💡</span>
+          <span class="fold-info">
+            Large output: <span class="fold-count">${lineCount}</span> lines
+          </span>
+          ${previewLines ? `<span class="fold-preview">${previewLines}...</span>` : ''}
+          <button class="fold-view-window">View in Window</button>
+        </div>
+      `;
+
+      // Add click handler for "View in Window" button
+      const viewButton = element.querySelector('.fold-view-window');
+      viewButton?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openOutputWindow(startLine, endLine, lineCount);
+      });
+    });
+
+    decoration.onDispose(() => {
+      notificationMarker.dispose();
+    });
+
+    meta.foldDecoration = decoration;
+    meta.foldExpanded = false;
+    markerMeta.set(marker, meta);
+
+    return decoration;
+  };
 
   const removeMarker = (marker: IDecoration) => {
     const index = markers.indexOf(marker);
@@ -96,7 +405,7 @@ export function createMarkerManager({
   const setupMarkerElement = (marker: IDecoration, element: HTMLElement, exitCode?: number) => {
     element.classList.add('terminal-marker');
     element.style.cursor = 'pointer';
-    element.title = 'Click to copy';
+    element.title = 'Click for options';
 
     if (exitCode !== undefined) {
       if (exitCode === 0) element.classList.add('success');
@@ -122,8 +431,7 @@ export function createMarkerManager({
       const commandText = getRangeText(commandRange);
       const outputText = outputRange ? getRangeText(outputRange) : undefined;
       
-      // Get exitCode from marker metadata
-      const meta = markerMeta.get(marker);
+      // Get exitCode from marker metadata (reuse meta from above)
       const storedExitCode = meta?.exitCode;
 
       const rect = element.getBoundingClientRect();
@@ -160,8 +468,13 @@ export function createMarkerManager({
           marker.onDispose(() => removeMarker(marker));
           currentMarker = marker;
           markers.push(marker);
-          // Only mark as bootstrap if we haven't seen any commands yet AND it's on the first lines
-          markerMeta.set(marker, { isBootstrap: !hasSeenFirstCommand && marker.marker.line <= 1 });
+          // Only mark as bootstrap if we haven't seen any commands yet AND it's in the first few lines
+          const isBootstrap = !hasSeenFirstCommand && marker.marker.line < 10;
+          markerMeta.set(marker, { isBootstrap });
+          
+          if (isBootstrap) {
+            console.log('[Fold] Marking as bootstrap marker at line', marker.marker.line);
+          }
 
           if (markers.length > maxMarkers) {
             const oldest = markers[0];
@@ -184,7 +497,12 @@ export function createMarkerManager({
             marker.onDispose(() => removeMarker(marker));
             currentMarker = marker;
             markers.push(marker);
-            markerMeta.set(marker, { isBootstrap: !hasSeenFirstCommand && marker.marker.line <= 1 });
+            const isBootstrap = !hasSeenFirstCommand && marker.marker.line < 10;
+            markerMeta.set(marker, { isBootstrap });
+            
+            if (isBootstrap) {
+              console.log('[Fold] Marking as bootstrap marker at line', marker.marker.line);
+            }
 
             if (markers.length > maxMarkers) {
               const oldest = markers[0];
@@ -198,6 +516,7 @@ export function createMarkerManager({
           const meta = markerMeta.get(currentMarker) || {};
           if (!meta.outputStartMarker) {
             meta.outputStartMarker = term.registerMarker(0);
+            meta.streamingOutput = true; // Mark as streaming
             markerMeta.set(currentMarker, meta);
           }
         }
@@ -251,6 +570,11 @@ export function createMarkerManager({
               }
             }
             pendingFileCaptureRef.current = null;
+          }
+
+          // Mark output as complete (no automatic notification)
+          if (meta) {
+            meta.streamingOutput = false;
           }
 
           currentMarker = null;
@@ -323,5 +647,5 @@ export function createMarkerManager({
     osc133.dispose();
   };
 
-  return { captureLast, cleanup };
+  return { captureLast, cleanup, attachTerminalClickHandler };
 }

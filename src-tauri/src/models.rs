@@ -55,6 +55,27 @@ pub struct TerminalSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FoldSettings {
+    pub enabled: bool,
+    pub threshold: u16,
+    pub show_preview_lines: u8,
+    pub auto_open_window: bool,
+    pub large_threshold: u16,
+}
+
+impl Default for FoldSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            threshold: 30,
+            show_preview_lines: 3,
+            auto_open_window: false,
+            large_threshold: 500,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AutocompleteSettings {
     pub enable_inline: bool,
     pub enable_menu: bool,
@@ -120,6 +141,8 @@ pub struct AppSettings {
     pub ai: AiSettings,
     pub terminal: TerminalSettings,
     #[serde(default)]
+    pub fold: FoldSettings,
+    #[serde(default)]
     pub autocomplete: AutocompleteSettings,
     #[serde(default)]
     pub streaming: StreamingSettings,
@@ -147,6 +170,7 @@ impl Default for AppSettings {
                 url: None,
             },
             terminal: TerminalSettings { max_markers: DEFAULT_MAX_MARKERS },
+            fold: FoldSettings::default(),
             autocomplete: AutocompleteSettings::default(),
             streaming: StreamingSettings::default(),
         }

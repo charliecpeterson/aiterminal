@@ -38,6 +38,8 @@ export function createTerminalWiring(params: {
     container: HTMLElement;
     appearance: AppearanceSettings;
     maxMarkers: number;
+    foldThreshold: number;
+    foldEnabled: boolean;
 
     visibleRef: { current: boolean };
     selectionPointRef: MutableRefObject<{ x: number; y: number } | null>;
@@ -62,6 +64,8 @@ export function createTerminalWiring(params: {
         container,
         appearance,
         maxMarkers,
+        foldThreshold,
+        foldEnabled,
         visibleRef,
         selectionPointRef,
         pendingFileCaptureRef,
@@ -105,6 +109,8 @@ export function createTerminalWiring(params: {
     const markerManager = createMarkerManager({
         term,
         maxMarkers,
+        foldThreshold,
+        foldEnabled,
         setCopyMenu,
         getRangeText: (range) => getRangeText(term, range),
         addContextItem,
@@ -162,6 +168,9 @@ export function createTerminalWiring(params: {
         focusTerminal: () => term.focus(),
     });
 
+    // Attach terminal click handler for command block highlighting
+    const terminalClickCleanup = markerManager.attachTerminalClickHandler();
+
     return {
         session,
         markerManager,
@@ -172,6 +181,7 @@ export function createTerminalWiring(params: {
             }
 
             // Tear down in reverse-ish order while term is still alive.
+            terminalClickCleanup();
             fileCaptureListener.cleanup();
             captureLastListener.cleanup();
             hotkeys.cleanup();
