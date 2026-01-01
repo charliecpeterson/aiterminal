@@ -14,6 +14,10 @@ jobs:
     name: Build & Release (macOS)
     runs-on: macos-latest
 
+    # Some org/repo settings require job-level permissions for release creation.
+    permissions:
+      contents: write
+
     # Recommended: create a GitHub Environment named "release" and restrict who can deploy.
     environment: release
 
@@ -44,7 +48,10 @@ jobs:
       - name: Build & publish via tauri-action
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # If you hit "Resource not accessible by integration", ensure:
+          # Settings → Actions → General → Workflow permissions = "Read and write".
+          # Optional: set a PAT secret named RELEASE_TOKEN with repo-scoped permissions.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
           # Signing (maps your existing secret names to Tauri's expected env vars)
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERT_P12_BASE64 }}
