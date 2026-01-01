@@ -51,7 +51,8 @@ jobs:
           # If you hit "Resource not accessible by integration", ensure:
           # Settings → Actions → General → Workflow permissions = "Read and write".
           # Optional: set a PAT secret named RELEASE_TOKEN with repo-scoped permissions.
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          # NOTE: `secrets.GITHUB_TOKEN` is not a real secret; the default token is `github.token`.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
 
           # Signing (maps your existing secret names to Tauri's expected env vars)
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERT_P12_BASE64 }}
