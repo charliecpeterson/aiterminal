@@ -78,7 +78,9 @@ impl LLMEngine {
 
         // Expand tilde in model path
         let expanded_path = if model_path.starts_with("~") {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/charlie".to_string());
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| String::from("."));
             model_path.replacen("~", &home, 1)
         } else {
             model_path.clone()
@@ -156,17 +158,19 @@ impl LLMEngine {
     }
 
     fn find_llama_server_binary(&self) -> Result<String, String> {
-        // Try conda environment first
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/charlie".to_string());
-        let conda_paths = vec![
-            format!("{}/apps/miniforge/24.11.3-2/envs/aiterminal/bin/llama-server", home),
-            format!("{}/miniforge3/envs/aiterminal/bin/llama-server", home),
-            format!("{}/.conda/envs/aiterminal/bin/llama-server", home),
-        ];
+        // Prefer the currently-active conda env when present.
+        if let Ok(prefix) = std::env::var("CONDA_PREFIX") {
+            let candidate = std::path::Path::new(&prefix).join("bin/llama-server");
+            if candidate.exists() {
+                return Ok(candidate.to_string_lossy().to_string());
+            }
+        }
 
-        for path in conda_paths {
-            if std::path::Path::new(&path).exists() {
-                return Ok(path);
+        // Common mamba/conda root prefix layout: $MAMBA_ROOT_PREFIX/envs/aiterminal/bin/llama-server
+        if let Ok(root) = std::env::var("MAMBA_ROOT_PREFIX") {
+            let candidate = std::path::Path::new(&root).join("envs/aiterminal/bin/llama-server");
+            if candidate.exists() {
+                return Ok(candidate.to_string_lossy().to_string());
             }
         }
 

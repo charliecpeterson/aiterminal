@@ -50,6 +50,19 @@ if [ -n "$AITERM_REMOTE_BOOTSTRAP" ] && [ -z "$__AITERM_LOGIN_SOURCED" ]; then
     if [ -r /run/motd.dynamic ]; then cat /run/motd.dynamic; fi
 fi
 
+# When we bootstrap into sudo/su interactive shells, try to preserve typical system
+# initialization as much as possible.
+if [ -n "${AITERM_SUDO_BOOTSTRAP:-}" ] && [ -z "${__AITERM_SUDO_SYS_SOURCED:-}" ]; then
+    __AITERM_SUDO_SYS_SOURCED=1
+    # /etc/profile is normally sourced for login shells (sudo -i / su -). Even for
+    # sudo -s, users often expect system PATH/aliases.
+    if [ -f /etc/profile ]; then source /etc/profile 2>/dev/null; fi
+    if [ -n "$BASH_VERSION" ] && [ -f /etc/bash.bashrc ]; then
+        # shellcheck disable=SC1091
+        source /etc/bash.bashrc 2>/dev/null || true
+    fi
+fi
+
 __aiterm_emit() { printf "\033]133;%s\007" "$1"; }
 __aiterm_get_hostname() {
     if [ -z "$__AITERM_HOSTNAME" ]; then
@@ -98,6 +111,46 @@ __aiterm_mark_prompt() {
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
 
+__aiterm_integration_path() {
+    # Best-effort path to the on-disk integration script.
+    # Used when bootstrapping into sudo/su interactive shells.
+    printf '%s' "${AITERM_INTEGRATION_PATH:-$HOME/.config/aiterminal/bash_init.sh}"
+}
+
+__aiterm_pick_shell_path() {
+    # Pick an interactive shell path that likely exists.
+    local requested_shell="${SHELL:-/bin/sh}"
+    local shell_path="$requested_shell"
+    [ -x "$shell_path" ] || shell_path=/bin/bash
+    [ -x "$shell_path" ] || shell_path=/bin/sh
+    printf '%s' "$shell_path"
+}
+
+# SSH arg parsing helpers
+# These options consume the *next* argument when provided as a separate token.
+__AITERM_SSH_OPTS_REQUIRE_ARG='-o -J -F -i -b -c -D -E -e -I -L -l -m -O -p -P -Q -R -S -W -w -B'
+
+__aiterm_ssh_opt_requires_arg() {
+    case " $__AITERM_SSH_OPTS_REQUIRE_ARG " in
+        *" $1 "*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+__aiterm_ssh_opt_is_combined() {
+    # Returns 0 if $1 looks like "-p2222" (i.e. option+arg in same token).
+    # Important: must NOT treat "-p" alone as combined.
+    local opt
+    for opt in $__AITERM_SSH_OPTS_REQUIRE_ARG; do
+        case "$1" in
+            ${opt}*)
+                [ "$1" != "$opt" ] && return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
 __aiterm_ssh_parse_args() {
     # Parse ssh arguments and determine:
     # - target: first non-option argument (host)
@@ -108,11 +161,18 @@ __aiterm_ssh_parse_args() {
 
     set -- "$@"
     while [ $# -gt 0 ]; do
+        if __aiterm_ssh_opt_requires_arg "$1"; then
+            shift
+            [ $# -gt 0 ] && shift
+            continue
+        fi
+
+        if __aiterm_ssh_opt_is_combined "$1"; then
+            shift
+            continue
+        fi
+
         case "$1" in
-            -o|-J|-F|-i|-b|-c|-D|-E|-e|-I|-L|-l|-m|-O|-p|-P|-Q|-R|-S|-W|-w|-B)
-                shift; [ $# -gt 0 ] && shift ;;
-            -o*|-J*|-F*|-i*|-b*|-c*|-D*|-E*|-e*|-I*|-L*|-l*|-m*|-O*|-p*|-P*|-Q*|-R*|-S*|-W*|-w*|-B*)
-                shift ;;
             --)
                 shift
                 [ $# -gt 0 ] && target="$1" && shift
@@ -137,9 +197,13 @@ __aiterm_ssh_parse_args() {
     printf '%s|%s' "$target" "$remote_cmd_present"
 }
 
-# Cache the integration script for nested SSH sessions
+# Cache the integration script for nested SSH sessions.
+# Important: this content can be multiline; do NOT attempt to pass it through sudo/su
+# as an env var value (some sudo/su modes run via a shell and will mangle it).
 if [ -z "$__AITERM_INLINE_CACHE" ]; then
-    __AITERM_INLINE_CACHE="$(cat "$HOME/.config/aiterminal/bash_init.sh" 2>/dev/null || echo '')"
+    __aiterm_cache_path="${AITERM_INTEGRATION_PATH:-$HOME/.config/aiterminal/bash_init.sh}"
+    __AITERM_INLINE_CACHE="$(cat "$__aiterm_cache_path" 2>/dev/null || echo '')"
+    unset __aiterm_cache_path
     export __AITERM_INLINE_CACHE
 fi
 
@@ -203,6 +267,177 @@ if [ "$TERM_PROGRAM" = "aiterminal" ]; then
     }
     export -f ssh 2>/dev/null || true
     export -f aiterm_ssh 2>/dev/null || true
+fi
+
+# sudo/su integration
+# Problem: `sudo -i` / `sudo -s` / `su` start a new interactive shell which would not
+# automatically have OSC 133 hooks unless we re-source the integration script.
+# Strategy: for interactive elevation shells only, replace them with a bootstrap that
+# launches a new shell and sources this integration.
+
+__aiterm_shell_bootstrap_cmd() {
+    # Prints a POSIX shell snippet that starts an interactive shell with integration sourced.
+    # Used for shells that require -c to source integration (e.g. zsh).
+    local integration_path="$1"
+    local shell_path
+    shell_path="$(__aiterm_pick_shell_path)"
+
+    case "$shell_path" in
+        */zsh)
+            printf '%s' "exec \"$shell_path\" -c 'source \"$integration_path\" 2>/dev/null || true; exec $shell_path -i'"
+            ;;
+        *)
+            printf '%s' "exec \"$shell_path\" -i"
+            ;;
+    esac
+}
+
+aiterm_sudo() {
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then
+        command sudo "$@"
+        return $?
+    fi
+
+    # Only intercept interactive shell entry (`sudo -i` / `sudo -s` without a command).
+    local has_i=0
+    local has_s=0
+    local saw_cmd=0
+    set -- "$@"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)
+                shift
+                [ $# -gt 0 ] && saw_cmd=1
+                break
+                ;;
+            -i|--login)
+                has_i=1
+                shift
+                ;;
+            -s|--shell)
+                has_s=1
+                shift
+                ;;
+            -c|--command)
+                # Explicit command: don't bootstrap.
+                saw_cmd=1
+                shift
+                [ $# -gt 0 ] && shift
+                ;;
+            -*)
+                shift
+                # Options with args: keep it simple; we don't need perfect parsing here
+                # because we only bootstrap when there is no command.
+                ;;
+            *)
+                # First non-option token is a command when not used with -i/-s.
+                saw_cmd=1
+                shift
+                ;;
+        esac
+    done
+
+    if [ $saw_cmd -eq 1 ] || { [ $has_i -eq 0 ] && [ $has_s -eq 0 ]; }; then
+        command sudo "$@"
+        return $?
+    fi
+
+    local integration_path
+    integration_path="$(__aiterm_integration_path)"
+    local shell_path
+    shell_path="$(__aiterm_pick_shell_path)"
+
+    # Preserve marker behavior (and SSH state) inside the elevated shell.
+    # For bash, execute it directly so the session feels like a normal `sudo -s/-i` shell.
+    if [ "${shell_path##*/}" = "bash" ]; then
+        if [ $has_i -eq 1 ]; then
+            command sudo -i \
+                env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH="$integration_path" \
+                __AITERM_SSH_DEPTH="${__AITERM_SSH_DEPTH:-0}" \
+                SSH_CONNECTION="${SSH_CONNECTION:-}" SSH_CLIENT="${SSH_CLIENT:-}" SSH_TTY="${SSH_TTY:-}" \
+                SHELL="$shell_path" \
+                "$shell_path" --rcfile "$integration_path" -i
+            return $?
+        fi
+
+        # For `sudo -s`, avoid sudo's shell-wrapping of commands; execute bash directly.
+        command sudo \
+            env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH="$integration_path" \
+            __AITERM_SSH_DEPTH="${__AITERM_SSH_DEPTH:-0}" \
+            SSH_CONNECTION="${SSH_CONNECTION:-}" SSH_CLIENT="${SSH_CLIENT:-}" SSH_TTY="${SSH_TTY:-}" \
+            SHELL="$shell_path" \
+            "$shell_path" --rcfile "$integration_path" -i
+        return $?
+    fi
+
+    # For other shells (notably zsh), fall back to running a small bootstrap snippet.
+    local bootstrap
+    bootstrap="$(__aiterm_shell_bootstrap_cmd "$integration_path")"
+    command sudo \
+        env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH="$integration_path" \
+        __AITERM_SSH_DEPTH="${__AITERM_SSH_DEPTH:-0}" \
+        SSH_CONNECTION="${SSH_CONNECTION:-}" SSH_CLIENT="${SSH_CLIENT:-}" SSH_TTY="${SSH_TTY:-}" \
+        SHELL="$shell_path" \
+        sh -lc "$bootstrap"
+    return $?
+}
+
+aiterm_su() {
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then
+        command su "$@"
+        return $?
+    fi
+
+    # If `su` is executing a command (`-c`), don't intercept.
+    local saw_c=0
+    set -- "$@"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -c|--command)
+                saw_c=1
+                break
+                ;;
+        esac
+        shift
+    done
+    if [ $saw_c -eq 1 ]; then
+        command su "$@"
+        return $?
+    fi
+
+    # Interactive `su` -> run a command that starts an interactive shell with integration.
+    local integration_path
+    integration_path="$(__aiterm_integration_path)"
+    local shell_path
+    shell_path="$(__aiterm_pick_shell_path)"
+
+    # Prefer executing bash directly so it behaves like a normal `su` shell.
+    if [ "${shell_path##*/}" = "bash" ]; then
+        command su \
+            -c "env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH=\"$integration_path\" __AITERM_SSH_DEPTH=\"${__AITERM_SSH_DEPTH:-0}\" SSH_CONNECTION=\"${SSH_CONNECTION:-}\" SSH_CLIENT=\"${SSH_CLIENT:-}\" SSH_TTY=\"${SSH_TTY:-}\" SHELL=\"$shell_path\" \"$shell_path\" --rcfile \"$integration_path\" -i" \
+            "$@"
+        return $?
+    fi
+
+    local bootstrap
+    bootstrap="$(__aiterm_shell_bootstrap_cmd "$integration_path")"
+    command su \
+        -c "env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH=\"$integration_path\" __AITERM_SSH_DEPTH=\"${__AITERM_SSH_DEPTH:-0}\" SSH_CONNECTION=\"${SSH_CONNECTION:-}\" SSH_CLIENT=\"${SSH_CLIENT:-}\" SSH_TTY=\"${SSH_TTY:-}\" SHELL=\"$shell_path\" sh -lc \"$bootstrap\"" \
+        "$@"
+    return $?
+}
+
+if [ "$TERM_PROGRAM" = "aiterminal" ]; then
+    sudo() {
+        aiterm_sudo "$@"
+    }
+    su() {
+        aiterm_su "$@"
+    }
+    export -f sudo 2>/dev/null || true
+    export -f su 2>/dev/null || true
+    export -f aiterm_sudo 2>/dev/null || true
+    export -f aiterm_su 2>/dev/null || true
 fi
 
 # Define aiterm_python function to inject OSC 133 markers into Python REPL

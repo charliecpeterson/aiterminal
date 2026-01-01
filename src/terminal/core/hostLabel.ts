@@ -59,13 +59,7 @@ export function attachHostLabelOsc(
           const hostPart = remoteInfo.split(':')[0];
           
           // Show depth indicator for nested SSH
-          if (depth > 1) {
-            setHostLabel(`🔒 ${hostPart} [L${depth}]`);
-          } else if (depth === 1) {
-            setHostLabel(`🔒 ${hostPart}`);
-          } else {
-            setHostLabel(`🔒 ${hostPart}`);
-          }
+          setHostLabel(depth > 1 ? `🔒 ${hostPart} [L${depth}]` : `🔒 ${hostPart}`);
         } else {
           // Empty = local session
           setHostLabel('Local');

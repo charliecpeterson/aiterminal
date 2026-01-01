@@ -1,0 +1,66 @@
+name: release-macos
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release (macOS)
+    runs-on: macos-latest
+
+    # Recommended: create a GitHub Environment named "release" and restrict who can deploy.
+    environment: release
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            args: '--target aarch64-apple-darwin'
+          - arch: x86_64
+            args: '--target x86_64-apple-darwin'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build & publish via tauri-action
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Signing (maps your existing secret names to Tauri's expected env vars)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+
+          # Notarization (optional, but recommended for Developer ID distribution)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: AITerminal ${{ github.ref_name }}
+          releaseBody: See the assets to download and install.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
