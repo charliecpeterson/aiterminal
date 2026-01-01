@@ -148,7 +148,14 @@ aiterm_ssh() {
     local inline_b64="$(printf '%s' "$inline_script" | base64 | tr -d '\n')"
     [ -z "$inline_b64" ] && { command ssh "${orig_args[@]}"; return $?; }
 
-    local remote_cmd='remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile" __AITERM_INLINE_CACHE="$(cat "$tmpfile")" __AITERM_SSH_DEPTH=__D__ TERM_PROGRAM=aiterminal SHELL="$remote_shell" AITERM_REMOTE_BOOTSTRAP=1; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -c "source \"$tmpfile\"; exec $remote_shell" ;; *) exec "$remote_shell" -l ;; esac'
+    # Remote bootstrap command template (single-quoted to avoid local interpolation).
+    # We flatten it to one line before sending to ssh.
+    local remote_cmd
+    remote_cmd="$(cat <<'AITERM_REMOTE_CMD'
+remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile" __AITERM_INLINE_CACHE="$(cat "$tmpfile")" __AITERM_SSH_DEPTH=__D__ TERM_PROGRAM=aiterminal SHELL="$remote_shell" AITERM_REMOTE_BOOTSTRAP=1; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -c "source \"$tmpfile\"; exec $remote_shell" ;; *) exec "$remote_shell" -l ;; esac
+AITERM_REMOTE_CMD
+)"
+    remote_cmd="${remote_cmd//$'\n'/ }"
     remote_cmd="${remote_cmd//__B64__/$inline_b64}"
     remote_cmd="${remote_cmd//__D__/$next_depth}"
     
@@ -179,83 +186,84 @@ aiterm_python() {
     local python_startup="${HOME}/.config/aiterminal/python_startup.py"
     mkdir -p "${HOME}/.config/aiterminal" 2>/dev/null
     
-    # Use printf to create file with proper escape sequences (not heredoc which interprets them)
-    {
-        printf '%s\n' '# AI Terminal Python REPL Integration'
-        printf '%s\n' 'import sys, os, builtins, atexit'
-        printf '%s\n' ''
-        printf '%s\n' "if os.environ.get('TERM_PROGRAM') == 'aiterminal':"
-        printf '%s\n' '    def emit_marker(marker):'
-        printf '%s\n' "        sys.stdout.write(f'\\033]133;{marker}\\007')"
-        printf '%s\n' '        sys.stdout.flush()'
-        printf '%s\n' ''  
-        printf '%s\n' "    sys.stdout.write('\\033]1337;PythonREPL=1\\007')"
-        printf '%s\n' '    sys.stdout.flush()'
-        printf '%s\n' ''
-        printf '%s\n' '    # Track whether the current prompt has started a command block.'
-        printf '%s\n' '    # Some statements (e.g. import) produce no displayhook call; we close them on the next prompt.'
-        printf '%s\n' '    _aiterm_needs_done = False'
-        printf '%s\n' '    _aiterm_cmd_id = 0'
-        printf '%s\n' '    _aiterm_active_id = None'
-        printf '%s\n' ''
-        printf '%s\n' '    _original_exit = builtins.exit'
-        printf '%s\n' '    class _AITermExit:'
-        printf '%s\n' "        def __repr__(self): return 'Use exit() or Ctrl-D (i.e. EOF) to exit'"
-        printf '%s\n' '        def __call__(self, code=None):'
-        printf '%s\n' '            try:'
-        printf '%s\n' "                sys.stdout.write('\\033]1337;PythonREPL=0\\007')"
-        printf '%s\n' '                sys.stdout.flush(); os.fsync(sys.stdout.fileno())'
-        printf '%s\n' '            except: pass'
-        printf '%s\n' '            _original_exit(code)'
-        printf '%s\n' '    builtins.exit = builtins.quit = _AITermExit()'
-        printf '%s\n' ''
-        printf '%s\n' '    def _aiterm_atexit():'
-        printf '%s\n' '        try:'
-        printf '%s\n' "            sys.stdout.write('\\033]1337;PythonREPL=0\\007')"
-        printf '%s\n' '            sys.stdout.flush(); os.fsync(sys.stdout.fileno())'
-        printf '%s\n' '        except: pass'
-        printf '%s\n' '    atexit.register(_aiterm_atexit)'
-        printf '%s\n' ''
-        printf '%s\n' '    _original_displayhook = sys.displayhook'
-        printf '%s\n' '    def _aiterm_displayhook(value):'
-        printf '%s\n' '        global _aiterm_active_id, _aiterm_needs_done'
-        printf '%s\n' '        if value is not None: _original_displayhook(value)'
-        printf '%s\n' '        try: sys.stdout.flush()'
-        printf '%s\n' '        except: pass'
-        printf '%s\n' "        emit_marker(f'D;0;py={_aiterm_active_id or 0}')"
-        printf '%s\n' '        _aiterm_active_id = None'
-        printf '%s\n' '        _aiterm_needs_done = False'
-        printf '%s\n' '    sys.displayhook = _aiterm_displayhook'
-        printf '%s\n' ''
-        printf '%s\n' '    class _AITermPrompt:'
-        printf '%s\n' '        def __init__(self, prompt_text): self.prompt_text = prompt_text'
-        printf '%s\n' '        def __str__(self):'
-        printf '%s\n' '            global _aiterm_needs_done, _aiterm_cmd_id, _aiterm_active_id'
-        printf '%s\n' '            if _aiterm_needs_done:'
-        printf '%s\n' "                emit_marker(f'D;0;py={_aiterm_active_id or 0}')"
-        printf '%s\n' '                _aiterm_active_id = None'
-        printf '%s\n' '                _aiterm_needs_done = False'
-        printf '%s\n' '            _aiterm_cmd_id += 1'
-        printf '%s\n' '            _aiterm_active_id = _aiterm_cmd_id'
-        printf '%s\n' "            emit_marker(f'A;py={_aiterm_active_id}')"
-        printf '%s\n' "            emit_marker(f'C;py={_aiterm_active_id}')"
-        printf '%s\n' '            _aiterm_needs_done = True'
-        printf '%s\n' '            return self.prompt_text'
-        printf '%s\n' '        def __repr__(self): return str(self)'
-        printf '%s\n' "    sys.ps1 = _AITermPrompt('>>> ')"
-        printf '%s\n' "    sys.ps2 = _AITermPrompt('... ')"
-        printf '%s\n' ''
-        printf '%s\n' '    _original_excepthook = sys.excepthook'
-        printf '%s\n' '    def _aiterm_excepthook(exc_type, exc_value, exc_traceback):'
-        printf '%s\n' '        global _aiterm_active_id, _aiterm_needs_done'
-        printf '%s\n' '        _original_excepthook(exc_type, exc_value, exc_traceback)'
-        printf '%s\n' '        try: sys.stderr.flush()'
-        printf '%s\n' '        except: pass'
-        printf '%s\n' "        emit_marker(f'D;1;py={_aiterm_active_id or 0}')"
-        printf '%s\n' '        _aiterm_active_id = None'
-        printf '%s\n' '        _aiterm_needs_done = False'
-        printf '%s\n' '    sys.excepthook = _aiterm_excepthook'
-    } > "$python_startup"
+    # Use a single-quoted heredoc to avoid shell interpolation and reduce quoting bugs.
+    # Backslash escapes (e.g. \033) remain literal in the file and are interpreted by Python.
+    cat >"$python_startup" <<'PY'
+# AI Terminal Python REPL Integration
+import sys, os, builtins, atexit
+
+if os.environ.get('TERM_PROGRAM') == 'aiterminal':
+    def emit_marker(marker):
+        sys.stdout.write(f'\033]133;{marker}\007')
+        sys.stdout.flush()
+
+    sys.stdout.write('\033]1337;PythonREPL=1\007')
+    sys.stdout.flush()
+
+    # Track whether the current prompt has started a command block.
+    # Some statements (e.g. import) produce no displayhook call; we close them on the next prompt.
+    _aiterm_needs_done = False
+    _aiterm_cmd_id = 0
+    _aiterm_active_id = None
+
+    _original_exit = builtins.exit
+    class _AITermExit:
+        def __repr__(self): return 'Use exit() or Ctrl-D (i.e. EOF) to exit'
+        def __call__(self, code=None):
+            try:
+                sys.stdout.write('\033]1337;PythonREPL=0\007')
+                sys.stdout.flush(); os.fsync(sys.stdout.fileno())
+            except: pass
+            _original_exit(code)
+    builtins.exit = builtins.quit = _AITermExit()
+
+    def _aiterm_atexit():
+        try:
+            sys.stdout.write('\033]1337;PythonREPL=0\007')
+            sys.stdout.flush(); os.fsync(sys.stdout.fileno())
+        except: pass
+    atexit.register(_aiterm_atexit)
+
+    _original_displayhook = sys.displayhook
+    def _aiterm_displayhook(value):
+        global _aiterm_active_id, _aiterm_needs_done
+        if value is not None: _original_displayhook(value)
+        try: sys.stdout.flush()
+        except: pass
+        emit_marker(f'D;0;py={_aiterm_active_id or 0}')
+        _aiterm_active_id = None
+        _aiterm_needs_done = False
+    sys.displayhook = _aiterm_displayhook
+
+    class _AITermPrompt:
+        def __init__(self, prompt_text): self.prompt_text = prompt_text
+        def __str__(self):
+            global _aiterm_needs_done, _aiterm_cmd_id, _aiterm_active_id
+            if _aiterm_needs_done:
+                emit_marker(f'D;0;py={_aiterm_active_id or 0}')
+                _aiterm_active_id = None
+                _aiterm_needs_done = False
+            _aiterm_cmd_id += 1
+            _aiterm_active_id = _aiterm_cmd_id
+            emit_marker(f'A;py={_aiterm_active_id}')
+            emit_marker(f'C;py={_aiterm_active_id}')
+            _aiterm_needs_done = True
+            return self.prompt_text
+        def __repr__(self): return str(self)
+    sys.ps1 = _AITermPrompt('>>> ')
+    sys.ps2 = _AITermPrompt('... ')
+
+    _original_excepthook = sys.excepthook
+    def _aiterm_excepthook(exc_type, exc_value, exc_traceback):
+        global _aiterm_active_id, _aiterm_needs_done
+        _original_excepthook(exc_type, exc_value, exc_traceback)
+        try: sys.stderr.flush()
+        except: pass
+        emit_marker(f'D;1;py={_aiterm_active_id or 0}')
+        _aiterm_active_id = None
+        _aiterm_needs_done = False
+    sys.excepthook = _aiterm_excepthook
+PY
     
     # Run Python with our startup file
     PYTHONSTARTUP="$python_startup" command "$python_cmd" "$@"
@@ -304,80 +312,82 @@ aiterm_r() {
     # Signal R REPL mode before launching R (helps confirm wrapper execution).
     printf "\033]1337;RREPL=1\007"
 
-    {
-        printf '%s\n' '# AI Terminal R REPL Integration'
-        printf '%s\n' 'if (Sys.getenv("TERM_PROGRAM") == "aiterminal") {'
-        printf '%s\n' '  .aiterm_debug <- function(msg) {'
-        printf '%s\n' '    if (Sys.getenv("AITERM_R_DEBUG") != "1") return(invisible(NULL))'
-        printf '%s\n' '    f <- file.path(Sys.getenv("HOME"), ".config", "aiterminal", "r_debug.log")'
-        printf '%s\n' '    try(cat(sprintf("[%s] %s\n", format(Sys.time(), "%F %T"), msg), file = f, append = TRUE), silent = TRUE)'
-        printf '%s\n' '    invisible(NULL)'
-        printf '%s\n' '  }'
-        printf '%s\n' '  .aiterm_flush <- function() {'
-        printf '%s\n' '    # flush.console() is in utils; it may not be attached in some sessions'
-        printf '%s\n' '    if (requireNamespace("utils", quietly = TRUE)) {'
-        printf '%s\n' '      try(utils::flush.console(), silent = TRUE)'
-        printf '%s\n' '    }'
-        printf '%s\n' '  }'
-        printf '%s\n' '  # Use BEL terminator. For prompt-time markers, embed OSC inside the prompt string'
-        printf '%s\n' '  # wrapped with \001/\002 so readline treats it as zero-width (no visible artifacts).'
-        printf '%s\n' '  .aiterm_emit1337 <- function(s) { cat(sprintf("\033]1337;%s\007", s)); .aiterm_flush() }'
-        printf '%s\n' '  .aiterm_osc133 <- function(s) sprintf("\033]133;%s\007", s)'
-        printf '%s\n' '  # Signal start of R REPL'
-        printf '%s\n' '  .aiterm_emit1337("RREPL=1")'
-        printf '%s\n' ''
-        printf '%s\n' '  # Track last command status; update the prompt so the NEXT prompt render emits markers.'
-        printf '%s\n' '  .aiterm_has_prev <- FALSE'
-        printf '%s\n' '  .aiterm_last_code <- 0'
-        printf '%s\n' '  .aiterm_base_prompt <- getOption("prompt")'
-        printf '%s\n' '  .aiterm_base_continue <- getOption("continue")'
-        printf '%s\n' ''
-        printf '%s\n' '  .aiterm_set_prompt <- function() {'
-        printf '%s\n' '    seq <- if (.aiterm_has_prev) paste0(.aiterm_osc133(paste0("D;", .aiterm_last_code)), .aiterm_osc133("A")) else .aiterm_osc133("A")'
-        printf '%s\n' '    wrapped <- paste0("\001", seq, "\002")'
-        printf '%s\n' '    options(prompt = paste0(wrapped, .aiterm_base_prompt))'
-        printf '%s\n' '    options(continue = .aiterm_base_continue)'
-        printf '%s\n' '    .aiterm_debug(sprintf("set_prompt(has_prev=%s,last=%s)", .aiterm_has_prev, .aiterm_last_code))'
-        printf '%s\n' '    invisible(NULL)'
-        printf '%s\n' '  }'
-        printf '%s\n' ''
-        printf '%s\n' '  # Some R builds report ok=TRUE even when an error was printed. Track uncaught errors'
-        printf '%s\n' '  # via options(error=...) so we can reliably set D;1 for the next prompt.'
-        printf '%s\n' '  .aiterm_error_seen <- FALSE'
-        printf '%s\n' '  .aiterm_orig_error <- getOption("error")'
-        printf '%s\n' '  options(error = function() {'
-        printf '%s\n' '    .aiterm_last_code <<- 1'
-        printf '%s\n' '    .aiterm_has_prev <<- TRUE'
-        printf '%s\n' '    .aiterm_error_seen <<- TRUE'
-        printf '%s\n' '    try(.aiterm_set_prompt(), silent = TRUE)'
-        printf '%s\n' '    orig <- .aiterm_orig_error'
-        printf '%s\n' '    if (is.function(orig)) try(orig(), silent = TRUE)'
-        printf '%s\n' '    else if (is.language(orig)) try(eval(orig, envir = .GlobalEnv), silent = TRUE)'
-        printf '%s\n' '    invisible(NULL)'
-        printf '%s\n' '  })'
-        printf '%s\n' ''
-        printf '%s\n' '  invisible(addTaskCallback(function(expr, value, ok, visible) {'
-        printf '%s\n' '    if (isTRUE(.aiterm_error_seen)) {'
-        printf '%s\n' '      # Some errors do not trigger this callback. If we still see the flag here and'
-        printf '%s\n' '      # ok is TRUE, we are likely running the *next* successful command; avoid "bleeding"'
-        printf '%s\n' '      # the previous error status into it.'
-        printf '%s\n' '      .aiterm_last_code <<- if (isTRUE(ok)) 0 else 1'
-        printf '%s\n' '      .aiterm_error_seen <<- FALSE'
-        printf '%s\n' '    } else {'
-        printf '%s\n' '      # If we did not see an uncaught error, treat as success. (Some frontends pass'
-        printf '%s\n' '      # non-TRUE values for ok even on success.)'
-        printf '%s\n' '      .aiterm_last_code <<- 0'
-        printf '%s\n' '    }'
-        printf '%s\n' '    .aiterm_has_prev <<- TRUE'
-        printf '%s\n' '    .aiterm_debug(sprintf("taskcb(ok=%s, err_seen=%s) -> last=%s", ok, .aiterm_error_seen, .aiterm_last_code))'
-        printf '%s\n' '    try(.aiterm_set_prompt(), silent = TRUE)'
-        printf '%s\n' '    TRUE'
-        printf '%s\n' '  }, name = "aiterminal_taskcb"))'
-        printf '%s\n' ''
-        printf '%s\n' '  # Ensure the first prompt opens a marker.'
-        printf '%s\n' '  try(.aiterm_set_prompt(), silent = TRUE)'
-        printf '%s\n' '}'
-    } > "$r_profile"
+        # Use a single-quoted heredoc to avoid shell interpolation and reduce quoting bugs.
+        # Backslash escapes (e.g. \033, \001) remain literal in the file and are interpreted by R.
+        cat >"$r_profile" <<'RPROFILE'
+# AI Terminal R REPL Integration
+if (Sys.getenv("TERM_PROGRAM") == "aiterminal") {
+    .aiterm_debug <- function(msg) {
+        if (Sys.getenv("AITERM_R_DEBUG") != "1") return(invisible(NULL))
+        f <- file.path(Sys.getenv("HOME"), ".config", "aiterminal", "r_debug.log")
+        try(cat(sprintf("[%s] %s\n", format(Sys.time(), "%F %T"), msg), file = f, append = TRUE), silent = TRUE)
+        invisible(NULL)
+    }
+    .aiterm_flush <- function() {
+        # flush.console() is in utils; it may not be attached in some sessions
+        if (requireNamespace("utils", quietly = TRUE)) {
+            try(utils::flush.console(), silent = TRUE)
+        }
+    }
+    # Use BEL terminator. For prompt-time markers, embed OSC inside the prompt string
+    # wrapped with \001/\002 so readline treats it as zero-width (no visible artifacts).
+    .aiterm_emit1337 <- function(s) { cat(sprintf("\033]1337;%s\007", s)); .aiterm_flush() }
+    .aiterm_osc133 <- function(s) sprintf("\033]133;%s\007", s)
+    # Signal start of R REPL
+    .aiterm_emit1337("RREPL=1")
+
+    # Track last command status; update the prompt so the NEXT prompt render emits markers.
+    .aiterm_has_prev <- FALSE
+    .aiterm_last_code <- 0
+    .aiterm_base_prompt <- getOption("prompt")
+    .aiterm_base_continue <- getOption("continue")
+
+    .aiterm_set_prompt <- function() {
+        seq <- if (.aiterm_has_prev) paste0(.aiterm_osc133(paste0("D;", .aiterm_last_code)), .aiterm_osc133("A")) else .aiterm_osc133("A")
+        wrapped <- paste0("\001", seq, "\002")
+        options(prompt = paste0(wrapped, .aiterm_base_prompt))
+        options(continue = .aiterm_base_continue)
+        .aiterm_debug(sprintf("set_prompt(has_prev=%s,last=%s)", .aiterm_has_prev, .aiterm_last_code))
+        invisible(NULL)
+    }
+
+    # Some R builds report ok=TRUE even when an error was printed. Track uncaught errors
+    # via options(error=...) so we can reliably set D;1 for the next prompt.
+    .aiterm_error_seen <- FALSE
+    .aiterm_orig_error <- getOption("error")
+    options(error = function() {
+        .aiterm_last_code <<- 1
+        .aiterm_has_prev <<- TRUE
+        .aiterm_error_seen <<- TRUE
+        try(.aiterm_set_prompt(), silent = TRUE)
+        orig <- .aiterm_orig_error
+        if (is.function(orig)) try(orig(), silent = TRUE)
+        else if (is.language(orig)) try(eval(orig, envir = .GlobalEnv), silent = TRUE)
+        invisible(NULL)
+    })
+
+    invisible(addTaskCallback(function(expr, value, ok, visible) {
+        if (isTRUE(.aiterm_error_seen)) {
+            # Some errors do not trigger this callback. If we still see the flag here and
+            # ok is TRUE, we are likely running the *next* successful command; avoid "bleeding"
+            # the previous error status into it.
+            .aiterm_last_code <<- if (isTRUE(ok)) 0 else 1
+            .aiterm_error_seen <<- FALSE
+        } else {
+            # If we did not see an uncaught error, treat as success. (Some frontends pass
+            # non-TRUE values for ok even on success.)
+            .aiterm_last_code <<- 0
+        }
+        .aiterm_has_prev <<- TRUE
+        .aiterm_debug(sprintf("taskcb(ok=%s, err_seen=%s) -> last=%s", ok, .aiterm_error_seen, .aiterm_last_code))
+        try(.aiterm_set_prompt(), silent = TRUE)
+        TRUE
+    }, name = "aiterminal_taskcb"))
+
+    # Ensure the first prompt opens a marker.
+    try(.aiterm_set_prompt(), silent = TRUE)
+}
+RPROFILE
 
     R_PROFILE_USER="$r_profile" command "$r_cmd" "$@"
     local ret=$?
