@@ -23,8 +23,6 @@ jobs:
         include:
           - arch: aarch64
             args: '--target aarch64-apple-darwin'
-          - arch: x86_64
-            args: '--target x86_64-apple-darwin'
 
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +42,7 @@ jobs:
         run: npm ci
 
       - name: Build & publish via tauri-action
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
