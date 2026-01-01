@@ -51,11 +51,14 @@ if [ -n "$AITERM_REMOTE_BOOTSTRAP" ] && [ -z "$__AITERM_LOGIN_SOURCED" ]; then
 fi
 
 __aiterm_emit() { printf "\033]133;%s\007" "$1"; }
-__aiterm_emit_host() {
+__aiterm_get_hostname() {
     if [ -z "$__AITERM_HOSTNAME" ]; then
         __AITERM_HOSTNAME="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
     fi
-    printf "\033]633;H;%s\007" "$__AITERM_HOSTNAME"
+    printf '%s' "$__AITERM_HOSTNAME"
+}
+__aiterm_emit_host() {
+    printf "\033]633;H;%s\007" "$(__aiterm_get_hostname)"
 }
 
 # Emit RemoteHost OSC sequence for SSH detection
@@ -63,14 +66,17 @@ __aiterm_emit_remote_host() {
     if [ -n "$SSH_CONNECTION" ] || [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
         # We're in an SSH session - report user@host:ip:depth
         local current_user="${USER:-$(whoami 2>/dev/null || echo unknown)}"
-        local current_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+        local current_host
+        current_host="$(__aiterm_get_hostname)"
         local depth="${__AITERM_SSH_DEPTH:-0}"
         
         # Extract remote IP from SSH_CONNECTION (format: client_ip client_port server_ip server_port)
         # We want the server_ip (third field) which is the IP we're connected to
         local remote_ip=""
         if [ -n "$SSH_CONNECTION" ]; then
-            remote_ip=$(echo "$SSH_CONNECTION" | awk '{print $3}')
+            # shellcheck disable=SC2086
+            set -- $SSH_CONNECTION
+            remote_ip="$3"
         fi
         
         # Send user@host:ip:depth so we can track nesting
@@ -91,6 +97,45 @@ __aiterm_mark_prompt() {
 }
 __aiterm_mark_output_start() { __aiterm_emit "C"; }
 __aiterm_mark_done() { local ret=${1:-$?}; __aiterm_emit "D;${ret}"; }
+
+__aiterm_ssh_parse_args() {
+    # Parse ssh arguments and determine:
+    # - target: first non-option argument (host)
+    # - remote_cmd_present: whether a remote command is provided
+    # Output is: "<target>|<remote_cmd_present>"
+    local target=""
+    local remote_cmd_present=0
+
+    set -- "$@"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -o|-J|-F|-i|-b|-c|-D|-E|-e|-I|-L|-l|-m|-O|-p|-P|-Q|-R|-S|-W|-w|-B)
+                shift; [ $# -gt 0 ] && shift ;;
+            -o*|-J*|-F*|-i*|-b*|-c*|-D*|-E*|-e*|-I*|-L*|-l*|-m*|-O*|-p*|-P*|-Q*|-R*|-S*|-W*|-w*|-B*)
+                shift ;;
+            --)
+                shift
+                [ $# -gt 0 ] && target="$1" && shift
+                [ $# -gt 0 ] && remote_cmd_present=1
+                break
+                ;;
+            -*)
+                shift
+                ;;
+            *)
+                if [ -z "$target" ]; then
+                    target="$1"
+                    shift
+                else
+                    remote_cmd_present=1
+                    break
+                fi
+                ;;
+        esac
+    done
+
+    printf '%s|%s' "$target" "$remote_cmd_present"
+}
 
 # Cache the integration script for nested SSH sessions
 if [ -z "$__AITERM_INLINE_CACHE" ]; then
@@ -122,20 +167,12 @@ aiterm_ssh() {
     fi
 
     # Parse args to detect if remote command is present
-    local target=""
-    local remote_cmd_present=0
-    set -- "$@"
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -o|-J|-F|-i|-b|-c|-D|-E|-e|-I|-L|-l|-m|-O|-p|-P|-Q|-R|-S|-W|-w|-B)
-                shift; [ $# -gt 0 ] && shift ;;
-            -o*|-J*|-F*|-i*|-b*|-c*|-D*|-E*|-e*|-I*|-L*|-l*|-m*|-O*|-p*|-P*|-Q*|-R*|-S*|-W*|-w*|-B*)
-                shift ;;
-            --) shift; [ $# -gt 0 ] && target="$1" && shift; [ $# -gt 0 ] && remote_cmd_present=1; break ;;
-            -*) shift ;;
-            *) [ -z "$target" ] && target="$1" && shift || { remote_cmd_present=1; break; } ;;
-        esac
-    done
+    local target
+    local remote_cmd_present
+    local parsed
+    parsed="$(__aiterm_ssh_parse_args "${orig_args[@]}")"
+    target="${parsed%%|*}"
+    remote_cmd_present="${parsed#*|}"
 
     # Fall back if no target or remote command present
     [ -z "$target" ] && { command ssh "${orig_args[@]}"; return $?; }
@@ -148,14 +185,10 @@ aiterm_ssh() {
     local inline_b64="$(printf '%s' "$inline_script" | base64 | tr -d '\n')"
     [ -z "$inline_b64" ] && { command ssh "${orig_args[@]}"; return $?; }
 
-    # Remote bootstrap command template (single-quoted to avoid local interpolation).
-    # We flatten it to one line before sending to ssh.
-    local remote_cmd
-    remote_cmd="$(cat <<'AITERM_REMOTE_CMD'
-remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile" __AITERM_INLINE_CACHE="$(cat "$tmpfile")" __AITERM_SSH_DEPTH=__D__ TERM_PROGRAM=aiterminal SHELL="$remote_shell" AITERM_REMOTE_BOOTSTRAP=1; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -c "source \"$tmpfile\"; exec $remote_shell" ;; *) exec "$remote_shell" -l ;; esac
-AITERM_REMOTE_CMD
-)"
-    remote_cmd="${remote_cmd//$'\n'/ }"
+    # Remote bootstrap command.
+    # Keep as a single-quoted one-liner: this is intentionally "boring" and robust across
+    # shells that source this file (bash/zsh), avoiding heredoc-in-command-substitution quirks.
+    local remote_cmd='remote_shell="${SHELL:-/bin/sh}"; [ -x "$remote_shell" ] || remote_shell=/bin/sh; umask 077; tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "__B64__" | tr -d "\n" | openssl base64 -d > "$tmpfile" || exit 1; else exec "$remote_shell" -l; fi; export __AITERM_TEMP_FILE="$tmpfile" __AITERM_INLINE_CACHE="$(cat "$tmpfile")" __AITERM_SSH_DEPTH=__D__ TERM_PROGRAM=aiterminal SHELL="$remote_shell" AITERM_REMOTE_BOOTSTRAP=1; case "$remote_shell" in */bash) exec "$remote_shell" --rcfile "$tmpfile" -i ;; */zsh) exec "$remote_shell" -c "source \"$tmpfile\"; exec $remote_shell" ;; *) exec "$remote_shell" -l ;; esac'
     remote_cmd="${remote_cmd//__B64__/$inline_b64}"
     remote_cmd="${remote_cmd//__D__/$next_depth}"
     
