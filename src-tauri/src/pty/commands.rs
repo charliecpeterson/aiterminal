@@ -1,5 +1,5 @@
-use crate::models::AppState;
 use super::PtyInfo;
+use crate::models::AppState;
 use portable_pty::PtySize;
 use std::io::Write;
 use tauri::State;
@@ -7,18 +7,22 @@ use tauri::State;
 #[tauri::command]
 pub fn get_pty_info(id: u32, state: State<AppState>) -> Result<PtyInfo, String> {
     // Check if PTY exists
-    let ptys = state.ptys.lock()
+    let ptys = state
+        .ptys
+        .lock()
         .map_err(|e| format!("Failed to acquire PTY lock: {}", e))?;
-    
+
     if !ptys.contains_key(&id) {
         return Err(format!("PTY {} not found", id));
     }
     drop(ptys);
 
     // Check if there's an active SSH session
-    let ssh_sessions = state.ssh_sessions.lock()
+    let ssh_sessions = state
+        .ssh_sessions
+        .lock()
         .map_err(|e| format!("Failed to acquire SSH session lock: {}", e))?;
-    
+
     if let Some(ssh_info) = ssh_sessions.get(&id) {
         // Active SSH session detected
         Ok(PtyInfo {
@@ -42,13 +46,19 @@ pub fn get_pty_info(id: u32, state: State<AppState>) -> Result<PtyInfo, String> 
 
 #[tauri::command]
 pub fn write_to_pty(id: u32, data: String, state: State<AppState>) -> Result<(), String> {
-    let mut ptys = state.ptys.lock()
+    let mut ptys = state
+        .ptys
+        .lock()
         .map_err(|e| format!("Failed to acquire PTY lock: {}", e))?;
-    
+
     if let Some(session) = ptys.get_mut(&id) {
-        session.writer.write_all(data.as_bytes())
+        session
+            .writer
+            .write_all(data.as_bytes())
             .map_err(|e| format!("Failed to write to PTY {}: {}", id, e))?;
-        session.writer.flush()
+        session
+            .writer
+            .flush()
             .map_err(|e| format!("Failed to flush PTY {}: {}", id, e))?;
         Ok(())
     } else {
@@ -59,11 +69,11 @@ pub fn write_to_pty(id: u32, data: String, state: State<AppState>) -> Result<(),
 #[tauri::command]
 pub fn resize_pty(id: u32, rows: u16, cols: u16, state: State<AppState>) {
     use crate::models::MAX_TERMINAL_DIMENSION;
-    
+
     // Validate dimensions
     let rows = rows.min(MAX_TERMINAL_DIMENSION);
     let cols = cols.min(MAX_TERMINAL_DIMENSION);
-    
+
     let mut ptys = match state.ptys.lock() {
         Ok(p) => p,
         Err(e) => {
@@ -89,7 +99,7 @@ pub fn close_pty(id: u32, state: State<AppState>) {
     if let Ok(mut sessions) = state.ssh_sessions.lock() {
         sessions.remove(&id);
     }
-    
+
     let session = {
         let mut ptys = match state.ptys.lock() {
             Ok(p) => p,
@@ -104,17 +114,17 @@ pub fn close_pty(id: u32, state: State<AppState>) {
     if let Some(mut session) = session {
         // Drop writer to signal EOF to the shell
         drop(session.writer);
-        
+
         if let Some(mut child) = session.child.take() {
             let should_kill = match child.try_wait() {
                 Ok(Some(_)) => {
                     eprintln!("[PTY {id}] Process already exited");
                     false
-                },
+                }
                 Ok(None) => {
                     eprintln!("[PTY {id}] Process still running, killing...");
                     true
-                },
+                }
                 Err(e) => {
                     eprintln!("[PTY {id}] Failed to poll child: {e}");
                     true
@@ -143,25 +153,35 @@ pub fn close_pty(id: u32, state: State<AppState>) {
 
 #[tauri::command]
 pub fn get_pty_cwd(id: u32, state: State<AppState>) -> Result<String, String> {
-    let ptys = state.ptys.lock()
+    let ptys = state
+        .ptys
+        .lock()
         .map_err(|e| format!("Failed to lock PTY state: {}", e))?;
-    
-    let session = ptys.get(&id)
+
+    let session = ptys
+        .get(&id)
         .ok_or_else(|| format!("PTY {} not found", id))?;
-    
+
     // Get the PID of the shell process
     if let Some(child) = &session.child {
         // On Unix systems, we can try to read the cwd from /proc or use lsof
         #[cfg(target_os = "macos")]
         {
             use std::process::Command;
-            
+
             // Use lsof to find the current working directory of the process
             let output = Command::new("lsof")
-                .args(["-a", "-p", &child.process_id().unwrap_or(0).to_string(), "-d", "cwd", "-Fn"])
+                .args([
+                    "-a",
+                    "-p",
+                    &child.process_id().unwrap_or(0).to_string(),
+                    "-d",
+                    "cwd",
+                    "-Fn",
+                ])
                 .output()
                 .map_err(|e| format!("Failed to run lsof: {}", e))?;
-            
+
             if output.status.success() {
                 let output_str = String::from_utf8_lossy(&output.stdout);
                 // Parse lsof output: looking for "n<path>" line
@@ -172,7 +192,7 @@ pub fn get_pty_cwd(id: u32, state: State<AppState>) -> Result<String, String> {
                 }
             }
         }
-        
+
         #[cfg(target_os = "linux")]
         {
             use std::fs;
@@ -184,7 +204,7 @@ pub fn get_pty_cwd(id: u32, state: State<AppState>) -> Result<String, String> {
             }
         }
     }
-    
+
     // Fallback: return the app's current directory
     std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())

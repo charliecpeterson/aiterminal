@@ -8,10 +8,11 @@ const KEY_NAME: &str = "api_key";
 pub async fn save_api_key_to_keychain(key: String) -> Result<(), String> {
     let entry = Entry::new(SERVICE_NAME, KEY_NAME)
         .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
-    
-    entry.set_password(&key)
+
+    entry
+        .set_password(&key)
         .map_err(|e| format!("Failed to save to keychain: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -19,8 +20,9 @@ pub async fn save_api_key_to_keychain(key: String) -> Result<(), String> {
 pub async fn get_api_key_from_keychain() -> Result<String, String> {
     let entry = Entry::new(SERVICE_NAME, KEY_NAME)
         .map_err(|e| format!("Failed to access keyring: {}", e))?;
-    
-    entry.get_password()
+
+    entry
+        .get_password()
         .map_err(|e| format!("No API key found in keychain: {}", e))
 }
 
@@ -28,10 +30,11 @@ pub async fn get_api_key_from_keychain() -> Result<String, String> {
 pub async fn delete_api_key_from_keychain() -> Result<(), String> {
     let entry = Entry::new(SERVICE_NAME, KEY_NAME)
         .map_err(|e| format!("Failed to access keyring: {}", e))?;
-    
-    entry.delete_credential()
+
+    entry
+        .delete_credential()
         .map_err(|e| format!("Failed to delete from keychain: {}", e))?;
-    
+
     Ok(())
 }
 

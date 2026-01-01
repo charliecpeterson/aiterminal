@@ -1,6 +1,6 @@
+use crate::chat::helpers::*;
 use reqwest::Client;
 use serde_json::Value;
-use crate::chat::helpers::*;
 
 pub async fn chat_request(
     client: &Client,
@@ -15,9 +15,8 @@ pub async fn chat_request(
     if model.trim().is_empty() {
         return Err("Gemini model is required".to_string());
     }
-    let base = normalize_base_url(
-        url.unwrap_or("https://generativelanguage.googleapis.com/v1beta"),
-    );
+    let base =
+        normalize_base_url(url.unwrap_or("https://generativelanguage.googleapis.com/v1beta"));
     let endpoint = format!("{}/models/{}:generateContent?key={}", base, model, api_key);
     let body = serde_json::json!({
         "contents": [
@@ -36,8 +35,7 @@ pub async fn chat_request(
         return Err(format!("Gemini error: {}", text));
     }
     let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    extract_gemini_message(&json)
-        .ok_or_else(|| "Gemini response missing content".to_string())
+    extract_gemini_message(&json).ok_or_else(|| "Gemini response missing content".to_string())
 }
 
 pub async fn test_connection(

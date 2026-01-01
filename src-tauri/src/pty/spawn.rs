@@ -1,14 +1,16 @@
+use super::integration::{configure_shell_command, setup_integration_scripts};
+use super::reader::spawn_reader_thread;
+use super::shell::resolve_shell;
 use crate::models::{AppState, PtySession};
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use tauri::State;
-use super::shell::resolve_shell;
-use super::integration::{setup_integration_scripts, configure_shell_command};
-use super::reader::spawn_reader_thread;
 
 #[tauri::command]
 pub fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, String> {
     let id = {
-        let mut next_id = state.next_id.lock()
+        let mut next_id = state
+            .next_id
+            .lock()
             .map_err(|e| format!("Failed to acquire ID lock: {}", e))?;
         let id = *next_id;
         *next_id += 1;
@@ -34,7 +36,7 @@ pub fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, S
     };
 
     let mut cmd = CommandBuilder::new(&shell);
-    
+
     // Setup shell integration
     let config_dir = setup_integration_scripts();
     configure_shell_command(&mut cmd, &shell, config_dir.as_ref());
@@ -46,15 +48,12 @@ pub fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, S
     let writer = master.take_writer().map_err(|e| e.to_string())?;
 
     // Spawn reader thread with SSH detection
-    let reader_handle = spawn_reader_thread(
-        reader,
-        window,
-        id,
-        state.ssh_sessions.clone(),
-    );
+    let reader_handle = spawn_reader_thread(reader, window, id, state.ssh_sessions.clone());
 
     {
-        let mut ptys = state.ptys.lock()
+        let mut ptys = state
+            .ptys
+            .lock()
             .map_err(|e| format!("Failed to acquire PTY lock: {}", e))?;
         ptys.insert(
             id,

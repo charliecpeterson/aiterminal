@@ -1,6 +1,6 @@
+use crate::chat::helpers::*;
 use reqwest::Client;
 use serde_json::Value;
-use crate::chat::helpers::*;
 
 pub async fn chat_request(
     client: &Client,

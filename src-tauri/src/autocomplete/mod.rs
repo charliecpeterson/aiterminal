@@ -3,13 +3,6 @@ pub mod engine;
 
 // Re-export commands for easier access
 pub use engine::{
-    init_llm, 
-    stop_llm, 
-    get_llm_completions, 
-    get_llm_inline_completion, 
-    llm_health_check,
-    is_command_in_path,
-    get_path_commands,
-    list_dir_entries,
-    LLMEngine,
+    get_llm_completions, get_llm_inline_completion, get_path_commands, init_llm,
+    is_command_in_path, list_dir_entries, llm_health_check, stop_llm, LLMEngine,
 };

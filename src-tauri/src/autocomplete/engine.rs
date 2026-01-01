@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::collections::HashSet;
+use std::env;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-use tokio::sync::Mutex;
 use tauri::State;
+use tokio::sync::Mutex;
 
 // LLM Server Configuration Constants
 const LLM_SERVER_PORT: u16 = 8765;
@@ -93,7 +93,7 @@ impl LLMEngine {
 
         // Find llama-server binary in conda env
         let conda_bin = self.find_llama_server_binary()?;
-        
+
         println!("Starting llama-server: {}", conda_bin);
         println!("Model path: {}", expanded_path);
 
@@ -136,13 +136,18 @@ impl LLMEngine {
             }
         }
 
-        Err("LLM server failed to start within 15 seconds. Check model file and llama-server logs.".to_string())
+        Err(
+            "LLM server failed to start within 15 seconds. Check model file and llama-server logs."
+                .to_string(),
+        )
     }
 
     pub async fn stop_server(&mut self) -> Result<(), String> {
         let mut process = self.server_process.lock().await;
         if let Some(mut child) = process.take() {
-            child.kill().map_err(|e| format!("Failed to kill server: {}", e))?;
+            child
+                .kill()
+                .map_err(|e| format!("Failed to kill server: {}", e))?;
             println!("LLM server stopped");
         }
         self.enabled = false;
@@ -151,7 +156,11 @@ impl LLMEngine {
 
     async fn is_server_healthy(&self) -> bool {
         let client = reqwest::Client::new();
-        match client.get(format!("{}/health", self.server_url)).send().await {
+        match client
+            .get(format!("{}/health", self.server_url))
+            .send()
+            .await
+        {
             Ok(response) => response.status().is_success(),
             Err(_) => false,
         }
@@ -238,7 +247,13 @@ impl LLMEngine {
             .lines()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
-            .filter(|s| !s.starts_with('#') && !s.starts_with("User") && !s.starts_with("Shell") && !s.starts_with("Input") && !s.starts_with("Complete"))
+            .filter(|s| {
+                !s.starts_with('#')
+                    && !s.starts_with("User")
+                    && !s.starts_with("Shell")
+                    && !s.starts_with("Input")
+                    && !s.starts_with("Complete")
+            })
             .filter(|s| *s != "```" && !s.starts_with("```") && !s.contains("```")) // Filter markdown code blocks
             .map(|s| {
                 // Remove markdown list markers like "- " or "* "
@@ -325,7 +340,7 @@ pub async fn get_llm_inline_completion(
     state: State<'_, Arc<Mutex<LLMEngine>>>,
 ) -> Result<String, String> {
     let engine = state.lock().await;
-    
+
     if !engine.enabled {
         return Err("LLM not enabled".to_string());
     }
@@ -346,9 +361,9 @@ OUTPUT:\n",
 
     let request = CompletionRequest {
         prompt,
-        n_predict: 15,      // Reduced from 30
-        temperature: LLM_FOCUSED_TEMPERATURE,   // More focused
-        stop: vec!["\n".to_string()], // Stop at first newline
+        n_predict: 15,                        // Reduced from 30
+        temperature: LLM_FOCUSED_TEMPERATURE, // More focused
+        stop: vec!["\n".to_string()],         // Stop at first newline
     };
 
     let response = client
@@ -417,8 +432,8 @@ pub async fn list_dir_entries(path: String, show_hidden: bool) -> Result<Vec<Dir
         return Err(format!("Path is not a directory: {}", dir_path.display()));
     }
 
-    let entries = std::fs::read_dir(dir_path)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries =
+        std::fs::read_dir(dir_path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut result: Vec<DirEntry> = Vec::new();
     for entry in entries.flatten() {
@@ -428,10 +443,7 @@ pub async fn list_dir_entries(path: String, show_hidden: bool) -> Result<Vec<Dir
             continue;
         }
 
-        let is_dir = entry
-            .metadata()
-            .map(|m| m.is_dir())
-            .unwrap_or(false);
+        let is_dir = entry.metadata().map(|m| m.is_dir()).unwrap_or(false);
 
         result.push(DirEntry {
             name: name.to_string(),

@@ -1,6 +1,6 @@
 // Module declarations
-mod chat;
 mod autocomplete;
+mod chat;
 mod health_check;
 mod history;
 mod keychain;
@@ -14,35 +14,30 @@ mod ssh;
 mod tools;
 
 // Re-export models and commands
-pub use models::AppState;
+use autocomplete::{
+    get_llm_completions, get_llm_inline_completion, get_path_commands, init_llm,
+    is_command_in_path, list_dir_entries, llm_health_check, stop_llm, LLMEngine,
+};
 use chat::{ai_chat, ai_chat_stream, test_ai_connection};
 use history::get_shell_history;
-use keychain::{save_api_key_to_keychain, get_api_key_from_keychain, delete_api_key_from_keychain, check_keychain_available};
-use preview::{open_preview_window, read_preview_file, stop_preview_watcher, get_preview_content};
-use pty::{close_pty, resize_pty, spawn_pty, write_to_pty, get_pty_info, get_pty_cwd};
+use keychain::{
+    check_keychain_available, delete_api_key_from_keychain, get_api_key_from_keychain,
+    save_api_key_to_keychain,
+};
+pub use models::AppState;
+use preview::{get_preview_content, open_preview_window, read_preview_file, stop_preview_watcher};
+use pty::{close_pty, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
 use quick_actions::{load_quick_actions, save_quick_actions};
 use secret_scanner::scan_content_for_secrets;
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
-use ssh::{get_ssh_config_hosts, save_ssh_profiles, load_ssh_profiles};
-use tools::{
-    execute_tool_command, read_file_tool, list_directory_tool,
-    search_files_tool, get_current_directory_tool, get_env_var_tool,
-    write_file_tool, append_to_file_tool, git_status_tool, find_process_tool,
-    check_port_tool, get_system_info_tool, tail_file_tool, make_directory_tool,
-    get_git_diff_tool, calculate_tool, web_search_tool,
-};
-use autocomplete::{
-    init_llm,
-    stop_llm,
-    get_llm_completions,
-    get_llm_inline_completion,
-    llm_health_check,
-    is_command_in_path,
-    get_path_commands,
-    list_dir_entries,
-    LLMEngine,
-};
+use ssh::{get_ssh_config_hosts, load_ssh_profiles, save_ssh_profiles};
 use tauri::Emitter;
+use tools::{
+    append_to_file_tool, calculate_tool, check_port_tool, execute_tool_command, find_process_tool,
+    get_current_directory_tool, get_env_var_tool, get_git_diff_tool, get_system_info_tool,
+    git_status_tool, list_directory_tool, make_directory_tool, read_file_tool, search_files_tool,
+    tail_file_tool, web_search_tool, write_file_tool,
+};
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -62,16 +57,18 @@ async fn emit_event(
 #[tauri::command]
 async fn measure_pty_latency(id: u32, state: tauri::State<'_, AppState>) -> Result<u32, String> {
     // Check if there's an active SSH session with measured latency
-    let ssh_sessions = state.ssh_sessions.lock()
+    let ssh_sessions = state
+        .ssh_sessions
+        .lock()
         .map_err(|e| format!("Failed to acquire SSH session lock: {}", e))?;
-    
+
     if let Some(ssh_info) = ssh_sessions.get(&id) {
         // Return the last measured network latency for SSH sessions
         if let Some(latency_ms) = ssh_info.last_latency_ms {
             return Ok(latency_ms as u32);
         }
     }
-    
+
     // For local sessions or SSH sessions without measured latency yet, return 0
     Ok(0)
 }
@@ -84,7 +81,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
-        .manage(std::sync::Arc::new(tokio::sync::Mutex::new(LLMEngine::new())))
+        .manage(std::sync::Arc::new(tokio::sync::Mutex::new(
+            LLMEngine::new(),
+        )))
         .setup(|app| {
             preview::init_preview_watchers(&app.handle());
             Ok(())

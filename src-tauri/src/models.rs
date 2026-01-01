@@ -1,4 +1,4 @@
-use portable_pty::{MasterPty, Child};
+use portable_pty::{Child, MasterPty};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
@@ -169,7 +169,9 @@ impl Default for AppSettings {
                 embedding_model: None,
                 url: None,
             },
-            terminal: TerminalSettings { max_markers: DEFAULT_MAX_MARKERS },
+            terminal: TerminalSettings {
+                max_markers: DEFAULT_MAX_MARKERS,
+            },
             fold: FoldSettings::default(),
             autocomplete: AutocompleteSettings::default(),
             streaming: StreamingSettings::default(),

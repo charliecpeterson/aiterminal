@@ -1,7 +1,7 @@
-use reqwest::Client;
-use serde_json::Value;
 use crate::chat::helpers::*;
 use crate::models::DEFAULT_MAX_TOKENS;
+use reqwest::Client;
+use serde_json::Value;
 
 pub async fn chat_request(
     client: &Client,
@@ -36,8 +36,7 @@ pub async fn chat_request(
         return Err(format!("Anthropic error: {}", text));
     }
     let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    extract_anthropic_message(&json)
-        .ok_or_else(|| "Anthropic response missing content".to_string())
+    extract_anthropic_message(&json).ok_or_else(|| "Anthropic response missing content".to_string())
 }
 
 pub async fn test_connection(

@@ -25,10 +25,19 @@ pub async fn ai_chat_request(
         .map_err(|e| e.to_string())?;
 
     match provider.as_str() {
-        "openai" => providers::openai::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
-        "anthropic" => providers::anthropic::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
-        "gemini" => providers::gemini::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
-        "ollama" => providers::ollama::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await,
+        "openai" => {
+            providers::openai::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await
+        }
+        "anthropic" => {
+            providers::anthropic::chat_request(&client, &api_key, url.as_deref(), model, &prompt)
+                .await
+        }
+        "gemini" => {
+            providers::gemini::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await
+        }
+        "ollama" => {
+            providers::ollama::chat_request(&client, &api_key, url.as_deref(), model, &prompt).await
+        }
         _ => Err(format!("Unsupported provider: {}", provider)),
     }
 }
@@ -49,7 +58,9 @@ pub async fn test_ai_connection(
 
     let models = match provider.as_str() {
         "openai" => providers::openai::test_connection(&client, &api_key, url.as_deref()).await?,
-        "anthropic" => providers::anthropic::test_connection(&client, &api_key, url.as_deref()).await?,
+        "anthropic" => {
+            providers::anthropic::test_connection(&client, &api_key, url.as_deref()).await?
+        }
         "gemini" => providers::gemini::test_connection(&client, &api_key, url.as_deref()).await?,
         "ollama" => providers::ollama::test_connection(&client, &api_key, url.as_deref()).await?,
         _ => return Err(format!("Unsupported provider: {}", provider)),
@@ -58,11 +69,11 @@ pub async fn test_ai_connection(
     let mut sorted_models = models;
     sorted_models.sort();
     sorted_models.dedup();
-    
+
     let mut embedding_models = filter_embedding_models(&sorted_models);
     embedding_models.sort();
     embedding_models.dedup();
-    
+
     Ok(AiModelList {
         models: sorted_models,
         embedding_models,
@@ -91,30 +102,33 @@ pub async fn ai_chat_stream(
     request_id: String,
     max_tokens: Option<u32>,
     timeout_secs: Option<u64>,
-    tools: Option<String>, // JSON-encoded tool definitions
+    tools: Option<String>,        // JSON-encoded tool definitions
     terminal_cwd: Option<String>, // Current working directory of the terminal
 ) -> Result<(), String> {
-    use crate::models::{DEFAULT_MAX_TOKENS, MIN_MAX_TOKENS, MAX_MAX_TOKENS, 
-                        HTTP_TIMEOUT_SECS, MAX_STREAM_BUFFER_SIZE};
-    
+    use crate::models::{
+        DEFAULT_MAX_TOKENS, HTTP_TIMEOUT_SECS, MAX_MAX_TOKENS, MAX_STREAM_BUFFER_SIZE,
+        MIN_MAX_TOKENS,
+    };
+
     let provider = provider.to_lowercase();
     let api_key = api_key.trim().to_string();
     let url = url.map(|value| value.trim().to_string());
     let prompt = normalize_prompt(&prompt);
-    
+
     // Clamp max_tokens to valid range
     let max_tokens = max_tokens
         .unwrap_or(DEFAULT_MAX_TOKENS)
         .clamp(MIN_MAX_TOKENS, MAX_MAX_TOKENS);
-    
+
     // Use provided timeout or default
-    let timeout = std::time::Duration::from_secs(
-        timeout_secs.unwrap_or(HTTP_TIMEOUT_SECS)
-    );
-    
+    let timeout = std::time::Duration::from_secs(timeout_secs.unwrap_or(HTTP_TIMEOUT_SECS));
+
     if prompt.is_empty() {
         window
-            .emit("ai-stream:error", serde_json::json!({ "request_id": request_id, "error": "Prompt is empty" }))
+            .emit(
+                "ai-stream:error",
+                serde_json::json!({ "request_id": request_id, "error": "Prompt is empty" }),
+            )
             .map_err(|e| e.to_string())?;
         return Ok(());
     }
@@ -131,10 +145,11 @@ pub async fn ai_chat_stream(
             }
             let base = normalize_base_url(url.as_deref().unwrap_or("https://api.openai.com/v1"));
             let endpoint = format!("{}/chat/completions", base);
-            
+
             // Parse tools if provided
-            let tools_array: Option<Value> = tools.as_ref().and_then(|t| serde_json::from_str(t).ok());
-            
+            let tools_array: Option<Value> =
+                tools.as_ref().and_then(|t| serde_json::from_str(t).ok());
+
             // Parse prompt as either a simple string or a messages array
             let mut messages_array: Vec<Value> = if prompt.trim().starts_with('[') {
                 // Try to parse as JSON array (messages format)
@@ -145,15 +160,15 @@ pub async fn ai_chat_stream(
                 // Simple string, wrap in messages format
                 vec![serde_json::json!({ "role": "user", "content": prompt })]
             };
-            
+
             // Always prepend system prompt for tools if not already present
-            let has_system = messages_array.iter().any(|msg| 
-                msg.get("role").and_then(|r| r.as_str()) == Some("system")
-            );
-            
+            let has_system = messages_array
+                .iter()
+                .any(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("system"));
+
             if !has_system && tools_array.is_some() {
                 let mut system_content = String::from("You are a helpful AI assistant with system access. When users ask questions that require information from the system, USE THE AVAILABLE TOOLS immediately without asking for clarification.\n\n");
-                
+
                 // Add terminal directory context if provided
                 if let Some(cwd) = &terminal_cwd {
                     system_content.push_str(&format!("TERMINAL WORKING DIRECTORY: {}\n", cwd));
@@ -163,21 +178,29 @@ pub async fn ai_chat_stream(
                     system_content.push_str("When users ask about 'current directory': FIRST call pwd, THEN use that result in list_directory.\n");
                     system_content.push_str("DO NOT call list_directory with '/' or '.' - wait for pwd result first!\n\n");
                 }
-                
+
                 system_content.push_str("IMPORTANT: ANSWER THE USER'S QUESTION COMPLETELY!\n");
-                system_content.push_str("- If user asks 'what files', call list_directory with the actual path\n");
-                system_content.push_str("- If you have TERMINAL WORKING DIRECTORY above, use that exact path\n");
+                system_content.push_str(
+                    "- If user asks 'what files', call list_directory with the actual path\n",
+                );
+                system_content.push_str(
+                    "- If you have TERMINAL WORKING DIRECTORY above, use that exact path\n",
+                );
                 system_content.push_str("- If you don't have the path, call pwd FIRST in one response, then I'll continue with the result\n\n");
-                system_content.push_str("The user will review and approve each tool call before execution.");
-                
-                messages_array.insert(0, serde_json::json!({
-                    "role": "system",
-                    "content": system_content
-                }));
+                system_content
+                    .push_str("The user will review and approve each tool call before execution.");
+
+                messages_array.insert(
+                    0,
+                    serde_json::json!({
+                        "role": "system",
+                        "content": system_content
+                    }),
+                );
             }
-            
+
             let messages_value = Value::Array(messages_array);
-            
+
             // Newer models (GPT-4o, o1, etc.) use max_completion_tokens instead of max_tokens
             let mut body = serde_json::json!({
                 "model": model,
@@ -185,17 +208,20 @@ pub async fn ai_chat_stream(
                 "messages": messages_value,
                 "max_completion_tokens": max_tokens,
             });
-            
+
             // Add tools if provided
             if let Some(tools_val) = tools_array {
                 let tool_count = tools_val.as_array().map(|a| a.len()).unwrap_or(0);
                 body["tools"] = tools_val;
                 body["parallel_tool_calls"] = serde_json::json!(true); // Enable parallel tool calling
-                eprintln!("🔧 Including {} tools in request (parallel calls enabled)", tool_count);
+                eprintln!(
+                    "🔧 Including {} tools in request (parallel calls enabled)",
+                    tool_count
+                );
             }
-            
+
             eprintln!("📤 Sending OpenAI request to: {}", endpoint);
-            
+
             let resp = client
                 .post(endpoint)
                 .bearer_auth(api_key)
@@ -212,13 +238,16 @@ pub async fn ai_chat_stream(
             eprintln!("✅ OpenAI request successful, streaming response");
             let mut stream = resp.bytes_stream();
             let mut buffer = String::new();
-            let mut accumulated_tool_calls: std::collections::HashMap<usize, serde_json::Map<String, Value>> = std::collections::HashMap::new();
-            
+            let mut accumulated_tool_calls: std::collections::HashMap<
+                usize,
+                serde_json::Map<String, Value>,
+            > = std::collections::HashMap::new();
+
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|e| e.to_string())?;
                 let part = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&part);
-                
+
                 // Backpressure: prevent unbounded buffer growth
                 if buffer.len() > MAX_STREAM_BUFFER_SIZE {
                     return Err(format!(
@@ -226,7 +255,7 @@ pub async fn ai_chat_stream(
                         MAX_STREAM_BUFFER_SIZE
                     ));
                 }
-                
+
                 while let Some(pos) = buffer.find('\n') {
                     let line = buffer[..pos].trim().to_string();
                     buffer = buffer[pos + 1..].to_string();
@@ -236,26 +265,40 @@ pub async fn ai_chat_stream(
                     let payload = line.trim_start_matches("data:").trim();
                     if payload == "[DONE]" {
                         window
-                            .emit("ai-stream:end", serde_json::json!({ "request_id": request_id }))
+                            .emit(
+                                "ai-stream:end",
+                                serde_json::json!({ "request_id": request_id }),
+                            )
                             .map_err(|e| e.to_string())?;
                         return Ok(());
                     }
                     let json: Value = serde_json::from_str(payload).map_err(|e| e.to_string())?;
-                    
+
                     // Check for tool calls and accumulate them
                     if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
                         if let Some(choice) = choices.first() {
                             if let Some(delta) = choice.get("delta") {
-                                if let Some(tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
+                                if let Some(tool_calls) =
+                                    delta.get("tool_calls").and_then(|tc| tc.as_array())
+                                {
                                     for tool_call in tool_calls {
-                                        if let Some(index) = tool_call.get("index").and_then(|i| i.as_u64()) {
+                                        if let Some(index) =
+                                            tool_call.get("index").and_then(|i| i.as_u64())
+                                        {
                                             let index = index as usize;
-                                            let entry = accumulated_tool_calls.entry(index).or_insert_with(|| {
-                                                let mut map = serde_json::Map::new();
-                                                map.insert("index".to_string(), Value::Number(serde_json::Number::from(index)));
-                                                map
-                                            });
-                                            
+                                            let entry = accumulated_tool_calls
+                                                .entry(index)
+                                                .or_insert_with(|| {
+                                                    let mut map = serde_json::Map::new();
+                                                    map.insert(
+                                                        "index".to_string(),
+                                                        Value::Number(serde_json::Number::from(
+                                                            index,
+                                                        )),
+                                                    );
+                                                    map
+                                                });
+
                                             // Accumulate id, type, function name
                                             if let Some(id) = tool_call.get("id") {
                                                 entry.insert("id".to_string(), id.clone());
@@ -264,51 +307,73 @@ pub async fn ai_chat_stream(
                                                 entry.insert("type".to_string(), tc_type.clone());
                                             }
                                             if let Some(function) = tool_call.get("function") {
-                                                let function_map = entry.entry("function".to_string())
-                                                    .or_insert_with(|| Value::Object(serde_json::Map::new()))
+                                                let function_map = entry
+                                                    .entry("function".to_string())
+                                                    .or_insert_with(|| {
+                                                        Value::Object(serde_json::Map::new())
+                                                    })
                                                     .as_object_mut()
                                                     .unwrap();
-                                                
+
                                                 if let Some(name) = function.get("name") {
-                                                    function_map.insert("name".to_string(), name.clone());
+                                                    function_map
+                                                        .insert("name".to_string(), name.clone());
                                                 }
-                                                if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
-                                                    let current_args = function_map.get("arguments")
+                                                if let Some(args) = function
+                                                    .get("arguments")
+                                                    .and_then(|a| a.as_str())
+                                                {
+                                                    let current_args = function_map
+                                                        .get("arguments")
                                                         .and_then(|a| a.as_str())
                                                         .unwrap_or("");
-                                                    function_map.insert("arguments".to_string(), Value::String(format!("{}{}", current_args, args)));
+                                                    function_map.insert(
+                                                        "arguments".to_string(),
+                                                        Value::String(format!(
+                                                            "{}{}",
+                                                            current_args, args
+                                                        )),
+                                                    );
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
-                            
+
                             // Check if this is the end of tool calls
-                            if let Some(finish_reason) = choice.get("finish_reason").and_then(|fr| fr.as_str()) {
-                                if finish_reason == "tool_calls" && !accumulated_tool_calls.is_empty() {
+                            if let Some(finish_reason) =
+                                choice.get("finish_reason").and_then(|fr| fr.as_str())
+                            {
+                                if finish_reason == "tool_calls"
+                                    && !accumulated_tool_calls.is_empty()
+                                {
                                     // Convert accumulated tool calls to array and emit
                                     let mut tool_calls_array: Vec<Value> = accumulated_tool_calls
                                         .into_iter()
                                         .map(|(_, v)| Value::Object(v))
                                         .collect();
-                                    tool_calls_array.sort_by_key(|tc| tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0));
-                                    
+                                    tool_calls_array.sort_by_key(|tc| {
+                                        tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0)
+                                    });
+
                                     eprintln!("🔧 Complete tool calls: {:?}", tool_calls_array);
-                                    window.emit(
-                                        "ai-stream:tool-calls",
-                                        serde_json::json!({ 
-                                            "request_id": request_id, 
-                                            "tool_calls": tool_calls_array 
-                                        }),
-                                    ).map_err(|e| e.to_string())?;
-                                    
+                                    window
+                                        .emit(
+                                            "ai-stream:tool-calls",
+                                            serde_json::json!({
+                                                "request_id": request_id,
+                                                "tool_calls": tool_calls_array
+                                            }),
+                                        )
+                                        .map_err(|e| e.to_string())?;
+
                                     accumulated_tool_calls = std::collections::HashMap::new();
                                 }
                             }
                         }
                     }
-                    
+
                     // Get regular content delta
                     let delta = json
                         .get("choices")
@@ -329,7 +394,10 @@ pub async fn ai_chat_stream(
                 }
             }
             window
-                .emit("ai-stream:end", serde_json::json!({ "request_id": request_id }))
+                .emit(
+                    "ai-stream:end",
+                    serde_json::json!({ "request_id": request_id }),
+                )
                 .map_err(|e| e.to_string())?;
             Ok(())
         }
@@ -363,7 +431,7 @@ pub async fn ai_chat_stream(
                 let chunk = chunk.map_err(|e| e.to_string())?;
                 let part = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&part);
-                
+
                 // Backpressure: prevent unbounded buffer growth
                 if buffer.len() > MAX_STREAM_BUFFER_SIZE {
                     return Err(format!(
@@ -371,7 +439,7 @@ pub async fn ai_chat_stream(
                         MAX_STREAM_BUFFER_SIZE
                     ));
                 }
-                
+
                 while let Some(pos) = buffer.find('\n') {
                     let line = buffer[..pos].trim().to_string();
                     buffer = buffer[pos + 1..].to_string();
@@ -389,14 +457,20 @@ pub async fn ai_chat_stream(
                     }
                     if json.get("done").and_then(|v| v.as_bool()) == Some(true) {
                         window
-                            .emit("ai-stream:end", serde_json::json!({ "request_id": request_id }))
+                            .emit(
+                                "ai-stream:end",
+                                serde_json::json!({ "request_id": request_id }),
+                            )
                             .map_err(|e| e.to_string())?;
                         return Ok(());
                     }
                 }
             }
             window
-                .emit("ai-stream:end", serde_json::json!({ "request_id": request_id }))
+                .emit(
+                    "ai-stream:end",
+                    serde_json::json!({ "request_id": request_id }),
+                )
                 .map_err(|e| e.to_string())?;
             Ok(())
         }
@@ -409,7 +483,10 @@ pub async fn ai_chat_stream(
                 )
                 .map_err(|e| e.to_string())?;
             window
-                .emit("ai-stream:end", serde_json::json!({ "request_id": request_id }))
+                .emit(
+                    "ai-stream:end",
+                    serde_json::json!({ "request_id": request_id }),
+                )
                 .map_err(|e| e.to_string())?;
             Ok(())
         }
