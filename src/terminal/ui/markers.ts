@@ -45,6 +45,7 @@ interface MarkerMeta {
   doneMarker?: IMarker;
   isBootstrap?: boolean;
   isPythonREPL?: boolean;  // Marker is inside Python REPL
+  isRREPL?: boolean; // Marker is inside R REPL
   pythonCommandId?: string;
   exitCode?: number;
   streamingOutput?: boolean;
@@ -93,9 +94,9 @@ function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDe
 
   const meta = (marker as any)?._aiterm_meta as MarkerMeta | undefined;
 
-  // For Python REPL markers, prefer the explicit done marker line when available.
+  // For REPL markers, prefer the explicit done marker line when available.
   // This avoids relying on the next prompt marker (which can land on the output line over SSH).
-  if (meta?.isPythonREPL && meta?.doneMarker?.line != null) {
+  if ((meta?.isPythonREPL || meta?.isRREPL) && meta?.doneMarker?.line != null) {
     const doneLine = meta.doneMarker.line;
     if (doneLine >= 0) {
       endLine = Math.min(endLine, Math.max(startLine, doneLine - 1));
@@ -162,6 +163,7 @@ export interface MarkerManager {
   copyCommandAtLine: (line: number) => void;
   addCommandToContext: (line: number) => void;
   setPythonREPL: (enabled: boolean) => void;  // Control Python REPL marker styling
+  setRREPL: (enabled: boolean) => void; // Control R REPL marker behavior
 }
 
 export function createMarkerManager({
@@ -184,6 +186,8 @@ export function createMarkerManager({
   let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
   let currentHighlight: IDecoration | null = null;
   let isPythonREPL = false; // Track if we're currently inside a Python REPL
+  let isRREPL = false; // Track if we're currently inside an R REPL
+  let rOuterMarker: IDecoration | null = null; // Shell marker for the long-running `R` command
   
   // Allow external control of Python REPL state
   const setPythonREPL = (enabled: boolean) => {
@@ -191,6 +195,36 @@ export function createMarkerManager({
     isPythonREPL = enabled;
     
     debugLog('pythonModeNow=', isPythonREPL);
+  };
+
+  const setRREPL = (enabled: boolean) => {
+    debugLog('setRREPL:', enabled, 'was:', isRREPL);
+    if (enabled === isRREPL) return;
+
+    if (enabled) {
+      // Entering R REPL: preserve the in-progress shell marker for `R` so REPL markers
+      // don\'t get merged into it.
+      if (!rOuterMarker && currentMarker) {
+        const meta = markerMeta.get(currentMarker);
+        if (meta && meta.exitCode === undefined && !meta.isPythonREPL && !meta.isRREPL) {
+          rOuterMarker = currentMarker;
+          currentMarker = null;
+        }
+      }
+    } else {
+      // Exiting R REPL: restore the shell marker so the eventual shell-side OSC 133;D
+      // closes the correct command.
+      if (rOuterMarker) {
+        const meta = markerMeta.get(rOuterMarker);
+        if (meta && meta.exitCode === undefined) {
+          currentMarker = rOuterMarker;
+        }
+        rOuterMarker = null;
+      }
+    }
+
+    isRREPL = enabled;
+    debugLog('rModeNow=', isRREPL, 'outerMarkerLine=', rOuterMarker?.marker.line);
   };
   
   // Notify external callback if provided
@@ -215,6 +249,7 @@ export function createMarkerManager({
           outputStartLine,
           hasOutput: outputInfo.hasOutput,
           python: Boolean(meta?.isPythonREPL),
+          r: Boolean(meta?.isRREPL),
           py: meta?.pythonCommandId,
           doneLine: meta?.doneMarker?.line,
           bootstrap: Boolean(meta?.isBootstrap),
@@ -224,7 +259,7 @@ export function createMarkerManager({
       // eslint-disable-next-line no-console
       console.table(rows);
       // eslint-disable-next-line no-console
-      console.log('[Markers][DEBUG] currentMarkerLine=', currentMarker?.marker.line, 'pythonMode=', isPythonREPL);
+      console.log('[Markers][DEBUG] currentMarkerLine=', currentMarker?.marker.line, 'pythonMode=', isPythonREPL, 'rMode=', isRREPL);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[Markers][DEBUG] dump failed:', e);
@@ -495,6 +530,12 @@ export function createMarkerManager({
       debugLog('Applied .python class to marker at line', marker.marker.line);
     }
 
+    if (meta?.isRREPL) {
+      element.classList.add('r');
+      element.title = 'R REPL command';
+      debugLog('Applied .r class to marker at line', marker.marker.line);
+    }
+
     if (exitCode !== undefined) {
       if (exitCode === 0) element.classList.add('success');
       else element.classList.add('error');
@@ -548,7 +589,19 @@ export function createMarkerManager({
       const pythonIdPart = parts.find((p) => p.startsWith('py='));
       const pythonCommandId = pythonIdPart ? pythonIdPart.substring('py='.length) : undefined;
 
-      debugLog('OSC 133 raw=', JSON.stringify(data), 'type=', type, 'pythonMode=', isPythonREPL, 'currentMarkerLine=', currentMarker?.marker.line);
+      debugLog(
+        'OSC 133 raw=',
+        JSON.stringify(data),
+        'type=',
+        type,
+        'pythonMode=',
+        isPythonREPL,
+        'rMode=',
+        isRREPL,
+        'currentMarkerLine=',
+        currentMarker?.marker.line
+      );
+      // R REPL uses the same prompt-time marker style as Python: A marks prompt, D marks completion.
 
       if (type === 'A') {
         // Prompt Start - Create Marker
@@ -560,10 +613,11 @@ export function createMarkerManager({
           if (existing) {
             const meta = markerMeta.get(existing) || {};
             meta.isPythonREPL = isPythonREPL;
+            meta.isRREPL = isRREPL;
             meta.pythonCommandId = pythonCommandId;
             pythonMarkersById.set(pythonCommandId, existing);
 
-            if (isPythonREPL && !meta.outputStartMarker) {
+            if ((isPythonREPL || isRREPL) && !meta.outputStartMarker) {
               meta.outputStartMarker = term.registerMarker(0);
               meta.streamingOutput = true;
               meta.startTime = Date.now();
@@ -581,6 +635,11 @@ export function createMarkerManager({
         // reuse it instead of creating a duplicate marker on the same line.
         // reuse it instead of creating a duplicate marker on the same line.
         if (currentMarker) {
+          // If we\'re in R REPL mode and we\'ve preserved the outer shell marker (the long-running `R` command),
+          // don\'t reuse it as the REPL marker.
+          if (isRREPL && rOuterMarker && currentMarker === rOuterMarker) {
+            // fall through to create a new marker
+          } else {
           const existingMeta = markerMeta.get(currentMarker);
           if (existingMeta && existingMeta.exitCode === undefined) {
             if (
@@ -591,12 +650,13 @@ export function createMarkerManager({
               // Don't reuse a marker from a different Python command id.
             } else {
             existingMeta.isPythonREPL = isPythonREPL;
+            existingMeta.isRREPL = isRREPL;
             if (pythonCommandId) {
               existingMeta.pythonCommandId = pythonCommandId;
               pythonMarkersById.set(pythonCommandId, currentMarker);
             }
 
-            if (isPythonREPL && !existingMeta.outputStartMarker) {
+            if ((isPythonREPL || isRREPL) && !existingMeta.outputStartMarker) {
               existingMeta.outputStartMarker = term.registerMarker(0);
               existingMeta.streamingOutput = true;
               existingMeta.startTime = Date.now();
@@ -606,6 +666,7 @@ export function createMarkerManager({
             markerMeta.set(currentMarker, existingMeta);
             return true;
             }
+          }
           }
         }
 
@@ -621,10 +682,15 @@ export function createMarkerManager({
           marker.onDispose(() => removeMarker(marker));
           currentMarker = marker;
           markers.push(marker);
-          // Only mark as bootstrap if we haven't seen any commands yet AND it's in the first few lines
+          // Only mark as bootstrap if we haven't seen any commands yet AND it's in the first few lines.
+          // Never treat REPL markers as bootstrap; otherwise the first prompt marker gets hidden.
           const isBootstrap =
-            !hasSeenFirstCommand && marker.marker.line >= 0 && marker.marker.line < 10;
-          const meta: MarkerMeta = { isBootstrap, isPythonREPL };
+            !hasSeenFirstCommand &&
+            !isPythonREPL &&
+            !isRREPL &&
+            marker.marker.line >= 0 &&
+            marker.marker.line < 10;
+          const meta: MarkerMeta = { isBootstrap, isPythonREPL, isRREPL };
           if (pythonCommandId) {
             meta.pythonCommandId = pythonCommandId;
             pythonMarkersById.set(pythonCommandId, marker);
@@ -633,7 +699,7 @@ export function createMarkerManager({
           // In the Python REPL we intentionally "trick" OSC 133 by emitting markers at prompt-render time.
           // Over SSH, OSC 133;C can be unreliable or arrive in unexpected order, so we treat A as the
           // start of the command/output block as well.
-          if (isPythonREPL) {
+          if (isPythonREPL || isRREPL) {
             meta.outputStartMarker = term.registerMarker(0);
             meta.streamingOutput = true;
             meta.startTime = Date.now();
@@ -679,8 +745,12 @@ export function createMarkerManager({
             currentMarker = marker;
             markers.push(marker);
             const isBootstrap =
-              !hasSeenFirstCommand && marker.marker.line >= 0 && marker.marker.line < 10;
-            const meta: MarkerMeta = { isBootstrap, isPythonREPL };
+              !hasSeenFirstCommand &&
+              !isPythonREPL &&
+              !isRREPL &&
+              marker.marker.line >= 0 &&
+              marker.marker.line < 10;
+            const meta: MarkerMeta = { isBootstrap, isPythonREPL, isRREPL };
             if (pythonCommandId) {
               meta.pythonCommandId = pythonCommandId;
               pythonMarkersById.set(pythonCommandId, marker);
@@ -738,6 +808,7 @@ export function createMarkerManager({
           debugLog('Marker meta before D update:', {
             line: marker.marker.line,
             isPythonREPL: meta.isPythonREPL,
+            isRREPL: meta.isRREPL,
             pythonCommandId: meta.pythonCommandId,
           });
 
@@ -1054,5 +1125,6 @@ export function createMarkerManager({
     copyCommandAtLine,
     addCommandToContext,
     setPythonREPL,  // Export function to control Python REPL state
+    setRREPL,
   };
 }

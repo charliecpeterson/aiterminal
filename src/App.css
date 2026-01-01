@@ -447,6 +447,15 @@ body, html, #root {
   background-color: #FFC107; /* Yellow/amber for Python errors */
 }
 
+/* R REPL markers - distinct color scheme */
+.xterm-decoration-container .terminal-marker.r.success {
+  background-color: #9C27B0; /* Purple for successful R commands */
+}
+
+.xterm-decoration-container .terminal-marker.r.error {
+  background-color: #FF5722; /* Deep orange for R errors */
+}
+
 .aiterm-scroll-track {
   position: absolute;
   top: 0;

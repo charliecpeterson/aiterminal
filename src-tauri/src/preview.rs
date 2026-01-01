@@ -10,6 +10,7 @@ type WatcherMap = Arc<Mutex<HashMap<String, notify_debouncer_mini::Debouncer<not
 type ContentStore = Arc<Mutex<HashMap<String, (String, String)>>>; // Maps window_label -> (filename, content)
 
 #[derive(Clone, serde::Serialize)]
+#[allow(dead_code)]
 struct FileChangedPayload {
     path: String,
 }
@@ -88,6 +89,7 @@ pub async fn stop_preview_watcher(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn start_file_watcher(
     app: AppHandle,
     window_label: String,

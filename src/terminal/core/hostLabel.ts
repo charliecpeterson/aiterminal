@@ -9,7 +9,8 @@ export interface HostLabelHandle {
 export function attachHostLabelOsc(
   term: XTermTerminal,
   setHostLabel: (label: string) => void,
-  onPythonREPL?: (enabled: boolean) => void
+  onPythonREPL?: (enabled: boolean) => void,
+  onRREPL?: (enabled: boolean) => void
 ): HostLabelHandle {
   const debugEnabled = (() => {
     try {
@@ -97,8 +98,20 @@ export function attachHostLabelOsc(
         // Pass the enabled state to marker manager
         // enabled=true when Python starts, enabled=false when Python exits
         onPythonREPL?.(enabled);
+      } else if (data.startsWith('RREPL=')) {
+        // Handle R REPL detection
+        const value = data.substring('RREPL='.length);
+        const enabled = value === '1';
+        if (debugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log('[HostLabel][DEBUG] RREPL signal:', value, '-> enabled=', enabled);
+        }
+        onRREPL?.(enabled);
       } else {
-        console.log('[HostLabel] OSC 1337 (other):', data.substring(0, 50));
+        if (debugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log('[HostLabel][DEBUG] OSC 1337 (other):', data.substring(0, 50));
+        }
       }
     } catch (e) {
       // eslint-disable-next-line no-console

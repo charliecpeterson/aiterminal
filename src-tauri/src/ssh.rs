@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use tauri::State;
-use crate::models::AppState;
 
 const SSH_PROFILES_FILE: &str = ".config/aiterminal/ssh_profiles.json";
 

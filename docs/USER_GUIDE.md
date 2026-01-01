@@ -31,6 +31,16 @@ The terminal detects when commands start and finish (bash and zsh supported).
 - **Bypassing the wrapper**: To use plain ssh without integration, run `command ssh user@host` or `\ssh user@host`.
 - **Debugging hooks**: Set `AITERM_HOOK_DEBUG=1` before launching a shell to print which hook path is used (bash `PROMPT_COMMAND` array vs string, zsh hook install).
 
+#### REPL markers (Python + R)
+AI Terminal also supports command markers inside interactive REPLs:
+- **Python**: Launch via `python` / `python3` inside AI Terminal.
+- **R**: Launch via `R` inside AI Terminal.
+
+Notes:
+- REPL markers use a prompt-embedded technique, so the *prompt line* is considered part of the command block.
+- If you update AI Terminal and don’t see changes, fully restart the app so the embedded shell integration scripts get rewritten into `~/.config/aiterminal/`.
+- Optional R debug logging: set `AITERM_R_DEBUG=1` (writes to `~/.config/aiterminal/r_debug.log`).
+
 #### Technical Details: SSH Integration
 The SSH integration uses exported bash functions to intercept ssh calls:
 
