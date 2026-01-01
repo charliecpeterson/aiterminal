@@ -31,6 +31,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Debug release token source
+        env:
+          TOKEN_SOURCE: ${{ secrets.RELEASE_TOKEN != '' && 'secrets.RELEASE_TOKEN' || secrets.GITHUB_TOKEN != '' && 'secrets.GITHUB_TOKEN' || 'github.token' }}
+        run: |
+          echo "Release token source: $TOKEN_SOURCE"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
