@@ -153,6 +153,7 @@ fi
 
 # Define aiterm_python function to inject OSC 133 markers into Python REPL
 aiterm_python() {
+    # Figure out which python binary was actually called
     local python_cmd="$1"
     shift
     
@@ -161,87 +162,88 @@ aiterm_python() {
         return $?
     fi
     
-    # Always recreate Python startup file with correct escape sequences
+    # Create Python startup file if it doesn't exist
     local python_startup="${HOME}/.config/aiterminal/python_startup.py"
-    mkdir -p "${HOME}/.config/aiterminal" 2>/dev/null
+    if [ ! -f "$python_startup" ]; then
+        mkdir -p "${HOME}/.config/aiterminal" 2>/dev/null
+        cat > "$python_startup" << 'PYSTARTUP_EOF'
+# AI Terminal Python REPL Integration
+import sys
+import os
+
+# Only activate in AI Terminal
+if os.environ.get('TERM_PROGRAM') == 'aiterminal':
+    # Get the raw terminal file descriptor
+    try:
+        _tty_fd = sys.stdout.fileno()
+    except:
+        _tty_fd = None
     
-    # Use printf to create file with proper escape sequences (not heredoc which interprets them)
-    {
-        printf '%s\n' '# AI Terminal Python REPL Integration'
-        printf '%s\n' 'import sys, os, builtins, atexit'
-        printf '%s\n' ''
-        printf '%s\n' "if os.environ.get('TERM_PROGRAM') == 'aiterminal':"
-        printf '%s\n' '    def emit_marker(marker):'
-        printf '%s\n' "        sys.stdout.write(f'\\033]133;{marker}\\007')"
-        printf '%s\n' '        sys.stdout.flush()'
-        printf '%s\n' ''  
-        printf '%s\n' "    sys.stdout.write('\\033]1337;PythonREPL=1\\007')"
-        printf '%s\n' '    sys.stdout.flush()'
-        printf '%s\n' ''
-        printf '%s\n' '    # Track whether the current prompt has started a command block.'
-        printf '%s\n' '    # Some statements (e.g. import) produce no displayhook call; we close them on the next prompt.'
-        printf '%s\n' '    _aiterm_needs_done = False'
-        printf '%s\n' '    _aiterm_cmd_id = 0'
-        printf '%s\n' '    _aiterm_active_id = None'
-        printf '%s\n' ''
-        printf '%s\n' '    _original_exit = builtins.exit'
-        printf '%s\n' '    class _AITermExit:'
-        printf '%s\n' "        def __repr__(self): return 'Use exit() or Ctrl-D (i.e. EOF) to exit'"
-        printf '%s\n' '        def __call__(self, code=None):'
-        printf '%s\n' '            try:'
-        printf '%s\n' "                sys.stdout.write('\\033]1337;PythonREPL=0\\007')"
-        printf '%s\n' '                sys.stdout.flush(); os.fsync(sys.stdout.fileno())'
-        printf '%s\n' '            except: pass'
-        printf '%s\n' '            _original_exit(code)'
-        printf '%s\n' '    builtins.exit = builtins.quit = _AITermExit()'
-        printf '%s\n' ''
-        printf '%s\n' '    def _aiterm_atexit():'
-        printf '%s\n' '        try:'
-        printf '%s\n' "            sys.stdout.write('\\033]1337;PythonREPL=0\\007')"
-        printf '%s\n' '            sys.stdout.flush(); os.fsync(sys.stdout.fileno())'
-        printf '%s\n' '        except: pass'
-        printf '%s\n' '    atexit.register(_aiterm_atexit)'
-        printf '%s\n' ''
-        printf '%s\n' '    _original_displayhook = sys.displayhook'
-        printf '%s\n' '    def _aiterm_displayhook(value):'
-        printf '%s\n' '        global _aiterm_active_id, _aiterm_needs_done'
-        printf '%s\n' '        if value is not None: _original_displayhook(value)'
-        printf '%s\n' '        try: sys.stdout.flush()'
-        printf '%s\n' '        except: pass'
-        printf '%s\n' "        emit_marker(f'D;0;py={_aiterm_active_id or 0}')"
-        printf '%s\n' '        _aiterm_active_id = None'
-        printf '%s\n' '        _aiterm_needs_done = False'
-        printf '%s\n' '    sys.displayhook = _aiterm_displayhook'
-        printf '%s\n' ''
-        printf '%s\n' '    class _AITermPrompt:'
-        printf '%s\n' '        def __init__(self, prompt_text): self.prompt_text = prompt_text'
-        printf '%s\n' '        def __str__(self):'
-        printf '%s\n' '            global _aiterm_needs_done, _aiterm_cmd_id, _aiterm_active_id'
-        printf '%s\n' '            if _aiterm_needs_done:'
-        printf '%s\n' "                emit_marker(f'D;0;py={_aiterm_active_id or 0}')"
-        printf '%s\n' '                _aiterm_active_id = None'
-        printf '%s\n' '                _aiterm_needs_done = False'
-        printf '%s\n' '            _aiterm_cmd_id += 1'
-        printf '%s\n' '            _aiterm_active_id = _aiterm_cmd_id'
-        printf '%s\n' "            emit_marker(f'A;py={_aiterm_active_id}')"
-        printf '%s\n' "            emit_marker(f'C;py={_aiterm_active_id}')"
-        printf '%s\n' '            _aiterm_needs_done = True'
-        printf '%s\n' '            return self.prompt_text'
-        printf '%s\n' '        def __repr__(self): return str(self)'
-        printf '%s\n' "    sys.ps1 = _AITermPrompt('>>> ')"
-        printf '%s\n' "    sys.ps2 = _AITermPrompt('... ')"
-        printf '%s\n' ''
-        printf '%s\n' '    _original_excepthook = sys.excepthook'
-        printf '%s\n' '    def _aiterm_excepthook(exc_type, exc_value, exc_traceback):'
-        printf '%s\n' '        global _aiterm_active_id, _aiterm_needs_done'
-        printf '%s\n' '        _original_excepthook(exc_type, exc_value, exc_traceback)'
-        printf '%s\n' '        try: sys.stderr.flush()'
-        printf '%s\n' '        except: pass'
-        printf '%s\n' "        emit_marker(f'D;1;py={_aiterm_active_id or 0}')"
-        printf '%s\n' '        _aiterm_active_id = None'
-        printf '%s\n' '        _aiterm_needs_done = False'
-        printf '%s\n' '    sys.excepthook = _aiterm_excepthook'
-    } > "$python_startup"
+    # Emit special marker to identify Python REPL context
+    if _tty_fd is not None:
+        os.write(_tty_fd, b'\033]1337;PythonREPL=1\007')
+    
+    # OSC 133 markers for per-command tracking
+    def emit_marker(marker):
+        if _tty_fd is not None:
+            os.write(_tty_fd, f'\033]133;{marker}\007'.encode())
+    
+    # Track whether we need to emit C marker
+    _need_c_marker = False
+    
+    # Custom display hook to mark command completion
+    _original_displayhook = sys.displayhook
+    def _aiterm_displayhook(value):
+        global _need_c_marker
+        # Emit C marker before output
+        if _need_c_marker:
+            emit_marker('C')
+            _need_c_marker = False
+        
+        if value is not None:
+            _original_displayhook(value)
+        
+        # Emit done marker after output (success)
+        emit_marker('D;0')
+    
+    sys.displayhook = _aiterm_displayhook
+    
+    # Customize prompts to emit markers
+    class _AITermPrompt:
+        def __init__(self, prompt_text):
+            self.prompt_text = prompt_text
+        
+        def __str__(self):
+            global _need_c_marker
+            # Emit prompt marker
+            emit_marker('A')
+            # Set flag so we emit C before output
+            _need_c_marker = True
+            return self.prompt_text
+        
+        def __repr__(self):
+            return str(self)
+    
+    # Set primary and secondary prompts with markers
+    sys.ps1 = _AITermPrompt('>>> ')
+    sys.ps2 = _AITermPrompt('... ')
+    
+    # Mark when command execution encounters an error
+    _original_excepthook = sys.excepthook
+    def _aiterm_excepthook(exc_type, exc_value, exc_traceback):
+        global _need_c_marker
+        # Emit C marker before error output
+        if _need_c_marker:
+            emit_marker('C')
+            _need_c_marker = False
+        
+        _original_excepthook(exc_type, exc_value, exc_traceback)
+        # Emit done marker with error code
+        emit_marker('D;1')
+    
+    sys.excepthook = _aiterm_excepthook
+PYSTARTUP_EOF
+    fi
     
     # Run Python with our startup file
     PYTHONSTARTUP="$python_startup" command "$python_cmd" "$@"

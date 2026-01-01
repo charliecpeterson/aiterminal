@@ -3,6 +3,12 @@ import type { ContextItem } from '../../context/AIContext';
 import type { PendingFileCaptureRef } from '../core/fileCapture';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
+declare global {
+  interface Window {
+    __aiterm_dumpMarkers?: () => void;
+  }
+}
+
 export interface CopyMenuState {
   x: number;
   y: number;
@@ -31,11 +37,15 @@ export interface MarkerManagerParams {
   pendingFileCaptureRef: PendingFileCaptureRef;
   onCommandStart?: () => void;  // Called when command execution starts
   onCommandEnd?: (exitCode?: number) => void;    // Called when command execution ends
+  onPythonREPL?: (enabled: boolean) => void;  // Called when Python REPL starts/stops
 }
 
 interface MarkerMeta {
   outputStartMarker?: IMarker;
+  doneMarker?: IMarker;
   isBootstrap?: boolean;
+  isPythonREPL?: boolean;  // Marker is inside Python REPL
+  pythonCommandId?: string;
   exitCode?: number;
   streamingOutput?: boolean;
   foldDecoration?: IDecoration;
@@ -45,13 +55,72 @@ interface MarkerMeta {
   duration?: number;   // Duration in ms
 }
 
-function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
-  let endLine = term.buffer.active.length - 1;
-  const index = markers.indexOf(marker);
-  if (index !== -1 && index < markers.length - 1) {
-    endLine = markers[index + 1].marker.line - 1;
+function computeOutputInfo(
+  startLine: number,
+  endLine: number,
+  outputStartLine: number | null
+): { hasOutput: boolean; safeOutputStart: number } {
+  if (outputStartLine === null) {
+    return { hasOutput: false, safeOutputStart: startLine + 1 };
   }
-  return endLine;
+  if (outputStartLine < startLine || outputStartLine > endLine) {
+    return { hasOutput: false, safeOutputStart: startLine + 1 };
+  }
+
+  // Allow outputStartLine == startLine for Python REPL where A and C may occur on the same line.
+  const safeOutputStart = Math.max(outputStartLine, startLine + 1);
+  const hasOutput = safeOutputStart <= endLine;
+  return { hasOutput, safeOutputStart };
+}
+
+function isMarkerDebugEnabled(): boolean {
+  try {
+    return window.localStorage.getItem('AITERM_DEBUG_MARKERS') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function debugLog(...args: unknown[]) {
+  if (!isMarkerDebugEnabled()) return;
+  // eslint-disable-next-line no-console
+  console.log('[Markers][DEBUG]', ...args);
+}
+
+function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
+  const startLine = marker.marker.line;
+  let endLine = term.buffer.active.length - 1;
+
+  const meta = (marker as any)?._aiterm_meta as MarkerMeta | undefined;
+
+  // For Python REPL markers, prefer the explicit done marker line when available.
+  // This avoids relying on the next prompt marker (which can land on the output line over SSH).
+  if (meta?.isPythonREPL && meta?.doneMarker?.line != null) {
+    const doneLine = meta.doneMarker.line;
+    if (doneLine >= 0) {
+      endLine = Math.min(endLine, Math.max(startLine, doneLine - 1));
+      return endLine;
+    }
+  }
+
+  // Markers can arrive out-of-order over SSH (especially with Python REPL prompt tricks).
+  // Compute the next marker by line number rather than relying on insertion order.
+  let nextLine: number | null = null;
+  for (const other of markers) {
+    if (other === marker) continue;
+    const line = other.marker.line;
+    if (line <= startLine) continue;
+    if (line < 0) continue;
+    if (nextLine === null || line < nextLine) {
+      nextLine = line;
+    }
+  }
+
+  if (nextLine !== null) {
+    endLine = nextLine - 1;
+  }
+
+  return Math.max(startLine, endLine);
 }
 
 function computeRanges(
@@ -65,16 +134,14 @@ function computeRanges(
 
   const meta = markerMeta.get(marker);
   const outputStartLine = meta?.outputStartMarker?.line ?? null;
-  const hasOutput =
-    outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
-  const safeOutputStart = hasOutput ? Math.max(outputStartLine, startLine + 1) : startLine + 1;
+  const { hasOutput, safeOutputStart } = computeOutputInfo(startLine, endLine, outputStartLine);
   const cmdEnd = Math.max(startLine, (hasOutput ? safeOutputStart : startLine + 1) - 1);
 
   const isBootstrapMarker = Boolean(meta?.isBootstrap);
 
   return {
     commandRange: [startLine, cmdEnd],
-    outputRange: hasOutput ? [safeOutputStart, Math.max(safeOutputStart, endLine)] : null,
+    outputRange: hasOutput ? [safeOutputStart, endLine] : null,
     disabled: isBootstrapMarker,
     outputDisabled: !hasOutput || isBootstrapMarker,
   };
@@ -94,6 +161,7 @@ export interface MarkerManager {
   jumpToLine: (line: number) => void;
   copyCommandAtLine: (line: number) => void;
   addCommandToContext: (line: number) => void;
+  setPythonREPL: (enabled: boolean) => void;  // Control Python REPL marker styling
 }
 
 export function createMarkerManager({
@@ -108,14 +176,65 @@ export function createMarkerManager({
   pendingFileCaptureRef,
   onCommandStart,
   onCommandEnd,
+  onPythonREPL,
 }: MarkerManagerParams): MarkerManager {
   let currentMarker: IDecoration | null = null;
   const markers: IDecoration[] = [];
   const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
   let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
   let currentHighlight: IDecoration | null = null;
+  let isPythonREPL = false; // Track if we're currently inside a Python REPL
+  
+  // Allow external control of Python REPL state
+  const setPythonREPL = (enabled: boolean) => {
+    debugLog('setPythonREPL:', enabled, 'was:', isPythonREPL);
+    isPythonREPL = enabled;
+    
+    debugLog('pythonModeNow=', isPythonREPL);
+  };
+  
+  // Notify external callback if provided
+  if (onPythonREPL) {
+    onPythonREPL(isPythonREPL);
+  }
 
   let currentOutputButton: HTMLDivElement | null = null;
+  const pythonMarkersById = new Map<string, IDecoration>();
+
+  const dumpMarkers = () => {
+    try {
+      const rows = markers.slice(-25).map((marker) => {
+        const startLine = marker.marker.line;
+        const endLine = computeEndLine(term, markers, marker);
+        const meta = markerMeta.get(marker);
+        const outputStartLine = meta?.outputStartMarker?.line ?? null;
+        const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
+        return {
+          startLine,
+          endLine,
+          outputStartLine,
+          hasOutput: outputInfo.hasOutput,
+          python: Boolean(meta?.isPythonREPL),
+          py: meta?.pythonCommandId,
+          doneLine: meta?.doneMarker?.line,
+          bootstrap: Boolean(meta?.isBootstrap),
+          exitCode: meta?.exitCode,
+        };
+      });
+      // eslint-disable-next-line no-console
+      console.table(rows);
+      // eslint-disable-next-line no-console
+      console.log('[Markers][DEBUG] currentMarkerLine=', currentMarker?.marker.line, 'pythonMode=', isPythonREPL);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[Markers][DEBUG] dump failed:', e);
+    }
+  };
+
+  if (isMarkerDebugEnabled()) {
+    window.__aiterm_dumpMarkers = dumpMarkers;
+    debugLog('Debug enabled. Use window.__aiterm_dumpMarkers() after reproducing.');
+  }
 
   // Find which command block contains a given line
   const findMarkerAtLine = (lineNumber: number): IDecoration | null => {
@@ -220,12 +339,11 @@ export function createMarkerManager({
       const startLine = marker.marker.line;
       const endLine = computeEndLine(term, markers, marker);
       const outputStartLine = meta?.outputStartMarker?.line ?? null;
-      const hasOutput = outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
-      
-      if (hasOutput) {
-        const safeOutputStart = Math.max(outputStartLine, startLine + 1);
-        const outputLineCount = Math.max(safeOutputStart, endLine) - safeOutputStart + 1;
-        showOutputButton(marker, safeOutputStart, Math.max(safeOutputStart, endLine), outputLineCount);
+      const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
+
+      if (outputInfo.hasOutput) {
+        const outputLineCount = endLine - outputInfo.safeOutputStart + 1;
+        showOutputButton(marker, outputInfo.safeOutputStart, endLine, outputLineCount);
       }
     };
 
@@ -338,13 +456,44 @@ export function createMarkerManager({
 
     const meta = markerMeta.get(marker);
     meta?.outputStartMarker?.dispose();
+    meta?.doneMarker?.dispose();
+
+    if (meta?.pythonCommandId) {
+      const existing = pythonMarkersById.get(meta.pythonCommandId);
+      if (existing === marker) {
+        pythonMarkersById.delete(meta.pythonCommandId);
+      }
+    }
+
     markerMeta.delete(marker);
+    try {
+      delete (marker as any)._aiterm_meta;
+    } catch {
+      // ignore
+    }
   };
 
   const setupMarkerElement = (marker: IDecoration, element: HTMLElement, exitCode?: number) => {
     element.classList.add('terminal-marker');
     element.style.cursor = 'pointer';
     element.title = 'Click for options';
+
+    // Add Python REPL class if applicable
+    const meta = markerMeta.get(marker);
+
+    // Bootstrap markers are internal; hide them to avoid a stray marker at the top of a fresh session.
+    if (meta?.isBootstrap) {
+      element.style.opacity = '0';
+      element.style.pointerEvents = 'none';
+      element.title = '';
+      return;
+    }
+
+    if (meta?.isPythonREPL) {
+      element.classList.add('python');
+      element.title = 'Python REPL command';
+      debugLog('Applied .python class to marker at line', marker.marker.line);
+    }
 
     if (exitCode !== undefined) {
       if (exitCode === 0) element.classList.add('success');
@@ -396,8 +545,70 @@ export function createMarkerManager({
       const parts = data.split(';');
       const type = parts[0];
 
+      const pythonIdPart = parts.find((p) => p.startsWith('py='));
+      const pythonCommandId = pythonIdPart ? pythonIdPart.substring('py='.length) : undefined;
+
+      debugLog('OSC 133 raw=', JSON.stringify(data), 'type=', type, 'pythonMode=', isPythonREPL, 'currentMarkerLine=', currentMarker?.marker.line);
+
       if (type === 'A') {
         // Prompt Start - Create Marker
+        debugLog('OSC 133;A');
+
+        // In Python REPL mode, prefer id-based association.
+        if (pythonCommandId) {
+          const existing = pythonMarkersById.get(pythonCommandId);
+          if (existing) {
+            const meta = markerMeta.get(existing) || {};
+            meta.isPythonREPL = isPythonREPL;
+            meta.pythonCommandId = pythonCommandId;
+            pythonMarkersById.set(pythonCommandId, existing);
+
+            if (isPythonREPL && !meta.outputStartMarker) {
+              meta.outputStartMarker = term.registerMarker(0);
+              meta.streamingOutput = true;
+              meta.startTime = Date.now();
+              onCommandStart?.();
+            }
+
+            markerMeta.set(existing, meta);
+            (existing as any)._aiterm_meta = meta;
+            currentMarker = existing;
+            return true;
+          }
+        }
+
+        // If we already have an in-progress marker (common when OSC 133;C arrives first over SSH),
+        // reuse it instead of creating a duplicate marker on the same line.
+        // reuse it instead of creating a duplicate marker on the same line.
+        if (currentMarker) {
+          const existingMeta = markerMeta.get(currentMarker);
+          if (existingMeta && existingMeta.exitCode === undefined) {
+            if (
+              pythonCommandId &&
+              existingMeta.pythonCommandId &&
+              existingMeta.pythonCommandId !== pythonCommandId
+            ) {
+              // Don't reuse a marker from a different Python command id.
+            } else {
+            existingMeta.isPythonREPL = isPythonREPL;
+            if (pythonCommandId) {
+              existingMeta.pythonCommandId = pythonCommandId;
+              pythonMarkersById.set(pythonCommandId, currentMarker);
+            }
+
+            if (isPythonREPL && !existingMeta.outputStartMarker) {
+              existingMeta.outputStartMarker = term.registerMarker(0);
+              existingMeta.streamingOutput = true;
+              existingMeta.startTime = Date.now();
+              onCommandStart?.();
+            }
+
+            markerMeta.set(currentMarker, existingMeta);
+            return true;
+            }
+          }
+        }
+
         const marker = term.registerDecoration({
           marker: term.registerMarker(0),
           x: 0,
@@ -411,8 +622,26 @@ export function createMarkerManager({
           currentMarker = marker;
           markers.push(marker);
           // Only mark as bootstrap if we haven't seen any commands yet AND it's in the first few lines
-          const isBootstrap = !hasSeenFirstCommand && marker.marker.line < 10;
-          markerMeta.set(marker, { isBootstrap });
+          const isBootstrap =
+            !hasSeenFirstCommand && marker.marker.line >= 0 && marker.marker.line < 10;
+          const meta: MarkerMeta = { isBootstrap, isPythonREPL };
+          if (pythonCommandId) {
+            meta.pythonCommandId = pythonCommandId;
+            pythonMarkersById.set(pythonCommandId, marker);
+          }
+
+          // In the Python REPL we intentionally "trick" OSC 133 by emitting markers at prompt-render time.
+          // Over SSH, OSC 133;C can be unreliable or arrive in unexpected order, so we treat A as the
+          // start of the command/output block as well.
+          if (isPythonREPL) {
+            meta.outputStartMarker = term.registerMarker(0);
+            meta.streamingOutput = true;
+            meta.startTime = Date.now();
+            onCommandStart?.();
+          }
+
+          markerMeta.set(marker, meta);
+          (marker as any)._aiterm_meta = meta;
           
           if (isBootstrap) {
             console.log('[Fold] Marking as bootstrap marker at line', marker.marker.line);
@@ -426,9 +655,19 @@ export function createMarkerManager({
         }
       } else if (type === 'C') {
         // Command Output Start
+        debugLog('OSC 133;C');
+
+        // If we already have a marker for this Python command id, use it.
+        if (pythonCommandId) {
+          const existing = pythonMarkersById.get(pythonCommandId);
+          if (existing) {
+            currentMarker = existing;
+          }
+        }
+
         if (!currentMarker) {
           const marker = term.registerDecoration({
-            marker: term.registerMarker(-1),
+            marker: term.registerMarker(0),
             x: 0,
             width: 1,
             height: 1,
@@ -439,8 +678,15 @@ export function createMarkerManager({
             marker.onDispose(() => removeMarker(marker));
             currentMarker = marker;
             markers.push(marker);
-            const isBootstrap = !hasSeenFirstCommand && marker.marker.line < 10;
-            markerMeta.set(marker, { isBootstrap });
+            const isBootstrap =
+              !hasSeenFirstCommand && marker.marker.line >= 0 && marker.marker.line < 10;
+            const meta: MarkerMeta = { isBootstrap, isPythonREPL };
+            if (pythonCommandId) {
+              meta.pythonCommandId = pythonCommandId;
+              pythonMarkersById.set(pythonCommandId, marker);
+            }
+            markerMeta.set(marker, meta);
+            (marker as any)._aiterm_meta = meta;
             
             if (isBootstrap) {
               console.log('[Fold] Marking as bootstrap marker at line', marker.marker.line);
@@ -456,11 +702,16 @@ export function createMarkerManager({
 
         if (currentMarker) {
           const meta = markerMeta.get(currentMarker) || {};
+          if (pythonCommandId && !meta.pythonCommandId) {
+            meta.pythonCommandId = pythonCommandId;
+            pythonMarkersById.set(pythonCommandId, currentMarker);
+          }
           if (!meta.outputStartMarker) {
             meta.outputStartMarker = term.registerMarker(0);
             meta.streamingOutput = true; // Mark as streaming
             meta.startTime = Date.now(); // Record start time
             markerMeta.set(currentMarker, meta);
+            (currentMarker as any)._aiterm_meta = meta;
             
             // Notify that command started
             onCommandStart?.();
@@ -471,20 +722,38 @@ export function createMarkerManager({
         const parsed = Number.parseInt(parts[1] || '0', 10);
         const exitCode = Number.isFinite(parsed) ? parsed : 0;
         
+        debugLog('OSC 133;D exitCode=', exitCode);
+        
         // Mark that we've seen at least one complete command
         hasSeenFirstCommand = true;
         
-        if (currentMarker) {
-          const marker = currentMarker;
-          
+        const markerToClose =
+          (pythonCommandId ? pythonMarkersById.get(pythonCommandId) : undefined) ?? currentMarker;
+
+        if (markerToClose) {
+          const marker = markerToClose;
+
           // Store exitCode and timing in metadata
           const meta = markerMeta.get(marker) || {};
+          debugLog('Marker meta before D update:', {
+            line: marker.marker.line,
+            isPythonREPL: meta.isPythonREPL,
+            pythonCommandId: meta.pythonCommandId,
+          });
+
           meta.exitCode = exitCode;
           meta.endTime = Date.now();
           if (meta.startTime) {
             meta.duration = meta.endTime - meta.startTime;
           }
+
+          // Record explicit end position marker to make range computation robust over SSH.
+          if (!meta.doneMarker) {
+            meta.doneMarker = term.registerMarker(0);
+          }
+          
           markerMeta.set(marker, meta);
+          (marker as any)._aiterm_meta = meta;
           
           marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));
           if (marker.element) {
@@ -497,14 +766,9 @@ export function createMarkerManager({
             const endLine = computeEndLine(term, markers, marker);
             const meta = markerMeta.get(marker);
             const outputStartLine = meta?.outputStartMarker?.line ?? null;
-            const hasOutput =
-              outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
-            if (hasOutput) {
-              const safeOutputStart = Math.max(outputStartLine, startLine + 1);
-              const outputText = getRangeText([
-                safeOutputStart,
-                Math.max(safeOutputStart, endLine),
-              ]).trim();
+            const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
+            if (outputInfo.hasOutput) {
+              const outputText = getRangeText([outputInfo.safeOutputStart, endLine]).trim();
               if (outputText) {
                 if (addContextItemWithScan) {
                   addContextItemWithScan(outputText, 'file', {
@@ -555,7 +819,16 @@ export function createMarkerManager({
             onCommandEnd?.(meta.exitCode);
           }
 
-          currentMarker = null;
+          if (marker === currentMarker) {
+            currentMarker = null;
+          }
+
+          if (pythonCommandId) {
+            const existing = pythonMarkersById.get(pythonCommandId);
+            if (existing === marker) {
+              pythonMarkersById.delete(pythonCommandId);
+            }
+          }
         }
       }
     } catch (e) {
@@ -588,13 +861,15 @@ export function createMarkerManager({
 
       const meta = markerMeta.get(marker);
       const outputStartLine = meta?.outputStartMarker?.line ?? null;
-      const hasOutput = outputStartLine !== null && outputStartLine > startLine && outputStartLine <= endLine;
-      const safeOutputStart = hasOutput ? Math.max(outputStartLine, startLine + 1) : startLine + 1;
-      const cmdEnd = Math.max(startLine, (hasOutput ? safeOutputStart : startLine + 1) - 1);
+      const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
+      const cmdEnd = Math.max(
+        startLine,
+        (outputInfo.hasOutput ? outputInfo.safeOutputStart : startLine + 1) - 1
+      );
 
       const commandText = getRangeText([startLine, cmdEnd]).trim();
-      const outputText = hasOutput
-        ? getRangeText([safeOutputStart, Math.max(safeOutputStart, endLine)]).trim()
+      const outputText = outputInfo.hasOutput
+        ? getRangeText([outputInfo.safeOutputStart, endLine]).trim()
         : '';
 
       if (!commandText && !outputText) return;
@@ -778,5 +1053,6 @@ export function createMarkerManager({
     jumpToLine,
     copyCommandAtLine,
     addCommandToContext,
+    setPythonREPL,  // Export function to control Python REPL state
   };
 }

@@ -438,6 +438,15 @@ body, html, #root {
   background-color: #f44336;
 }
 
+/* Python REPL markers - blue/yellow color scheme */
+.xterm-decoration-container .terminal-marker.python.success {
+  background-color: #2196F3; /* Blue for successful Python commands */
+}
+
+.xterm-decoration-container .terminal-marker.python.error {
+  background-color: #FFC107; /* Yellow/amber for Python errors */
+}
+
 .aiterm-scroll-track {
   position: absolute;
   top: 0;

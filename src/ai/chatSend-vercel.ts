@@ -16,7 +16,9 @@ export interface ChatSendDeps {
   prompt: string;
   settingsAi: AiSettings | null | undefined;
   messages: ChatMessage[]; // Full message history
-  contextItems: ContextItem[]; // Context from terminal  formattedContextItems: string[]; // Pre-formatted context with redaction  terminalId: number; // Active terminal ID
+  contextItems: ContextItem[]; // Context from terminal
+  formattedContextItems: string[]; // Pre-formatted context with redaction
+  terminalId: number; // Active terminal ID
 
   addMessage: (message: ChatMessage) => void;
   appendMessage: (id: string, content: string) => void;

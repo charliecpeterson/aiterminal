@@ -21,8 +21,6 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
   const { profiles, deleteProfile, isLoading, getProfileConnections } = useSSHProfiles();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [showActive, setShowActive] = useState(true);
-  const [editingGroup, setEditingGroup] = useState<string | null>(null);
-  const [newGroupName, setNewGroupName] = useState('');
 
   // Get all active connections across all profiles
   const activeConnections = useMemo(() => {
@@ -55,12 +53,6 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
       collapsed: collapsedGroups.has(name),
     }));
   }, [profiles, collapsedGroups]);
-
-  // Get all unique group names
-  const allGroups = useMemo(() => {
-    const groups = new Set(profiles.map(p => p.group || 'Ungrouped'));
-    return Array.from(groups).sort();
-  }, [profiles]);
 
   const toggleGroup = (groupName: string) => {
     setCollapsedGroups(prev => {

@@ -129,7 +129,10 @@ export function createTerminalWiring(params: {
 
     const markerManagerRef = { current: markerManager };
 
-    const hostLabelHandle = attachHostLabelOsc(term, setHostLabel);
+    // Pass Python REPL detection callback to hostLabel handler
+    const hostLabelHandle = attachHostLabelOsc(term, setHostLabel, (enabled) => {
+        markerManager.setPythonREPL(enabled);
+    });
 
     const onDataDisposable = term.onData((data) => {
         invoke('write_to_pty', { id, data });
