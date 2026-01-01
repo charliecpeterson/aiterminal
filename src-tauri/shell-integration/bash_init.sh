@@ -13,18 +13,32 @@ if [ -n "$__AITERM_INTEGRATION_LOADED" ]; then
 fi
 __AITERM_INTEGRATION_LOADED=1
 
+__aiterm_source_user_file() {
+    # Source a user rc file safely.
+    # Some dotfiles contain top-level `return` statements (e.g. guard clauses).
+    # If we source them directly, that `return` can abort this integration script
+    # before we install OSC 133 hooks. Wrapping in a function makes `return`
+    # return from this function instead.
+    local f="$1"
+    [ -n "$f" ] || return 0
+    [ -f "$f" ] || return 0
+    # shellcheck disable=SC1090
+    . "$f" 2>/dev/null || true
+    return 0
+}
+
 # Advertise to downstream shells
 export TERM_PROGRAM=aiterminal
 
 # Ensure user rc is loaded once (for colors/aliases) before installing hooks
 if [ -z "$__AITERM_USER_RC_DONE" ]; then
     __AITERM_USER_RC_DONE=1
-    if [ -n "$BASH_VERSION" ] && [ -f ~/.bashrc ]; then source ~/.bashrc 2>/dev/null; fi
+    if [ -n "$BASH_VERSION" ]; then __aiterm_source_user_file ~/.bashrc; fi
     if [ -n "$BASH_VERSION" ] && [ -f ~/.bash_profile ] && [ -z "$__AITERM_BASH_PROFILE_DONE" ]; then
         __AITERM_BASH_PROFILE_DONE=1
-        source ~/.bash_profile 2>/dev/null
+        __aiterm_source_user_file ~/.bash_profile
     fi
-    if [ -n "$ZSH_VERSION" ] && [ -f ~/.zshrc ]; then source ~/.zshrc 2>/dev/null; fi
+    if [ -n "$ZSH_VERSION" ]; then __aiterm_source_user_file ~/.zshrc; fi
 fi
 
 # Restore login profile on remote bootstrap (so MOTD appears)
@@ -259,6 +273,126 @@ if [ "$TERM_PROGRAM" = "aiterminal" ]; then
     export -f python 2>/dev/null || true
     export -f python3 2>/dev/null || true
     export -f aiterm_python 2>/dev/null || true
+fi
+
+# Define aiterm_r function to inject OSC 133 markers into R REPL
+aiterm_r() {
+    local r_cmd="$1"
+    shift
+
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then
+        command "$r_cmd" "$@"
+        return $?
+    fi
+
+    # Only wrap interactive sessions (avoid impacting Rscript / non-tty)
+    if [ ! -t 0 ] || [ ! -t 1 ]; then
+        command "$r_cmd" "$@"
+        return $?
+    fi
+
+    local r_profile="${HOME}/.config/aiterminal/Rprofile.R"
+    mkdir -p "${HOME}/.config/aiterminal" 2>/dev/null
+
+    # Optional debug log (does not print into the terminal).
+    if [ "${AITERM_R_DEBUG:-}" = "1" ]; then
+        {
+            printf '[%s] aiterm_r invoked (shell=%s, cmd=%s)\n' "$(date '+%F %T' 2>/dev/null || date)" "${SHELL:-unknown}" "$r_cmd"
+        } >>"${HOME}/.config/aiterminal/r_debug.log" 2>/dev/null || true
+    fi
+
+    # Signal R REPL mode before launching R (helps confirm wrapper execution).
+    printf "\033]1337;RREPL=1\007"
+
+    {
+        printf '%s\n' '# AI Terminal R REPL Integration'
+        printf '%s\n' 'if (Sys.getenv("TERM_PROGRAM") == "aiterminal") {'
+        printf '%s\n' '  .aiterm_debug <- function(msg) {'
+        printf '%s\n' '    if (Sys.getenv("AITERM_R_DEBUG") != "1") return(invisible(NULL))'
+        printf '%s\n' '    f <- file.path(Sys.getenv("HOME"), ".config", "aiterminal", "r_debug.log")'
+        printf '%s\n' '    try(cat(sprintf("[%s] %s\n", format(Sys.time(), "%F %T"), msg), file = f, append = TRUE), silent = TRUE)'
+        printf '%s\n' '    invisible(NULL)'
+        printf '%s\n' '  }'
+        printf '%s\n' '  .aiterm_flush <- function() {'
+        printf '%s\n' '    # flush.console() is in utils; it may not be attached in some sessions'
+        printf '%s\n' '    if (requireNamespace("utils", quietly = TRUE)) {'
+        printf '%s\n' '      try(utils::flush.console(), silent = TRUE)'
+        printf '%s\n' '    }'
+        printf '%s\n' '  }'
+        printf '%s\n' '  # Use BEL terminator. For prompt-time markers, embed OSC inside the prompt string'
+        printf '%s\n' '  # wrapped with \001/\002 so readline treats it as zero-width (no visible artifacts).'
+        printf '%s\n' '  .aiterm_emit1337 <- function(s) { cat(sprintf("\033]1337;%s\007", s)); .aiterm_flush() }'
+        printf '%s\n' '  .aiterm_osc133 <- function(s) sprintf("\033]133;%s\007", s)'
+        printf '%s\n' '  # Signal start of R REPL'
+        printf '%s\n' '  .aiterm_emit1337("RREPL=1")'
+        printf '%s\n' ''
+        printf '%s\n' '  # Track last command status; update the prompt so the NEXT prompt render emits markers.'
+        printf '%s\n' '  .aiterm_has_prev <- FALSE'
+        printf '%s\n' '  .aiterm_last_code <- 0'
+        printf '%s\n' '  .aiterm_base_prompt <- getOption("prompt")'
+        printf '%s\n' '  .aiterm_base_continue <- getOption("continue")'
+        printf '%s\n' ''
+        printf '%s\n' '  .aiterm_set_prompt <- function() {'
+        printf '%s\n' '    seq <- if (.aiterm_has_prev) paste0(.aiterm_osc133(paste0("D;", .aiterm_last_code)), .aiterm_osc133("A")) else .aiterm_osc133("A")'
+        printf '%s\n' '    wrapped <- paste0("\001", seq, "\002")'
+        printf '%s\n' '    options(prompt = paste0(wrapped, .aiterm_base_prompt))'
+        printf '%s\n' '    options(continue = .aiterm_base_continue)'
+        printf '%s\n' '    .aiterm_debug(sprintf("set_prompt(has_prev=%s,last=%s)", .aiterm_has_prev, .aiterm_last_code))'
+        printf '%s\n' '    invisible(NULL)'
+        printf '%s\n' '  }'
+        printf '%s\n' ''
+        printf '%s\n' '  # Some R builds report ok=TRUE even when an error was printed. Track uncaught errors'
+        printf '%s\n' '  # via options(error=...) so we can reliably set D;1 for the next prompt.'
+        printf '%s\n' '  .aiterm_error_seen <- FALSE'
+        printf '%s\n' '  .aiterm_orig_error <- getOption("error")'
+        printf '%s\n' '  options(error = function() {'
+        printf '%s\n' '    .aiterm_last_code <<- 1'
+        printf '%s\n' '    .aiterm_has_prev <<- TRUE'
+        printf '%s\n' '    .aiterm_error_seen <<- TRUE'
+        printf '%s\n' '    try(.aiterm_set_prompt(), silent = TRUE)'
+        printf '%s\n' '    orig <- .aiterm_orig_error'
+        printf '%s\n' '    if (is.function(orig)) try(orig(), silent = TRUE)'
+        printf '%s\n' '    else if (is.language(orig)) try(eval(orig, envir = .GlobalEnv), silent = TRUE)'
+        printf '%s\n' '    invisible(NULL)'
+        printf '%s\n' '  })'
+        printf '%s\n' ''
+        printf '%s\n' '  invisible(addTaskCallback(function(expr, value, ok, visible) {'
+        printf '%s\n' '    if (isTRUE(.aiterm_error_seen)) {'
+        printf '%s\n' '      # Some errors do not trigger this callback. If we still see the flag here and'
+        printf '%s\n' '      # ok is TRUE, we are likely running the *next* successful command; avoid "bleeding"'
+        printf '%s\n' '      # the previous error status into it.'
+        printf '%s\n' '      .aiterm_last_code <<- if (isTRUE(ok)) 0 else 1'
+        printf '%s\n' '      .aiterm_error_seen <<- FALSE'
+        printf '%s\n' '    } else {'
+        printf '%s\n' '      # If we did not see an uncaught error, treat as success. (Some frontends pass'
+        printf '%s\n' '      # non-TRUE values for ok even on success.)'
+        printf '%s\n' '      .aiterm_last_code <<- 0'
+        printf '%s\n' '    }'
+        printf '%s\n' '    .aiterm_has_prev <<- TRUE'
+        printf '%s\n' '    .aiterm_debug(sprintf("taskcb(ok=%s, err_seen=%s) -> last=%s", ok, .aiterm_error_seen, .aiterm_last_code))'
+        printf '%s\n' '    try(.aiterm_set_prompt(), silent = TRUE)'
+        printf '%s\n' '    TRUE'
+        printf '%s\n' '  }, name = "aiterminal_taskcb"))'
+        printf '%s\n' ''
+        printf '%s\n' '  # Ensure the first prompt opens a marker.'
+        printf '%s\n' '  try(.aiterm_set_prompt(), silent = TRUE)'
+        printf '%s\n' '}'
+    } > "$r_profile"
+
+    R_PROFILE_USER="$r_profile" command "$r_cmd" "$@"
+    local ret=$?
+    # Best-effort signal end of R REPL (after returning to shell)
+    printf "\033]1337;RREPL=0\007"
+    return $ret
+}
+
+# Wrap R command to automatically use aiterm_r
+if [ "$TERM_PROGRAM" = "aiterminal" ]; then
+    R() {
+        aiterm_r "R" "$@"
+    }
+    export -f R 2>/dev/null || true
+    export -f aiterm_r 2>/dev/null || true
 fi
 
 if [ -n "$BASH_VERSION" ]; then

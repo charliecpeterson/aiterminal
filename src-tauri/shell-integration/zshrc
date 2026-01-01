@@ -1,3 +1,20 @@
 # AI Terminal zsh bootstrap
-if [ -f ~/.zshrc ]; then source ~/.zshrc 2>/dev/null; fi
-if [ -f ~/.config/aiterminal/bash_init.sh ]; then source ~/.config/aiterminal/bash_init.sh 2>/dev/null; fi
+#
+# Important: some user dotfiles contain top-level `return` statements as guard clauses.
+# Zsh sources its startup files; a `return` in ~/.zshrc can abort this wrapper early,
+# preventing our OSC 133 hooks from being installed.
+
+__aiterm_source_user_zshrc() {
+	if [ -f ~/.zshrc ]; then
+		# shellcheck disable=SC1090
+		source ~/.zshrc 2>/dev/null || true
+	fi
+	return 0
+}
+
+__aiterm_source_user_zshrc
+
+if [ -f ~/.config/aiterminal/bash_init.sh ]; then
+	# shellcheck disable=SC1090
+	source ~/.config/aiterminal/bash_init.sh 2>/dev/null || true
+fi
