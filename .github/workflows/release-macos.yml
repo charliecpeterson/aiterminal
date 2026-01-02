@@ -18,7 +18,8 @@ jobs:
     permissions:
       contents: write
 
-    # Recommended: create a GitHub Environment named "release" and restrict who can deploy.
+    # Optional: keep or remove environment gating.
+    # Note: environment secrets can override repo secrets if names collide.
     environment: release
 
     strategy:
@@ -31,12 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Debug release token source
-        env:
-          TOKEN_SOURCE: ${{ secrets.RELEASE_TOKEN != '' && 'secrets.RELEASE_TOKEN' || secrets.GITHUB_TOKEN != '' && 'secrets.GITHUB_TOKEN' || 'github.token' }}
-        run: |
-          echo "Release token source: $TOKEN_SOURCE"
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -46,7 +41,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - name: Install frontend dependencies
         run: npm ci
@@ -54,13 +49,6 @@ jobs:
       - name: Build & publish via tauri-action
         uses: tauri-apps/tauri-action@v0
         env:
-          # If you hit "Resource not accessible by integration", ensure:
-          # Settings → Actions → General → Workflow permissions = "Read and write".
-          # Optional: set a PAT secret named RELEASE_TOKEN with repo-scoped permissions.
-          # Orbitron-style option: you may have a PAT stored as `secrets.GITHUB_TOKEN`.
-          # Default: use the built-in GitHub Actions token `github.token`.
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN || github.token }}
-
           # Signing (maps your existing secret names to Tauri's expected env vars)
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERT_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -71,9 +59,23 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: AITerminal ${{ github.ref_name }}
-          releaseBody: See the assets to download and install.
-          releaseDraft: true
-          prerelease: false
+          # IMPORTANT: We intentionally do NOT let tauri-action create the GitHub Release.
+          # We'll create/upload via softprops/action-gh-release using the built-in GITHUB_TOKEN
+          # (same pattern as orbitron), which avoids PAT/env confusion.
+          uploadWorkflowArtifacts: false
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
+
+      - name: Create GitHub Release (upload dmg)
+        uses: softprops/action-gh-release@v1
+        env:
+          # Built-in token provided by GitHub Actions (no PAT required).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: AITerminal ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          files: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.tar.gz.sig
