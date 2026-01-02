@@ -41,12 +41,29 @@ pub struct AppearanceSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum AiMode {
+    Chat,
+    Agent,
+}
+
+fn default_ai_mode() -> AiMode {
+    AiMode::Agent
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AiSettings {
     pub provider: String,
     pub model: String,
     pub api_key: String,
     pub embedding_model: Option<String>,
     pub url: Option<String>,
+    #[serde(default = "default_ai_mode")]
+    pub mode: AiMode,
+    #[serde(default)]
+    pub require_command_approval: Option<bool>,
+    #[serde(default)]
+    pub api_key_in_keychain: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -168,6 +185,9 @@ impl Default for AppSettings {
                 api_key: "".to_string(),
                 embedding_model: None,
                 url: None,
+                mode: AiMode::Agent,
+                require_command_approval: Some(true),
+                api_key_in_keychain: Some(false),
             },
             terminal: TerminalSettings {
                 max_markers: DEFAULT_MAX_MARKERS,

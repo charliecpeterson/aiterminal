@@ -30,7 +30,23 @@ const AIPanel = ({
   const [filePath, setFilePath] = useState("");
   const [fileLimitKb, setFileLimitKb] = useState(200);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
+
+  const aiMode: 'chat' | 'agent' = settings?.ai?.mode === 'chat' ? 'chat' : 'agent';
+
+  const setAiMode = useCallback((mode: 'chat' | 'agent') => {
+    if (!settings) return;
+    if (settings.ai?.mode === mode) return;
+    void updateSettings({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        mode,
+      },
+    }).catch((err) => {
+      console.error('Failed to update AI mode:', err);
+    });
+  }, [settings, updateSettings]);
 
   const {
     contextItems,
@@ -213,6 +229,24 @@ const AIPanel = ({
           </button>
         </div>
         <div className="ai-panel-actions">
+          <div className="ai-panel-mode" title="Chat: no tools. Agent: tools enabled.">
+            <button
+              className={`ai-panel-mode-btn ${aiMode === 'chat' ? 'active' : ''}`}
+              onClick={() => setAiMode('chat')}
+              disabled={!settings}
+              type="button"
+            >
+              Chat
+            </button>
+            <button
+              className={`ai-panel-mode-btn ${aiMode === 'agent' ? 'active' : ''}`}
+              onClick={() => setAiMode('agent')}
+              disabled={!settings}
+              type="button"
+            >
+              Agent
+            </button>
+          </div>
           {activeTab === "chat" && (
             <>
               <button className="ai-panel-header-btn" onClick={async () => {

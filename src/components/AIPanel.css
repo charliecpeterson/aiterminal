@@ -136,6 +136,41 @@
   align-items: center;
 }
 
+.ai-panel-mode {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ai-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ai-panel-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--ai-panel-muted);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 120ms ease;
+}
+
+.ai-panel-mode-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ai-panel-text);
+}
+
+.ai-panel-mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-panel-mode-btn.active {
+  background: rgba(91, 141, 232, 0.18);
+  color: var(--ai-panel-text);
+}
+
 .ai-panel-action {
   border: 1px solid var(--ai-panel-border);
   background: rgba(255, 255, 255, 0.03);

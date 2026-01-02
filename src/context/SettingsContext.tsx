@@ -13,6 +13,7 @@ export interface AiSettings {
     api_key: string;
     embedding_model?: string;
     url?: string;
+    mode?: 'chat' | 'agent'; // Chat = no agent toolkit/tools, Agent = tools enabled
     require_command_approval?: boolean; // New: Require approval before executing commands
     api_key_in_keychain?: boolean; // Track if key is stored in keychain
 }
@@ -104,7 +105,15 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             // Load defaults if settings file is corrupted
             const defaultSettings = {
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
-                ai: { provider: 'openai', model: 'gpt-4', api_key: '', url: '' },
+                ai: {
+                    provider: 'openai',
+                    model: 'gpt-4',
+                    api_key: '',
+                    url: '',
+                    mode: 'agent' as const,
+                    require_command_approval: true,
+                    api_key_in_keychain: false,
+                },
                 terminal: { max_markers: 200 },
                 fold: {
                     enabled: true,

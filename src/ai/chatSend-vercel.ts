@@ -120,23 +120,13 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       messageCount: coreMessages.length,
       terminalId,
       requireApproval: settingsAi.require_command_approval !== false,
+      aiMode: settingsAi.mode || 'agent',
     });
 
-    // Create tools with terminal context and approval callback
-    const tools = createTools(
-      terminalId, 
-      settingsAi.require_command_approval !== false,
-      addPendingApproval // Pass callback for immediate approval UI
-    );
+    const aiMode = settingsAi.mode || 'agent';
+    const enableTools = aiMode === 'agent';
 
-    // Stream response with tools
-    const result = await streamText({
-      model: openai(settingsAi.model),
-      messages: coreMessages,
-      tools,
-      stopWhen: stepCountIs(5), // Allow up to 5 tool roundtrips
-      abortSignal: abortController?.signal, // Enable cancellation
-      system: `You are a helpful AI assistant embedded in a terminal emulator.
+    const systemPromptAgent = `You are a helpful AI assistant embedded in a terminal emulator.
 You have access to tools to help users interact with their system.
 
 IMPORTANT GUIDELINES:
@@ -151,7 +141,42 @@ CURRENT CONTEXT:
 - Terminal ID: ${terminalId}
 - You have access to: execute_command, read_file, list_directory, search_files, get_environment_variable
 
-${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\n` : ''}Use the terminal context above to answer the user's question.`,
+${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\n` : ''}Use the terminal context above to answer the user's question.`;
+
+    const systemPromptChat = `You are a helpful AI assistant embedded in a terminal emulator.
+You do NOT have access to any tools and you MUST NOT claim that you executed commands or read files.
+
+IMPORTANT GUIDELINES:
+- Provide explanations and suggested commands the user can run
+- Put commands in fenced code blocks
+- If a command might be destructive, warn the user first and suggest safer alternatives
+- Be concise but helpful
+
+CURRENT CONTEXT:
+- Terminal ID: ${terminalId}
+
+${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\n` : ''}Use the terminal context above to answer the user's question.`;
+
+    // Create tools only when enabled (Agent mode)
+    const tools = enableTools
+      ? createTools(
+          terminalId,
+          settingsAi.require_command_approval !== false,
+          addPendingApproval
+        )
+      : undefined;
+
+    const result = await streamText({
+      model: openai(settingsAi.model),
+      messages: coreMessages,
+      ...(enableTools
+        ? {
+            tools,
+            stopWhen: stepCountIs(5), // Allow up to 5 tool roundtrips
+          }
+        : {}),
+      abortSignal: abortController?.signal, // Enable cancellation
+      system: enableTools ? systemPromptAgent : systemPromptChat,
     });
 
     // Create assistant message
