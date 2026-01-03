@@ -138,10 +138,16 @@ export function createTerminalWiring(params: {
         },
         (enabled) => {
             markerManager.setRREPL(enabled);
+        },
+        () => {
+            markerManager.handlePromptDetected();
         }
     );
 
     const onDataDisposable = term.onData((data) => {
+        if (data.includes('\r') || data.includes('\n')) {
+            markerManager.noteUserCommandIssued();
+        }
         invoke('write_to_pty', { id, data });
     });
 

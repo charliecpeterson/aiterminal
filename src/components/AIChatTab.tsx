@@ -102,6 +102,32 @@ export function AIChatTab(props: {
                 <span>{formatChatTime(message.timestamp)}</span>
               </div>
               <div className="ai-panel-message-body">{renderMarkdown(message.content)}</div>
+
+              {message.role === 'assistant' && message.usedContext && (
+                <details className="ai-used-context">
+                  <summary>
+                    Context used: {message.usedContext.mode === 'smart' ? 'Smart' : 'Full'}
+                    {message.usedContext.mode === 'smart' && typeof message.usedContext.alwaysIncludedCount === 'number'
+                      ? ` (retrieved ${message.usedContext.chunkCount}, always ${message.usedContext.alwaysIncludedCount})`
+                      : ` (${message.usedContext.chunkCount})`
+                    }
+                  </summary>
+                  {message.usedContext.chunks && message.usedContext.chunks.length > 0 ? (
+                    <div className="ai-used-context-list">
+                      {message.usedContext.chunks.map((c, idx) => (
+                        <details key={`${message.id}-ctx-${idx}`} className="ai-used-context-chunk">
+                          <summary>
+                            {c.sourceType}{c.path ? ` — ${c.path}` : ''}
+                          </summary>
+                          <pre className="ai-used-context-text">{c.text}</pre>
+                        </details>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="ai-used-context-empty">No retrieved chunks.</div>
+                  )}
+                </details>
+              )}
             </div>
           ))
         )}

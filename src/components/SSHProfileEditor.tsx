@@ -16,6 +16,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
   onClose,
   onSave,
 }) => {
+  const textInputProps = {
+    autoCorrect: 'off',
+    autoCapitalize: 'none',
+    spellCheck: false,
+  };
   const { sshConfigHosts, profiles } = useSSHProfiles();
   const isEdit = Boolean(profile);
 
@@ -157,6 +162,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="e.g., Prod Cluster"
+                  {...textInputProps}
                 />
               </label>
             </div>
@@ -180,6 +186,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                     onChange={e => setGroup(e.target.value)}
                     placeholder="Or create new group"
                     style={{ flex: 1 }}
+                    {...textInputProps}
                   />
                 </div>
               </label>
@@ -235,6 +242,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={hostname}
                       onChange={e => setHostname(e.target.value)}
                       placeholder="example.com"
+                      {...textInputProps}
                     />
                   </label>
                 </div>
@@ -246,6 +254,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={username}
                       onChange={e => setUsername(e.target.value)}
                       placeholder="user"
+                      {...textInputProps}
                     />
                   </label>
                   <label>
@@ -267,6 +276,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={identityFile}
                       onChange={e => setIdentityFile(e.target.value)}
                       placeholder="~/.ssh/id_rsa"
+                      {...textInputProps}
                     />
                   </label>
                 </div>
@@ -278,6 +288,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={proxyJump}
                       onChange={e => setProxyJump(e.target.value)}
                       placeholder="jump-host"
+                      {...textInputProps}
                     />
                   </label>
                 </div>
@@ -297,6 +308,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                     value={cmd}
                     onChange={e => updateStartupCommand(index, e.target.value)}
                     placeholder="e.g., cd /scratch/project"
+                    {...textInputProps}
                   />
                   <button
                     onClick={() => removeStartupCommand(index)}
@@ -321,6 +333,7 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                     value={value}
                     onChange={e => updateEnvVar(key, e.target.value)}
                     placeholder="value"
+                    {...textInputProps}
                   />
                   <button
                     onClick={() => removeEnvVar(key)}

@@ -10,7 +10,8 @@ export function attachHostLabelOsc(
   term: XTermTerminal,
   setHostLabel: (label: string) => void,
   onPythonREPL?: (enabled: boolean) => void,
-  onRREPL?: (enabled: boolean) => void
+  onRREPL?: (enabled: boolean) => void,
+  onPrompt?: () => void
 ): HostLabelHandle {
   const debugEnabled = (() => {
     try {
@@ -64,6 +65,7 @@ export function attachHostLabelOsc(
           // Empty = local session
           setHostLabel('Local');
         }
+        onPrompt?.();
       } else if (data.startsWith('PreviewFile=')) {
         // Handle preview file command - format: name=filename;content=base64data
         const params = data.substring('PreviewFile='.length);

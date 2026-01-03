@@ -164,6 +164,8 @@ export interface MarkerManager {
   addCommandToContext: (line: number) => void;
   setPythonREPL: (enabled: boolean) => void;  // Control Python REPL marker styling
   setRREPL: (enabled: boolean) => void; // Control R REPL marker behavior
+  handlePromptDetected: () => void;
+  noteUserCommandIssued: () => void;
 }
 
 export function createMarkerManager({
@@ -185,9 +187,12 @@ export function createMarkerManager({
   const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
   let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
   let currentHighlight: IDecoration | null = null;
+  let currentHighlightedMarker: IDecoration | null = null;
   let isPythonREPL = false; // Track if we're currently inside a Python REPL
   let isRREPL = false; // Track if we're currently inside an R REPL
   let rOuterMarker: IDecoration | null = null; // Shell marker for the long-running `R` command
+  let pendingStartTime: number | null = null;
+  let commandRunning = false;
   
   // Allow external control of Python REPL state
   const setPythonREPL = (enabled: boolean) => {
@@ -266,6 +271,137 @@ export function createMarkerManager({
     }
   };
 
+  const finalizeMarker = (marker: IDecoration, exitCode?: number, reason?: string) => {
+    const meta = markerMeta.get(marker) || {};
+
+    if (reason) {
+      debugLog('Finalizing marker', {
+        line: marker.marker.line,
+        reason,
+        exitCode,
+        hasOutputStart: Boolean(meta.outputStartMarker),
+        isPythonREPL: meta.isPythonREPL,
+        isRREPL: meta.isRREPL,
+      });
+    }
+
+    if (exitCode !== undefined) {
+      meta.exitCode = exitCode;
+    }
+    meta.endTime = Date.now();
+    if (meta.startTime) {
+      meta.duration = meta.endTime - meta.startTime;
+    }
+
+    // Record explicit end position marker to make range computation robust over SSH.
+    if (!meta.doneMarker) {
+      meta.doneMarker = term.registerMarker(0);
+    }
+
+    markerMeta.set(marker, meta);
+    (marker as any)._aiterm_meta = meta;
+
+    marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));
+    if (marker.element) {
+      setupMarkerElement(marker, marker.element, exitCode);
+    }
+
+    if (pendingFileCaptureRef.current) {
+      const { path, maxBytes } = pendingFileCaptureRef.current;
+      const startLine = marker.marker.line;
+      const endLine = computeEndLine(term, markers, marker);
+      const outputStartLine = meta?.outputStartMarker?.line ?? null;
+      const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
+      if (outputInfo.hasOutput) {
+        const outputText = getRangeText([outputInfo.safeOutputStart, endLine]).trim();
+        if (outputText) {
+          if (addContextItemWithScan) {
+            addContextItemWithScan(outputText, 'file', {
+              path,
+              truncated: outputText.length >= maxBytes,
+              byte_count: outputText.length,
+            }).catch(err => {
+              console.error('Failed to scan file capture:', err);
+              addContextItem({
+                id: crypto.randomUUID(),
+                type: 'file',
+                content: outputText,
+                timestamp: Date.now(),
+                metadata: {
+                  path,
+                  truncated: outputText.length >= maxBytes,
+                  byte_count: outputText.length,
+                },
+                hasSecrets: false,
+                secretsRedacted: false,
+              });
+            });
+          } else {
+            addContextItem({
+              id: crypto.randomUUID(),
+              type: 'file',
+              content: outputText,
+              timestamp: Date.now(),
+              metadata: {
+                path,
+                truncated: outputText.length >= maxBytes,
+                byte_count: outputText.length,
+              },
+              hasSecrets: false,
+              secretsRedacted: false,
+            });
+          }
+        }
+      }
+      pendingFileCaptureRef.current = null;
+    }
+
+    meta.streamingOutput = false;
+    if (commandRunning) {
+      commandRunning = false;
+      pendingStartTime = null;
+      onCommandEnd?.(meta.exitCode);
+    }
+
+    if (marker === currentMarker) {
+      currentMarker = null;
+    }
+
+    if (meta.pythonCommandId) {
+      const existing = pythonMarkersById.get(meta.pythonCommandId);
+      if (existing === marker) {
+        pythonMarkersById.delete(meta.pythonCommandId);
+      }
+    }
+  };
+
+  const handlePromptDetected = () => {
+    if (isPythonREPL || isRREPL) return;
+    if (currentMarker) {
+      const meta = markerMeta.get(currentMarker);
+      if (meta && meta.exitCode === undefined && meta.outputStartMarker) {
+        hasSeenFirstCommand = true;
+        debugLog('Prompt detected with open marker', { line: currentMarker.marker.line });
+        finalizeMarker(currentMarker, undefined, 'prompt-detected');
+        return;
+      }
+    }
+    if (commandRunning) {
+      debugLog('Prompt detected -> command end (no open marker)');
+      commandRunning = false;
+      pendingStartTime = null;
+      onCommandEnd?.();
+    }
+  };
+
+  const noteUserCommandIssued = () => {
+    if (commandRunning) return;
+    pendingStartTime = Date.now();
+    commandRunning = true;
+    debugLog('User command issued -> start timer', { at: pendingStartTime });
+    onCommandStart?.();
+  };
+
   if (isMarkerDebugEnabled()) {
     window.__aiterm_dumpMarkers = dumpMarkers;
     debugLog('Debug enabled. Use window.__aiterm_dumpMarkers() after reproducing.');
@@ -285,6 +421,15 @@ export function createMarkerManager({
 
   // Highlight a command block
   const highlightCommandBlock = (marker: IDecoration) => {
+    if (currentHighlightedMarker === marker) {
+      if (currentHighlight) {
+        currentHighlight.dispose();
+        currentHighlight = null;
+      }
+      currentHighlightedMarker = null;
+      return false;
+    }
+
     // Remove previous highlight
     if (currentHighlight) {
       currentHighlight.dispose();
@@ -314,6 +459,8 @@ export function createMarkerManager({
     });
 
     currentHighlight = highlight;
+    currentHighlightedMarker = marker;
+    return true;
   };
 
   // Terminal click handler
@@ -345,6 +492,7 @@ export function createMarkerManager({
           currentHighlight.dispose();
           currentHighlight = null;
         }
+        currentHighlightedMarker = null;
         if (currentOutputButton) {
           currentOutputButton.remove();
           currentOutputButton = null;
@@ -360,6 +508,7 @@ export function createMarkerManager({
           currentHighlight.dispose();
           currentHighlight = null;
         }
+        currentHighlightedMarker = null;
         if (currentOutputButton) {
           currentOutputButton.remove();
           currentOutputButton = null;
@@ -368,7 +517,14 @@ export function createMarkerManager({
       }
 
       // Highlight the command block
-      highlightCommandBlock(marker);
+      const didHighlight = highlightCommandBlock(marker);
+      if (!didHighlight) {
+        if (currentOutputButton) {
+          currentOutputButton.remove();
+          currentOutputButton = null;
+        }
+        return;
+      }
 
       // Show output button if there's output
       const startLine = marker.marker.line;
@@ -390,6 +546,7 @@ export function createMarkerManager({
         currentHighlight.dispose();
         currentHighlight = null;
       }
+      currentHighlightedMarker = null;
       if (currentOutputButton) {
         currentOutputButton.remove();
         currentOutputButton = null;
@@ -408,9 +565,6 @@ export function createMarkerManager({
     const button = document.createElement('div');
     button.className = 'output-actions-button';
     button.innerHTML = `
-      <div class="output-actions-info">
-        <span class="output-lines-count">${lineCount} lines</span>
-      </div>
       <button class="output-view-window">View in Window</button>
     `;
 
@@ -607,6 +761,14 @@ export function createMarkerManager({
         // Prompt Start - Create Marker
         debugLog('OSC 133;A');
 
+        if (!isPythonREPL && !isRREPL && currentMarker) {
+          const meta = markerMeta.get(currentMarker);
+          if (meta && meta.exitCode === undefined && meta.outputStartMarker) {
+            hasSeenFirstCommand = true;
+            finalizeMarker(currentMarker, undefined, 'osc-133-A-fallback');
+          }
+        }
+
         // In Python REPL mode, prefer id-based association.
         if (pythonCommandId) {
           const existing = pythonMarkersById.get(pythonCommandId);
@@ -620,8 +782,11 @@ export function createMarkerManager({
             if ((isPythonREPL || isRREPL) && !meta.outputStartMarker) {
               meta.outputStartMarker = term.registerMarker(0);
               meta.streamingOutput = true;
-              meta.startTime = Date.now();
-              onCommandStart?.();
+              if (pendingStartTime) {
+                meta.startTime = pendingStartTime;
+                debugLog('Command start (osc-133;A repl existing)', { line: existing.marker.line });
+                pendingStartTime = null;
+              }
             }
 
             markerMeta.set(existing, meta);
@@ -659,8 +824,11 @@ export function createMarkerManager({
             if ((isPythonREPL || isRREPL) && !existingMeta.outputStartMarker) {
               existingMeta.outputStartMarker = term.registerMarker(0);
               existingMeta.streamingOutput = true;
-              existingMeta.startTime = Date.now();
-              onCommandStart?.();
+              if (pendingStartTime) {
+                existingMeta.startTime = pendingStartTime;
+                debugLog('Command start (osc-133;A repl reuse)', { line: currentMarker.marker.line });
+                pendingStartTime = null;
+              }
             }
 
             markerMeta.set(currentMarker, existingMeta);
@@ -702,8 +870,11 @@ export function createMarkerManager({
           if (isPythonREPL || isRREPL) {
             meta.outputStartMarker = term.registerMarker(0);
             meta.streamingOutput = true;
-            meta.startTime = Date.now();
-            onCommandStart?.();
+            if (pendingStartTime) {
+              meta.startTime = pendingStartTime;
+              debugLog('Command start (osc-133;A repl new)', { line: marker.marker.line });
+              pendingStartTime = null;
+            }
           }
 
           markerMeta.set(marker, meta);
@@ -717,6 +888,15 @@ export function createMarkerManager({
             const oldest = markers[0];
             removeMarker(oldest);
             oldest.dispose();
+          }
+        }
+      } else if (type === 'B') {
+        // Prompt End - use as a fallback command end over SSH when D is missing
+        if (!isPythonREPL && !isRREPL && currentMarker) {
+          const meta = markerMeta.get(currentMarker);
+          if (meta && meta.exitCode === undefined && meta.outputStartMarker) {
+            hasSeenFirstCommand = true;
+            finalizeMarker(currentMarker, undefined, 'osc-133-B-fallback');
           }
         }
       } else if (type === 'C') {
@@ -779,12 +959,13 @@ export function createMarkerManager({
           if (!meta.outputStartMarker) {
             meta.outputStartMarker = term.registerMarker(0);
             meta.streamingOutput = true; // Mark as streaming
-            meta.startTime = Date.now(); // Record start time
+            if (pendingStartTime) {
+              meta.startTime = pendingStartTime; // Record start time
+              debugLog('Command start (osc-133;C)', { line: currentMarker.marker.line });
+              pendingStartTime = null;
+            }
             markerMeta.set(currentMarker, meta);
             (currentMarker as any)._aiterm_meta = meta;
-            
-            // Notify that command started
-            onCommandStart?.();
           }
         }
       } else if (type === 'D') {
@@ -802,8 +983,6 @@ export function createMarkerManager({
 
         if (markerToClose) {
           const marker = markerToClose;
-
-          // Store exitCode and timing in metadata
           const meta = markerMeta.get(marker) || {};
           debugLog('Marker meta before D update:', {
             line: marker.marker.line,
@@ -812,94 +991,7 @@ export function createMarkerManager({
             pythonCommandId: meta.pythonCommandId,
           });
 
-          meta.exitCode = exitCode;
-          meta.endTime = Date.now();
-          if (meta.startTime) {
-            meta.duration = meta.endTime - meta.startTime;
-          }
-
-          // Record explicit end position marker to make range computation robust over SSH.
-          if (!meta.doneMarker) {
-            meta.doneMarker = term.registerMarker(0);
-          }
-          
-          markerMeta.set(marker, meta);
-          (marker as any)._aiterm_meta = meta;
-          
-          marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));
-          if (marker.element) {
-            setupMarkerElement(marker, marker.element, exitCode);
-          }
-
-          if (pendingFileCaptureRef.current) {
-            const { path, maxBytes } = pendingFileCaptureRef.current;
-            const startLine = marker.marker.line;
-            const endLine = computeEndLine(term, markers, marker);
-            const meta = markerMeta.get(marker);
-            const outputStartLine = meta?.outputStartMarker?.line ?? null;
-            const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
-            if (outputInfo.hasOutput) {
-              const outputText = getRangeText([outputInfo.safeOutputStart, endLine]).trim();
-              if (outputText) {
-                if (addContextItemWithScan) {
-                  addContextItemWithScan(outputText, 'file', {
-                    path,
-                    truncated: outputText.length >= maxBytes,
-                    byte_count: outputText.length,
-                  }).catch(err => {
-                    console.error('Failed to scan file capture:', err);
-                    addContextItem({
-                      id: crypto.randomUUID(),
-                      type: 'file',
-                      content: outputText,
-                      timestamp: Date.now(),
-                      metadata: {
-                        path,
-                        truncated: outputText.length >= maxBytes,
-                        byte_count: outputText.length,
-                      },
-                      hasSecrets: false,
-                      secretsRedacted: false,
-                    });
-                  });
-                } else {
-                  addContextItem({
-                    id: crypto.randomUUID(),
-                    type: 'file',
-                    content: outputText,
-                    timestamp: Date.now(),
-                    metadata: {
-                      path,
-                      truncated: outputText.length >= maxBytes,
-                      byte_count: outputText.length,
-                    },
-                    hasSecrets: false,
-                    secretsRedacted: false,
-                  });
-                }
-              }
-            }
-            pendingFileCaptureRef.current = null;
-          }
-
-          // Mark output as complete (no automatic notification)
-          if (meta) {
-            meta.streamingOutput = false;
-            
-            // Notify that command ended with exit code
-            onCommandEnd?.(meta.exitCode);
-          }
-
-          if (marker === currentMarker) {
-            currentMarker = null;
-          }
-
-          if (pythonCommandId) {
-            const existing = pythonMarkersById.get(pythonCommandId);
-            if (existing === marker) {
-              pythonMarkersById.delete(pythonCommandId);
-            }
-          }
+          finalizeMarker(marker, exitCode, 'osc-133-D');
         }
       }
     } catch (e) {
@@ -1126,5 +1218,7 @@ export function createMarkerManager({
     addCommandToContext,
     setPythonREPL,  // Export function to control Python REPL state
     setRREPL,
+    handlePromptDetected,
+    noteUserCommandIssued,
   };
 }

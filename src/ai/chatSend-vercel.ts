@@ -20,6 +20,8 @@ export interface ChatSendDeps {
   formattedContextItems: string[]; // Pre-formatted context with redaction
   terminalId: number; // Active terminal ID
 
+  usedContextForNextAssistantMessage?: ChatMessage["usedContext"]; // Optional UI metadata
+
   addMessage: (message: ChatMessage) => void;
   appendMessage: (id: string, content: string) => void;
   setPrompt: (value: string) => void;
@@ -61,6 +63,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     messages,
     formattedContextItems,
     terminalId,
+    usedContextForNextAssistantMessage,
     addMessage,
     appendMessage,
     setPrompt,
@@ -187,6 +190,7 @@ ${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
+      usedContext: usedContextForNextAssistantMessage,
     });
 
     // Stream the full response including tool calls and results

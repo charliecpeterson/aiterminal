@@ -259,6 +259,7 @@ pub struct AppState {
     pub keychain_lock: Mutex<()>,
     pub ssh_sessions: Arc<Mutex<HashMap<u32, SshSessionInfo>>>, // PTY ID -> SSH info, wrapped in Arc for thread sharing
     pub terminal_contexts: Arc<Mutex<HashMap<u32, TerminalContext>>>, // PTY ID -> Context
+    pub context_index: Mutex<crate::context_index::ContextIndex>,
 }
 
 impl AppState {
@@ -270,6 +271,7 @@ impl AppState {
             keychain_lock: Mutex::new(()),
             ssh_sessions: Arc::new(Mutex::new(HashMap::new())),
             terminal_contexts: Arc::new(Mutex::new(HashMap::new())),
+            context_index: Mutex::new(crate::context_index::ContextIndex::default()),
         }
     }
 }

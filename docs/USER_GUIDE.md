@@ -114,6 +114,43 @@ The AI Panel provides context-aware assistance alongside the terminal with power
 - **Chat Tab**: Send prompts and see responses stream in with markdown formatting.
 - **Context Tab**: Staged context items can be previewed, removed, or cleared.
 
+#### Chat vs Agent Mode
+AI Terminal supports two interaction modes:
+
+- **Chat**: A “safe chat” mode. The assistant will not automatically execute tools.
+  - You can still run commands manually from code blocks using the built-in “Run” affordance.
+- **Agent**: Tool-enabled mode. The assistant may propose and (when allowed) execute tools to gather information or apply changes.
+  - If command approval is enabled, risky commands pause for confirmation.
+
+Use this when you want to avoid surprising automation: switch to **Chat** for pure Q&A, switch to **Agent** when you want hands-on help.
+
+#### Smart Context (Large Context Help)
+When you add lots of context (long outputs, multiple files), sending everything can be slow and expensive. Smart Context helps by selecting only the most relevant snippets.
+
+- **Requirement**: Configure an **Embedding Model** in Settings → AI.
+- **How it works (high level)**: context items are chunked and indexed, then a small set of relevant chunks is retrieved per prompt.
+
+##### Global Toggle
+In the Context tab you’ll see **Smart Context: On/Off**:
+
+- **On**: All context items are treated as **Smart** (per-item overrides are disabled).
+  - If no relevant chunks are found, the app may fall back to sending full context.
+- **Off**: Per-item controls are enabled (see below).
+
+##### Per-Item Include Controls (when Smart Context is Off)
+Each context item gets an include mode:
+
+- **Smart**: The item is eligible for chunking + retrieval.
+- **Always**: The entire item content is included verbatim in every prompt (use sparingly).
+- **Exclude**: The item is never sent to the model.
+
+#### “Context used” Transparency
+To make it clear what the model actually saw, assistant messages include an expandable **Context used** section:
+
+- Shows whether the response used **Smart** or **Full** context.
+- In Smart mode, shows how many chunks were **retrieved** and how many items were **always included**.
+- Lists retrieved snippets (with source type/path when available).
+
 #### AI Capabilities & Tools
 The AI assistant has access to 16 powerful tools that execute automatically to help you:
 

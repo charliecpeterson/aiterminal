@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ContextItem } from "../context/AIContext";
+import type { ContextIncludeMode, ContextItem } from "../context/AIContext";
 import { formatChatTime } from "../ai/panelUi";
 
 export function AIContextTab(props: {
@@ -9,6 +9,10 @@ export function AIContextTab(props: {
   removeContextItem: (id: string) => void;
   clearContext: () => void;
   toggleSecretRedaction: (id: string) => void;
+
+  contextSmartMode: boolean;
+  setContextSmartMode: (value: boolean) => void;
+  setContextItemIncludeMode: (id: string, mode: ContextIncludeMode) => void;
 
   captureCount: number;
   setCaptureCount: (value: number) => void;
@@ -28,6 +32,9 @@ export function AIContextTab(props: {
     removeContextItem,
     clearContext,
     toggleSecretRedaction,
+    contextSmartMode,
+    setContextSmartMode,
+    setContextItemIncludeMode,
     captureCount,
     setCaptureCount,
     onCaptureLast,
@@ -38,10 +45,16 @@ export function AIContextTab(props: {
     onCaptureFile,
   } = props;
 
+  const effectiveIncludeMode = (item: ContextItem): ContextIncludeMode => {
+    if (contextSmartMode) return "smart";
+    return item.metadata?.includeMode ?? "smart";
+  };
+
   // Memoize expensive context item rendering
   const renderedContextItems = useMemo(() => {
     return contextItems.map((item) => {
       const isExpanded = expandedContextId === item.id;
+      const includeMode = effectiveIncludeMode(item);
       const contentToDisplay = (item.hasSecrets && item.secretsRedacted && item.redactedContent)
         ? item.redactedContent
         : item.content;
@@ -69,6 +82,31 @@ export function AIContextTab(props: {
               )}
             </div>
             <div className="ai-panel-context-actions">
+              {!contextSmartMode && (
+                <div className="ai-panel-mode" style={{ marginRight: '8px' }}>
+                  <button
+                    type="button"
+                    className={`ai-panel-mode-btn ${includeMode === 'smart' ? 'active' : ''}`}
+                    onClick={() => setContextItemIncludeMode(item.id, 'smart')}
+                  >
+                    Smart
+                  </button>
+                  <button
+                    type="button"
+                    className={`ai-panel-mode-btn ${includeMode === 'always' ? 'active' : ''}`}
+                    onClick={() => setContextItemIncludeMode(item.id, 'always')}
+                  >
+                    Always
+                  </button>
+                  <button
+                    type="button"
+                    className={`ai-panel-mode-btn ${includeMode === 'exclude' ? 'active' : ''}`}
+                    onClick={() => setContextItemIncludeMode(item.id, 'exclude')}
+                  >
+                    Exclude
+                  </button>
+                </div>
+              )}
               {item.hasSecrets && (
                 <button
                   className="ai-panel-link"
@@ -129,13 +167,35 @@ export function AIContextTab(props: {
               </div>
             );
         });
-    }, [contextItems, expandedContextId, setExpandedContextId, removeContextItem, toggleSecretRedaction]);
+      }, [contextItems, expandedContextId, setExpandedContextId, removeContextItem, toggleSecretRedaction, contextSmartMode, setContextItemIncludeMode]);
 
   return (
     <div className="ai-panel-section">
       <div className="ai-panel-card">
         <div className="ai-panel-card-title">Context staging</div>
         <div className="ai-panel-card-body">Selected output and notes appear here.</div>
+      </div>
+
+      <div className="ai-panel-context-actions" style={{ marginTop: '10px' }}>
+        <div className="ai-panel-capture-row" style={{ borderColor: 'var(--ai-panel-border)' }}>
+          <span style={{ fontSize: '12px' }}>Smart Context</span>
+          <div className="ai-panel-mode">
+            <button
+              type="button"
+              className={`ai-panel-mode-btn ${contextSmartMode ? 'active' : ''}`}
+              onClick={() => setContextSmartMode(true)}
+            >
+              On
+            </button>
+            <button
+              type="button"
+              className={`ai-panel-mode-btn ${!contextSmartMode ? 'active' : ''}`}
+              onClick={() => setContextSmartMode(false)}
+            >
+              Off
+            </button>
+          </div>
+        </div>
       </div>
 
       {contextItems.length > 0 ? (

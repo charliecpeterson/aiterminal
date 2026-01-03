@@ -54,6 +54,7 @@ function AppContent() {
   // Track running commands per tab: Map<ptyId, { startTime: number, elapsed: number }>
   const [runningCommands, setRunningCommands] = useState<Map<number, { startTime: number; elapsed: number }>>(new Map());
   const elapsedTimerRef = useRef<number | null>(null);
+  const tabsRef = useRef(tabs);
   
   let isAiWindow = false;
   let isSSHWindow = false;
@@ -114,11 +115,15 @@ function AppContent() {
     }
   };
 
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+
   const handleGoToTab = useCallback((tabId: string) => {
     console.log('[Main Window] handleGoToTab called with tabId:', tabId);
     const ptyId = parseInt(tabId);
     console.log('[Main Window] Parsed ptyId:', ptyId);
-    const tab = tabs.find(t => t.panes.some(p => p.id === ptyId));
+    const tab = tabsRef.current.find(t => t.panes.some(p => p.id === ptyId));
     console.log('[Main Window] Found tab:', tab?.id, 'with panes:', tab?.panes.map(p => p.id));
     if (tab) {
       console.log('[Main Window] Switching to tab:', tab.id);
@@ -126,7 +131,7 @@ function AppContent() {
     } else {
       console.log('[Main Window] No tab found for ptyId:', ptyId);
     }
-  }, [tabs]);
+  }, []);
 
   // Handle command running state for tabs
   const handleCommandRunning = useCallback((ptyId: number, isRunning: boolean, startTime?: number) => {

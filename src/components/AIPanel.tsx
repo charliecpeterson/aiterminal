@@ -4,6 +4,7 @@ import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendChatMessage } from "../ai/chatSend-vercel";
 import { requestCaptureLast } from "../ai/contextCapture";
+import { getSmartContextForPrompt } from "../ai/smartContext";
 import { AIChatTab } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
 import { invoke } from "@tauri-apps/api/core";
@@ -30,6 +31,7 @@ const AIPanel = ({
   const [filePath, setFilePath] = useState("");
   const [fileLimitKb, setFileLimitKb] = useState(200);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [smartContextStatus, setSmartContextStatus] = useState<string | null>(null);
   const { settings, updateSettings } = useSettings();
 
   const aiMode: 'chat' | 'agent' = settings?.ai?.mode === 'chat' ? 'chat' : 'agent';
@@ -51,6 +53,9 @@ const AIPanel = ({
   const {
     contextItems,
     formattedContextItems,
+    contextSmartMode,
+    setContextSmartMode,
+    setContextItemIncludeMode,
     messages,
     addMessage,
     appendMessage,
@@ -125,13 +130,61 @@ const AIPanel = ({
   const handleSend = useCallback(async () => {
     const controller = new AbortController();
     setAbortController(controller);
+
+    let contextForSend = formattedContextItems;
+    let usedContextForNextAssistantMessage: (typeof messages)[number]["usedContext"] | undefined;
+
+    // If an embedding model is configured, retrieve only relevant context chunks.
+    // Falls back to full context on any failure.
+    try {
+      const embeddingModel = settings?.ai?.embedding_model?.trim();
+      if (embeddingModel && settings?.ai) {
+        const smart = await getSmartContextForPrompt({
+          ai: settings.ai,
+          contextItems,
+          query: prompt,
+          topK: 8,
+          globalSmartMode: contextSmartMode,
+        });
+        if (smart.formatted.length > 0) {
+          contextForSend = smart.formatted;
+          usedContextForNextAssistantMessage = {
+            mode: 'smart',
+            chunkCount: smart.retrieved.length,
+            alwaysIncludedCount: smart.formatted.length - smart.retrieved.length,
+            chunks: smart.retrieved.map((c) => ({
+              sourceType: c.source_type,
+              path: c.path ?? null,
+              text: c.text,
+            })),
+          };
+          setSmartContextStatus(`Smart context: ${smart.formatted.length} chunks`);
+        } else {
+          usedContextForNextAssistantMessage = {
+            mode: 'smart',
+            chunkCount: 0,
+            alwaysIncludedCount: 0,
+          };
+          setSmartContextStatus('Smart context: no matches (sent full context)');
+        }
+      } else {
+        setSmartContextStatus(null);
+      }
+    } catch (err) {
+      console.warn('Smart context retrieval failed; falling back to full context:', err);
+      if (settings?.ai?.embedding_model?.trim()) {
+        setSmartContextStatus('Smart context: failed (sent full context)');
+      } else {
+        setSmartContextStatus(null);
+      }
+    }
     
     sendChatMessage({
       prompt,
       settingsAi: settings?.ai,
       messages,
       contextItems,
-      formattedContextItems,
+      formattedContextItems: contextForSend,
       terminalId: activeTerminalId || 0, // Default to terminal 0
       addMessage,
       appendMessage,
@@ -140,8 +193,9 @@ const AIPanel = ({
       setSendError,
       abortController: controller,
       addPendingApproval,
+      usedContextForNextAssistantMessage,
     });
-  }, [prompt, settings?.ai, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval]);
+  }, [prompt, settings?.ai, settings, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval, contextSmartMode]);
 
   const handleCancel = useCallback(() => {
     if (abortController) {
@@ -210,6 +264,9 @@ const AIPanel = ({
       <div className="ai-panel-header">
         <div className="ai-panel-title">
           <div className="ai-panel-title-text">AI Panel</div>
+          {settings?.ai?.embedding_model?.trim() && smartContextStatus && (
+            <div className="ai-panel-subtitle">{smartContextStatus}</div>
+          )}
         </div>
         <div className="ai-panel-tabs">
           <button
@@ -303,6 +360,9 @@ const AIPanel = ({
             removeContextItem={removeContextItem}
             clearContext={clearContext}
             toggleSecretRedaction={toggleSecretRedaction}
+            contextSmartMode={contextSmartMode}
+            setContextSmartMode={setContextSmartMode}
+            setContextItemIncludeMode={setContextItemIncludeMode}
             captureCount={captureCount}
             setCaptureCount={setCaptureCount}
             onCaptureLast={handleCaptureLast}

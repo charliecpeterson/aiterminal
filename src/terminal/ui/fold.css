@@ -25,18 +25,6 @@
   }
 }
 
-.output-actions-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.output-lines-count {
-  font-size: 12px;
-  color: #7aa3f0;
-  font-weight: 600;
-}
-
 .output-view-window {
   padding: 6px 16px;
   background: #0e639c;

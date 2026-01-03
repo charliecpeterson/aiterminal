@@ -1,6 +1,7 @@
 // Module declarations
 mod autocomplete;
 mod chat;
+mod context_index;
 mod health_check;
 mod history;
 mod keychain;
@@ -25,6 +26,7 @@ use keychain::{
     save_api_key_to_keychain,
 };
 pub use models::AppState;
+use context_index::{ContextChunkInput, ContextIndexSyncStats, RetrievedChunk};
 use preview::{get_preview_content, open_preview_window, read_preview_file, stop_preview_watcher};
 use pty::{close_pty, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
 use quick_actions::{load_quick_actions, save_quick_actions};
@@ -38,6 +40,129 @@ use tools::{
     git_status_tool, list_directory_tool, make_directory_tool, read_file_tool, search_files_tool,
     tail_file_tool, web_search_tool, write_file_tool,
 };
+
+#[tauri::command]
+async fn context_index_sync(
+    state: tauri::State<'_, AppState>,
+    provider: String,
+    api_key: String,
+    url: Option<String>,
+    embedding_model: String,
+    chunks: Vec<ContextChunkInput>,
+) -> Result<ContextIndexSyncStats, String> {
+    if embedding_model.trim().is_empty() {
+        return Err("Embedding model is not configured".to_string());
+    }
+
+    // 1) Plan sync under lock (no awaits while holding MutexGuard)
+    let (present, to_embed) = {
+        let index = state
+            .context_index
+            .lock()
+            .map_err(|e| format!("Failed to lock context index: {}", e))?;
+        context_index::plan_sync(&index, &chunks)
+    };
+
+    // 2) Compute embeddings outside lock
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut embedded: Vec<(ContextChunkInput, Vec<f32>)> = Vec::new();
+    if !to_embed.is_empty() {
+        let batch_size = 32usize;
+        let mut offset = 0usize;
+        while offset < to_embed.len() {
+            let end = std::cmp::min(offset + batch_size, to_embed.len());
+            let batch_meta = &to_embed[offset..end];
+            let batch_texts: Vec<String> = batch_meta.iter().map(|c| c.text.clone()).collect();
+
+            let vectors = context_index::embed_texts_for_provider(
+                &client,
+                &provider,
+                &api_key,
+                url.as_deref(),
+                &embedding_model,
+                &batch_texts,
+            )
+            .await?;
+
+            if vectors.len() != batch_meta.len() {
+                return Err("Embeddings response size mismatch".to_string());
+            }
+
+            for i in 0..vectors.len() {
+                embedded.push((batch_meta[i].clone(), vectors[i].clone()));
+            }
+
+            offset = end;
+        }
+    }
+
+    // 3) Apply sync under lock
+    let mut index = state
+        .context_index
+        .lock()
+        .map_err(|e| format!("Failed to lock context index: {}", e))?;
+    context_index::apply_sync(&mut index, present, embedded)
+}
+
+#[tauri::command]
+async fn context_index_query(
+    state: tauri::State<'_, AppState>,
+    provider: String,
+    api_key: String,
+    url: Option<String>,
+    embedding_model: String,
+    query: String,
+    top_k: Option<u32>,
+) -> Result<Vec<RetrievedChunk>, String> {
+    if embedding_model.trim().is_empty() {
+        return Err("Embedding model is not configured".to_string());
+    }
+
+    let k = top_k.unwrap_or(8).max(1) as usize;
+
+    // 1) Compute query embedding outside lock
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let inputs = vec![query.trim().to_string()];
+    let mut vectors = context_index::embed_texts_for_provider(
+        &client,
+        &provider,
+        &api_key,
+        url.as_deref(),
+        &embedding_model,
+        &inputs,
+    )
+    .await?;
+
+    let query_vec = vectors
+        .pop()
+        .ok_or_else(|| "Failed to compute query embedding".to_string())?;
+
+    // 2) Score under lock (no awaits)
+    let index = state
+        .context_index
+        .lock()
+        .map_err(|e| format!("Failed to lock context index: {}", e))?;
+
+    Ok(context_index::query_with_embedding(&index, query_vec, k))
+}
+
+#[tauri::command]
+fn context_index_clear(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut index = state
+        .context_index
+        .lock()
+        .map_err(|e| format!("Failed to lock context index: {}", e))?;
+    index.clear();
+    Ok(())
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -146,6 +271,9 @@ pub fn run() {
             get_path_commands,
             list_dir_entries,
             scan_content_for_secrets,
+            context_index_sync,
+            context_index_query,
+            context_index_clear,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

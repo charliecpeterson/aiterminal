@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type ContextType = "command" | "output" | "selection" | "file" | "command_output";
 
+export type ContextIncludeMode = "smart" | "always" | "exclude";
+
 export interface SecretFinding {
   secret_type: string;
   line: number;
@@ -25,6 +27,9 @@ export interface ContextItem {
     cwd?: string;
     source?: string;
     sizeKb?: number;
+
+    // Context controls (only used when global smart mode is off)
+    includeMode?: ContextIncludeMode;
   };
   // Secret scanning fields
   hasSecrets: boolean;
@@ -38,6 +43,16 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
+  usedContext?: {
+    mode: "smart" | "full";
+    chunkCount: number;
+    alwaysIncludedCount?: number;
+    chunks?: Array<{
+      sourceType: string;
+      path?: string | null;
+      text: string;
+    }>;
+  };
 }
 
 export interface PendingApproval {
@@ -54,12 +69,15 @@ interface AIState {
   contextItems: ContextItem[];
   messages: ChatMessage[];
   pendingApprovals: PendingApproval[];
+  contextSmartMode: boolean;
 }
 
 type AIAction =
   | { type: "context:add"; item: ContextItem }
   | { type: "context:remove"; id: string }
   | { type: "context:clear" }
+  | { type: "context:set-smart-mode"; value: boolean }
+  | { type: "context:set-include-mode"; id: string; mode: ContextIncludeMode }
   | { type: "context:toggle-redaction"; id: string }
   | { type: "chat:add"; message: ChatMessage }
   | { type: "chat:clear" }
@@ -71,6 +89,7 @@ const initialState: AIState = {
   contextItems: [],
   messages: [],
   pendingApprovals: [],
+  contextSmartMode: true,
 };
 
 const aiReducer = (state: AIState, action: AIAction): AIState => {
@@ -89,6 +108,26 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
       return {
         ...state,
         contextItems: [],
+      };
+    case "context:set-smart-mode":
+      return {
+        ...state,
+        contextSmartMode: action.value,
+      };
+    case "context:set-include-mode":
+      return {
+        ...state,
+        contextItems: state.contextItems.map((item) =>
+          item.id === action.id
+            ? {
+                ...item,
+                metadata: {
+                  ...(item.metadata || {}),
+                  includeMode: action.mode,
+                },
+              }
+            : item
+        ),
       };
     case "context:toggle-redaction":
       return {
@@ -139,6 +178,8 @@ interface AIContextValue extends AIState {
   addContextItemWithScan: (content: string, type: ContextType, metadata?: ContextItem['metadata']) => Promise<void>;
   removeContextItem: (id: string) => void;
   clearContext: () => void;
+  setContextSmartMode: (value: boolean) => void;
+  setContextItemIncludeMode: (id: string, mode: ContextIncludeMode) => void;
   addMessage: (message: ChatMessage) => void;
   clearChat: () => void;
   buildPrompt: (userInput: string) => string;
@@ -199,6 +240,14 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       event: "ai-context:sync-clear",
       payload: {},
     }).catch((err) => console.error("Failed to broadcast clear:", err));
+  }, []);
+
+  const setContextSmartMode = useCallback((value: boolean) => {
+    dispatch({ type: 'context:set-smart-mode', value });
+  }, []);
+
+  const setContextItemIncludeMode = useCallback((id: string, mode: ContextIncludeMode) => {
+    dispatch({ type: 'context:set-include-mode', id, mode });
   }, []);
 
   const addMessage = useCallback((message: ChatMessage) => {
@@ -318,7 +367,11 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Memoize expensive context item formatting
   const formattedContextItems = useMemo(() => {
-    return state.contextItems.map((item) => {
+    const itemsForPrompt = state.contextSmartMode
+      ? state.contextItems
+      : state.contextItems.filter((item) => item.metadata?.includeMode !== 'exclude');
+
+    return itemsForPrompt.map((item) => {
       // Use redacted content if secrets exist and redaction is enabled
       const contentToUse = (item.hasSecrets && item.secretsRedacted && item.redactedContent)
         ? item.redactedContent
@@ -352,7 +405,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       }
       return `Type: ${item.type}\nContent: ${contentToUse}`;
     });
-  }, [state.contextItems]);
+  }, [state.contextItems, state.contextSmartMode]);
 
   const buildPrompt = useCallback(
     (userInput: string) => {
@@ -387,6 +440,8 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       addContextItem,
       removeContextItem,
       clearContext,
+      setContextSmartMode,
+      setContextItemIncludeMode,
       addMessage,
       clearChat,
       appendMessage,
@@ -402,6 +457,8 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       addContextItem,
       removeContextItem,
       clearContext,
+      setContextSmartMode,
+      setContextItemIncludeMode,
       addMessage,
       clearChat,
       appendMessage,
