@@ -43,10 +43,17 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
+      - name: Install DMG tooling
+        run: |
+          brew update --quiet
+          brew install create-dmg
+
       - name: Install frontend dependencies
         run: npm ci
 
       - name: Build & publish via tauri-action
+        id: tauri-build
+        continue-on-error: true
         uses: tauri-apps/tauri-action@v0
         env:
           # Signing (maps your existing secret names to Tauri's expected env vars)
@@ -65,6 +72,25 @@ jobs:
           uploadWorkflowArtifacts: false
           uploadUpdaterJson: false
           args: ${{ matrix.args }}
+
+      - name: Debug DMG bundling failure
+        if: steps.tauri-build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo "Tauri build failed; dumping DMG bundle script."
+          ls -la src-tauri/target/*/release/bundle/dmg || true
+          for script in src-tauri/target/*/release/bundle/dmg/bundle_dmg.sh; do
+            if [ -f "$script" ]; then
+              echo "---- $script ----"
+              sed -n '1,200p' "$script"
+              echo "---- running bundle_dmg.sh with -x ----"
+              bash -x "$script"
+            fi
+          done
+
+      - name: Fail job if tauri build failed
+        if: steps.tauri-build.outcome == 'failure'
+        run: exit 1
 
       - name: Create GitHub Release (upload dmg)
         uses: softprops/action-gh-release@v1
