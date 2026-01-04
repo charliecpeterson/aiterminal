@@ -37,7 +37,8 @@
       "exceptionDomain": null,
       "signingIdentity": null,
       "providerShortName": null,
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "infoPlist": "Info.plist"
     },
     "resources": [],
     "externalBin": []

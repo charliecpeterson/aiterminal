@@ -526,9 +526,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         Press Ctrl+Space to see all available commands, flags, and options in a dropdown menu.
                                     </div>
                                 </div>
-                                <div className="form-hint" style={{ marginTop: '20px', padding: '12px', background: 'rgba(91, 141, 232, 0.1)', borderRadius: '6px' }}>
-                                    💡 <strong>Tip:</strong> Try "history" first, then experiment with "llm" to compare. AI requires local Qwen3-0.6B model.
-                                </div>
                             </>
                         )}
 

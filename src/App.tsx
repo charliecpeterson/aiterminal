@@ -717,40 +717,42 @@ function AppContent() {
           +
         </div>
         <div style={{ flex: 1 }} /> {/* Spacer */}
-        <div
-          className="ssh-panel-button"
-          onClick={openSSHPanelWindow}
-          title="SSH Sessions (Cmd/Ctrl+Shift+O)"
-        >
-          📡 SSH
-        </div>
-        <div
-          className="ai-panel-button"
-          onClick={openAIPanelWindow}
-          title="Open AI Panel (Cmd/Ctrl+B)"
-        >
-          AI Panel
-        </div>
-        <div
-          className="quick-actions-button"
-          onClick={openQuickActionsWindow}
-          title="Quick Actions"
-        >
-          ⚡ Quick Actions
-        </div>
-        <div
-          className="quick-actions-button"
-          onClick={() => window.dispatchEvent(new CustomEvent('toggle-command-history'))}
-          title="Command History (Cmd+R)"
-        >
-          📜 History
-        </div>
-        <div 
-            className="settings-button" 
+        <div className="top-segmented" role="group" aria-label="Top actions">
+          <div
+            className="segmented-button"
+            onClick={openSSHPanelWindow}
+            title="SSH Sessions (Cmd/Ctrl+Shift+O)"
+          >
+            SSH
+          </div>
+          <div
+            className="segmented-button"
+            onClick={openAIPanelWindow}
+            title="Open AI Panel (Cmd/Ctrl+B)"
+          >
+            AI Panel
+          </div>
+          <div
+            className="segmented-button"
+            onClick={openQuickActionsWindow}
+            title="Quick Actions"
+          >
+            Quick Actions
+          </div>
+          <div
+            className="segmented-button"
+            onClick={() => window.dispatchEvent(new CustomEvent('toggle-command-history'))}
+            title="Command History (Cmd+R)"
+          >
+            History
+          </div>
+          <div 
+            className="segmented-button"
             onClick={() => setIsSettingsOpen(true)}
             title="Settings (Cmd+,)"
-        >
+          >
             Settings
+          </div>
         </div>
       </div>
       <div className="workbench" style={{ display: 'flex', height: '100%' }}>

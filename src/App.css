@@ -139,6 +139,43 @@ body, html, #root {
   color: #ffffff;
 }
 
+.top-segmented {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+
+.segmented-button {
+  padding: 5px 12px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: transparent;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-app-region: no-drag;
+  transition: background 120ms ease, color 120ms ease;
+  user-select: none;
+}
+
+.segmented-button:last-child {
+  border-right: none;
+}
+
+.segmented-button:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.segmented-button:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .ai-panel-button {
   padding: 5px 12px;
   cursor: pointer;

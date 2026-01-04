@@ -1,4 +1,4 @@
-name: release-macos
+name: release-desktop
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
 
 jobs:
   build-and-release:
-    name: Build & Release (macOS)
-    runs-on: macos-latest
+    name: Build & Release (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
 
     # Some org/repo settings require job-level permissions for release creation.
     permissions:
@@ -26,8 +26,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: aarch64
+          - name: macOS (Apple Silicon)
+            os: macos-latest
+            target: aarch64-apple-darwin
             args: '--target aarch64-apple-darwin'
+          - name: Windows (x64)
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: '--target x86_64-pc-windows-msvc'
+          - name: Linux (x64)
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            args: '--target x86_64-unknown-linux-gnu'
 
     steps:
       - uses: actions/checkout@v4
@@ -41,9 +51,20 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Install DMG tooling
+        if: runner.os == 'macOS'
         run: |
           brew update --quiet
           brew install create-dmg
@@ -74,7 +95,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Debug DMG bundling failure
-        if: steps.tauri-build.outcome == 'failure'
+        if: steps.tauri-build.outcome == 'failure' && runner.os == 'macOS'
         run: |
           set -euo pipefail
           echo "Tauri build failed; dumping DMG bundle script."
@@ -92,7 +113,8 @@ jobs:
         if: steps.tauri-build.outcome == 'failure'
         run: exit 1
 
-      - name: Create GitHub Release (upload dmg)
+      - name: Create GitHub Release (upload macOS artifacts)
+        if: runner.os == 'macOS'
         uses: softprops/action-gh-release@v1
         env:
           # Built-in token provided by GitHub Actions (no PAT required).
@@ -105,3 +127,29 @@ jobs:
             src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.tar.gz
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.tar.gz.sig
+
+      - name: Create GitHub Release (upload Windows artifacts)
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: AITerminal ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          files: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+
+      - name: Create GitHub Release (upload Linux artifacts)
+        if: runner.os == 'Linux'
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: AITerminal ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          files: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb

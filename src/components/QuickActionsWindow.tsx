@@ -69,9 +69,12 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
       return;
     }
 
+    const normalizeQuotes = (value: string) =>
+      value.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+
     const commands = formCommands
       .split("\n")
-      .map((cmd) => cmd.trim())
+      .map((cmd) => normalizeQuotes(cmd.trim()))
       .filter((cmd) => cmd.length > 0);
 
     if (commands.length === 0) {
@@ -83,7 +86,7 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
       // Update existing
       newActions = actions.map((a) =>
         a.id === editingAction.id
-          ? { ...a, name: formName, commands }
+          ? { ...a, name: normalizeQuotes(formName), commands }
           : a
       );
     } else {
@@ -201,6 +204,9 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
               onChange={(e) => setFormName(e.target.value)}
               placeholder="e.g., Build & Test"
               autoFocus
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
           </div>
 
@@ -211,6 +217,9 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
               onChange={(e) => setFormCommands(e.target.value)}
               placeholder="npm install&#10;npm run build&#10;npm test"
               rows={10}
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
           </div>
 
