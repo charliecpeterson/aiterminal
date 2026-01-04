@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./QuickActionsWindow.css";
+import { normalizeQuotes } from "../utils/text";
+import { parseQuickActionCommands } from "../utils/quickActions";
 
 export interface QuickAction {
   id: string;
@@ -69,13 +71,7 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
       return;
     }
 
-    const normalizeQuotes = (value: string) =>
-      value.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-
-    const commands = formCommands
-      .split("\n")
-      .map((cmd) => normalizeQuotes(cmd.trim()))
-      .filter((cmd) => cmd.length > 0);
+    const commands = parseQuickActionCommands(formCommands);
 
     if (commands.length === 0) {
       return;

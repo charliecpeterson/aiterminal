@@ -60,6 +60,19 @@ const PreviewWindow: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const decodeBase64Text = (base64: string) => {
+    try {
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    } catch {
+      return atob(base64);
+    }
+  };
+
   useEffect(() => {
     // Get window label from URL query parameter
     const params = new URLSearchParams(window.location.search);
@@ -100,7 +113,7 @@ const PreviewWindow: React.FC = () => {
           setFileType('docx');
         } else if (isNotebook) {
           // Decode JSON for notebook
-          const decoded = atob(encodedContent);
+          const decoded = decodeBase64Text(encodedContent);
           setContent(decoded);
           setFileType('notebook');
         } else if (isImage) {
@@ -121,7 +134,7 @@ const PreviewWindow: React.FC = () => {
           setImageMimeType(mimeMap[ext || ''] || 'image/png');
         } else {
           // Decode text content
-          const decoded = atob(encodedContent);
+          const decoded = decodeBase64Text(encodedContent);
           setContent(decoded);
           
           if (isMarkdown) {

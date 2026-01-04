@@ -2,6 +2,11 @@ import type { IDecoration, IDisposable, IMarker, Terminal as XTermTerminal } fro
 import type { ContextItem } from '../../context/AIContext';
 import type { PendingFileCaptureRef } from '../core/fileCapture';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import {
+  computeEndLineForMarkers,
+  computeOutputInfo,
+  computeRangesForMarkers,
+} from '../../utils/markerRanges';
 
 declare global {
   interface Window {
@@ -56,23 +61,6 @@ interface MarkerMeta {
   duration?: number;   // Duration in ms
 }
 
-function computeOutputInfo(
-  startLine: number,
-  endLine: number,
-  outputStartLine: number | null
-): { hasOutput: boolean; safeOutputStart: number } {
-  if (outputStartLine === null) {
-    return { hasOutput: false, safeOutputStart: startLine + 1 };
-  }
-  if (outputStartLine < startLine || outputStartLine > endLine) {
-    return { hasOutput: false, safeOutputStart: startLine + 1 };
-  }
-
-  // Allow outputStartLine == startLine for Python REPL where A and C may occur on the same line.
-  const safeOutputStart = Math.max(outputStartLine, startLine + 1);
-  const hasOutput = safeOutputStart <= endLine;
-  return { hasOutput, safeOutputStart };
-}
 
 function isMarkerDebugEnabled(): boolean {
   try {
@@ -90,38 +78,15 @@ function debugLog(...args: unknown[]) {
 
 function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
   const startLine = marker.marker.line;
-  let endLine = term.buffer.active.length - 1;
-
   const meta = (marker as any)?._aiterm_meta as MarkerMeta | undefined;
-
-  // For REPL markers, prefer the explicit done marker line when available.
-  // This avoids relying on the next prompt marker (which can land on the output line over SSH).
-  if ((meta?.isPythonREPL || meta?.isRREPL) && meta?.doneMarker?.line != null) {
-    const doneLine = meta.doneMarker.line;
-    if (doneLine >= 0) {
-      endLine = Math.min(endLine, Math.max(startLine, doneLine - 1));
-      return endLine;
-    }
-  }
-
-  // Markers can arrive out-of-order over SSH (especially with Python REPL prompt tricks).
-  // Compute the next marker by line number rather than relying on insertion order.
-  let nextLine: number | null = null;
-  for (const other of markers) {
-    if (other === marker) continue;
-    const line = other.marker.line;
-    if (line <= startLine) continue;
-    if (line < 0) continue;
-    if (nextLine === null || line < nextLine) {
-      nextLine = line;
-    }
-  }
-
-  if (nextLine !== null) {
-    endLine = nextLine - 1;
-  }
-
-  return Math.max(startLine, endLine);
+  return computeEndLineForMarkers({
+    startLine,
+    bufferLength: term.buffer.active.length,
+    markers: markers.map((item) => item.marker.line),
+    doneLine: meta?.doneMarker?.line ?? undefined,
+    isPythonREPL: meta?.isPythonREPL,
+    isRREPL: meta?.isRREPL,
+  });
 }
 
 function computeRanges(
@@ -135,17 +100,14 @@ function computeRanges(
 
   const meta = markerMeta.get(marker);
   const outputStartLine = meta?.outputStartMarker?.line ?? null;
-  const { hasOutput, safeOutputStart } = computeOutputInfo(startLine, endLine, outputStartLine);
-  const cmdEnd = Math.max(startLine, (hasOutput ? safeOutputStart : startLine + 1) - 1);
-
   const isBootstrapMarker = Boolean(meta?.isBootstrap);
 
-  return {
-    commandRange: [startLine, cmdEnd],
-    outputRange: hasOutput ? [safeOutputStart, endLine] : null,
-    disabled: isBootstrapMarker,
-    outputDisabled: !hasOutput || isBootstrapMarker,
-  };
+  return computeRangesForMarkers({
+    startLine,
+    endLine,
+    outputStartLine,
+    isBootstrap: isBootstrapMarker,
+  });
 }
 
 export interface MarkerManager {
