@@ -55,6 +55,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
   const { settings, loading } = useSettings();
   const { addContextItem, addContextItemWithScan } = useAIContext();
   const terminalRef = useRef<HTMLDivElement>(null);
+  const xtermHostRef = useRef<HTMLDivElement>(null);
         const xtermRef = useRef<XTermTerminal | null>(null);
         const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -239,11 +240,12 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
   }, [visible, id, terminalReady]);
 
   useEffect(() => {
-    if (!terminalRef.current || loading || !settings) return;
+        if (!terminalRef.current || !xtermHostRef.current || loading || !settings) return;
 
     const wiring = createTerminalWiring({
         id,
         container: terminalRef.current,
+        xtermContainer: xtermHostRef.current,
         appearance: settings.appearance,
         maxMarkers: settings?.terminal?.max_markers ?? 200,
         foldThreshold: settings?.fold?.threshold ?? 50,
@@ -344,7 +346,9 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                 <button onClick={search.close}>✕</button>
             </div>
         )}
-            <div className="terminal-body" ref={terminalRef} />
+            <div className="terminal-body" ref={terminalRef}>
+                <div className="terminal-xterm-host" ref={xtermHostRef} />
+            </div>
             {autocompleteMenu.menuVisible && (
                 <AutocompleteMenu
                     suggestions={autocompleteMenu.suggestions}

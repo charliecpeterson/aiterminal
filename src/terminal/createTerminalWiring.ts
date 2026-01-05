@@ -36,6 +36,7 @@ export interface TerminalWiringCleanup {
 export function createTerminalWiring(params: {
     id: number;
     container: HTMLElement;
+    xtermContainer?: HTMLElement;
     appearance: AppearanceSettings;
     maxMarkers: number;
     foldThreshold: number;
@@ -66,6 +67,7 @@ export function createTerminalWiring(params: {
     const {
         id,
         container,
+        xtermContainer,
         appearance,
         maxMarkers,
         foldThreshold,
@@ -88,14 +90,22 @@ export function createTerminalWiring(params: {
         onCommandEnd,
     } = params;
 
-    const session = createTerminalSession({ container, appearance });
+    const session = createTerminalSession({ container: xtermContainer ?? container, appearance });
     const term = session.term;
 
     if (termRef) termRef.current = term;
     if (fitAddonRef) fitAddonRef.current = session.fitAddon;
     if (searchAddonRef) searchAddonRef.current = session.searchAddon;
 
-    const scrollbar = attachScrollbarOverlay(container, term.element ?? null);
+    const markerManagerRef: { current: MarkerManager | null } = { current: null };
+
+    // Scrollbar overlay with marker ticks.
+    // Prefer mounting on the xterm host container (outside xterm) so it's not hidden
+    // by WebView compositing and it can live in the host's right padding gutter.
+    const scrollbar = attachScrollbarOverlay(container, term.element ?? null, {
+        getTicks: () => markerManagerRef.current?.getMarkerTicks?.() ?? [],
+        getTotalLines: () => term.buffer.active.length,
+    });
 
     const ptyDataListener = attachPtyDataListener({
         id,
@@ -125,9 +135,10 @@ export function createTerminalWiring(params: {
         pendingFileCaptureRef,
         onCommandStart,
         onCommandEnd,
+        onMarkersChanged: () => scrollbar.refresh(),
     });
 
-    const markerManagerRef = { current: markerManager };
+    markerManagerRef.current = markerManager;
 
     // Pass Python REPL detection callback to hostLabel handler
     const hostLabelHandle = attachHostLabelOsc(

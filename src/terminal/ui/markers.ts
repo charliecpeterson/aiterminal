@@ -37,6 +37,7 @@ export interface MarkerManagerParams {
   onCommandStart?: () => void;  // Called when command execution starts
   onCommandEnd?: (exitCode?: number) => void;    // Called when command execution ends
   onPythonREPL?: (enabled: boolean) => void;  // Called when Python REPL starts/stops
+  onMarkersChanged?: () => void; // Called when marker list/meta changes
 }
 
 interface MarkerMeta {
@@ -59,11 +60,32 @@ interface MarkerMeta {
 function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
   const startLine = marker.marker.line;
   const meta = (marker as any)?._aiterm_meta as MarkerMeta | undefined;
+  let doneLine = meta?.doneMarker?.line ?? undefined;
+
+  // Python REPL nuance: our OSC 133;D often arrives *before* Python prints the next ">>>" prompt.
+  // In that case, `doneMarker` lands on the last output line, but `computeEndLineForMarkers`
+  // subtracts 1 (to exclude the prompt), which incorrectly drops that last output line and can
+  // make the UI think there is "no output".
+  if (meta?.isPythonREPL && doneLine != null && doneLine >= 0) {
+    try {
+      const lineText = term.buffer.active
+        .getLine(doneLine)
+        ?.translateToString(true) // trim right
+        ?.trimStart();
+      const looksLikePythonPrompt =
+        typeof lineText === 'string' && (lineText.startsWith('>>>') || lineText.startsWith('...'));
+      if (!looksLikePythonPrompt) {
+        doneLine = doneLine + 1;
+      }
+    } catch {
+      // ignore
+    }
+  }
   return computeEndLineForMarkers({
     startLine,
     bufferLength: term.buffer.active.length,
     markers: markers.map((item) => item.marker.line),
-    doneLine: meta?.doneMarker?.line ?? undefined,
+    doneLine,
     isPythonREPL: meta?.isPythonREPL,
     isRREPL: meta?.isRREPL,
   });
@@ -94,6 +116,7 @@ export interface MarkerManager {
   captureLast: (count: number) => void;
   cleanup: () => void;
   attachTerminalClickHandler: () => () => void;
+  getMarkerTicks: () => Array<{ line: number; classes: string[]; title?: string }>;
   getCommandHistory: () => Array<{
     line: number;
     command: string;
@@ -123,10 +146,12 @@ export function createMarkerManager({
   onCommandStart,
   onCommandEnd,
   onPythonREPL,
+  onMarkersChanged,
 }: MarkerManagerParams): MarkerManager {
   let currentMarker: IDecoration | null = null;
   const markers: IDecoration[] = [];
   const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
+  const markerElement = new WeakMap<IDecoration, HTMLElement>();
   let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
   let currentHighlight: IDecoration | null = null;
   let currentHighlightMarker: IMarker | null = null;
@@ -180,6 +205,68 @@ export function createMarkerManager({
   let currentOutputButton: HTMLDivElement | null = null;
   const pythonMarkersById = new Map<string, IDecoration>();
 
+  const notifyMarkersChanged = () => {
+    try {
+      onMarkersChanged?.();
+    } catch {
+      // ignore
+    }
+  };
+
+  const renderMarkerElement = (element: HTMLElement, meta?: MarkerMeta) => {
+    element.classList.add('terminal-marker');
+    element.style.cursor = 'pointer';
+
+    // Until we have metadata, keep decorations hidden. xterm can call onRender before our
+    // markerMeta is set, which otherwise makes the bootstrap marker flash/appear.
+    if (!meta) {
+      element.style.opacity = '0';
+      element.style.pointerEvents = 'none';
+      element.title = '';
+      element.classList.remove('python', 'r', 'success', 'error');
+      delete element.dataset.pyId;
+      return;
+    }
+
+    if (meta.pythonCommandId) element.dataset.pyId = meta.pythonCommandId;
+    else delete element.dataset.pyId;
+
+    // Bootstrap markers are internal; hide them to avoid a stray marker at the top of a fresh session.
+    if (meta.isBootstrap) {
+      element.style.opacity = '0';
+      element.style.pointerEvents = 'none';
+      element.title = '';
+      element.classList.remove('python', 'r', 'success', 'error');
+      return;
+    }
+
+    element.style.opacity = '';
+    element.style.pointerEvents = '';
+
+    element.title = 'Click for options';
+
+    // Always refresh stateful classes.
+    element.classList.remove('python', 'r', 'success', 'error');
+
+    // If multiple decorations end up on the same row, prefer showing errors on top.
+    // xterm can transiently stack decorations during prompt-embedded REPL sequences.
+    element.style.zIndex = meta.exitCode === undefined ? '15' : meta.exitCode === 0 ? '20' : '30';
+
+    if (meta.isPythonREPL) {
+      element.classList.add('python');
+      element.title = 'Python REPL command';
+    }
+
+    if (meta.isRREPL) {
+      element.classList.add('r');
+      element.title = 'R REPL command';
+    }
+
+    if (meta.exitCode !== undefined) {
+      element.classList.add(meta.exitCode === 0 ? 'success' : 'error');
+    }
+  };
+
   const finalizeMarker = (marker: IDecoration, exitCode?: number) => {
     const meta = markerMeta.get(marker) || {};
 
@@ -196,12 +283,56 @@ export function createMarkerManager({
       meta.doneMarker = term.registerMarker(0);
     }
 
+    // Python REPL heuristic: sometimes exit codes can be missed/flattened by prompt-time markers.
+    // If the block contains a traceback, treat it as an error.
+    if (meta.isPythonREPL && (meta.exitCode === undefined || meta.exitCode === 0) && meta.outputStartMarker) {
+      try {
+        const startLine = marker.marker.line;
+        const endLine = computeEndLine(term, markers, marker);
+        const outputStartLine = meta.outputStartMarker.line;
+        const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
+        if (outputInfo.hasOutput) {
+          const outputText = getRangeText([outputInfo.safeOutputStart, endLine]);
+          if (outputText.includes('Traceback (most recent call last):')) {
+            meta.exitCode = 1;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     markerMeta.set(marker, meta);
     (marker as any)._aiterm_meta = meta;
 
-    marker.onRender((element: HTMLElement) => setupMarkerElement(marker, element, exitCode));
-    if (marker.element) {
-      setupMarkerElement(marker, marker.element, exitCode);
+    // Immediately sync DOM classes.
+    // NOTE: In some xterm/WebKit paths, `marker.element` can be null or stale even when a
+    // decoration is visible. We therefore:
+    // 1) update the most recent element we saw for this marker
+    // 2) for REPL markers with a pythonCommandId, update all currently-rendered marker elements
+    //    that are tagged with that id.
+    const el = marker.element ?? markerElement.get(marker);
+    if (el) renderMarkerElement(el, meta);
+
+    if (meta.pythonCommandId && term.element) {
+      try {
+        const nodes = term.element.querySelectorAll(
+          `.xterm-decoration-container .terminal-marker[data-py-id="${CSS.escape(meta.pythonCommandId)}"]`
+        );
+        nodes.forEach((node) => {
+          if (node instanceof HTMLElement) renderMarkerElement(node, meta);
+        });
+      } catch {
+        // ignore
+      }
+    }
+    // In some render paths (notably WebKit/Tauri), decoration DOM doesn't always visually update
+    // unless the viewport row is repainted. If the marker is currently visible, force a refresh.
+    const viewportY = term.buffer.active.viewportY;
+    const row = marker.marker.line - viewportY;
+    if (row >= 0 && row < term.rows) {
+      const refresh = (term as any).refresh as ((start: number, end: number) => void) | undefined;
+      if (typeof refresh === 'function') refresh.call(term, row, row);
     }
 
     if (pendingFileCaptureRef.current) {
@@ -271,6 +402,8 @@ export function createMarkerManager({
         pythonMarkersById.delete(meta.pythonCommandId);
       }
     }
+
+    notifyMarkersChanged();
   };
 
   const handlePromptDetected = () => {
@@ -629,41 +762,19 @@ export function createMarkerManager({
     } catch {
       // ignore
     }
+
+    notifyMarkersChanged();
   };
 
-  const setupMarkerElement = (marker: IDecoration, element: HTMLElement, exitCode?: number) => {
-    element.classList.add('terminal-marker');
-    element.style.cursor = 'pointer';
-    element.title = 'Click for options';
-
-    // Add Python REPL class if applicable
+  const setupMarkerElement = (marker: IDecoration, element: HTMLElement) => {
+    markerElement.set(marker, element);
     const meta = markerMeta.get(marker);
+    renderMarkerElement(element, meta);
 
-    // Bootstrap markers are internal; hide them to avoid a stray marker at the top of a fresh session.
-    if (meta?.isBootstrap) {
-      element.style.opacity = '0';
-      element.style.pointerEvents = 'none';
-      element.title = '';
+    // Prevent duplicate listeners if onRender is called multiple times.
+    if (element.dataset.listenerAttached) {
       return;
     }
-
-      if (meta?.isPythonREPL) {
-        element.classList.add('python');
-        element.title = 'Python REPL command';
-      }
-
-      if (meta?.isRREPL) {
-        element.classList.add('r');
-        element.title = 'R REPL command';
-      }
-
-    if (exitCode !== undefined) {
-      if (exitCode === 0) element.classList.add('success');
-      else element.classList.add('error');
-    }
-
-    // Prevent duplicate listeners if onRender is called multiple times
-    if (element.dataset.listenerAttached) return;
     element.dataset.listenerAttached = 'true';
 
     element.addEventListener('mousedown', (e) => {
@@ -743,6 +854,8 @@ export function createMarkerManager({
 
             markerMeta.set(existing, meta);
             (existing as any)._aiterm_meta = meta;
+            const existingEl = (existing as any).element ?? markerElement.get(existing);
+            if (existingEl) renderMarkerElement(existingEl, meta);
             currentMarker = existing;
             return true;
           }
@@ -750,42 +863,64 @@ export function createMarkerManager({
 
         // If we already have an in-progress marker (common when OSC 133;C arrives first over SSH),
         // reuse it instead of creating a duplicate marker on the same line.
-        // reuse it instead of creating a duplicate marker on the same line.
         if (currentMarker) {
           // If we\'re in R REPL mode and we\'ve preserved the outer shell marker (the long-running `R` command),
           // don\'t reuse it as the REPL marker.
           if (isRREPL && rOuterMarker && currentMarker === rOuterMarker) {
             // fall through to create a new marker
           } else {
-          const existingMeta = markerMeta.get(currentMarker);
-          if (existingMeta && existingMeta.exitCode === undefined) {
-            if (
-              pythonCommandId &&
-              existingMeta.pythonCommandId &&
-              existingMeta.pythonCommandId !== pythonCommandId
-            ) {
-              // Don't reuse a marker from a different Python command id.
-            } else {
-            existingMeta.isPythonREPL = isPythonREPL;
-            existingMeta.isRREPL = isRREPL;
-            if (pythonCommandId) {
-              existingMeta.pythonCommandId = pythonCommandId;
-              pythonMarkersById.set(pythonCommandId, currentMarker);
-            }
+            const existingMeta = markerMeta.get(currentMarker);
+            if (existingMeta && existingMeta.exitCode === undefined) {
+              // In REPL mode, only reuse a marker if it already matches the prompt's command id.
+              // This avoids "stealing" the outer shell marker or a different REPL command when OSC
+              // sequences arrive out of order.
+              if ((isPythonREPL || isRREPL) && pythonCommandId) {
+                if (existingMeta.pythonCommandId !== pythonCommandId) {
+                  // fall through to create a new marker
+                } else {
+                  existingMeta.isPythonREPL = isPythonREPL;
+                  existingMeta.isRREPL = isRREPL;
+                  if ((isPythonREPL || isRREPL) && !existingMeta.outputStartMarker) {
+                    existingMeta.outputStartMarker = term.registerMarker(0);
+                    existingMeta.streamingOutput = true;
+                    if (pendingStartTime) {
+                      existingMeta.startTime = pendingStartTime;
+                      pendingStartTime = null;
+                    }
+                  }
 
-            if ((isPythonREPL || isRREPL) && !existingMeta.outputStartMarker) {
-              existingMeta.outputStartMarker = term.registerMarker(0);
-              existingMeta.streamingOutput = true;
-              if (pendingStartTime) {
-                existingMeta.startTime = pendingStartTime;
-                pendingStartTime = null;
+                  markerMeta.set(currentMarker, existingMeta);
+                  return true;
+                }
+              } else {
+                if (
+                  pythonCommandId &&
+                  existingMeta.pythonCommandId &&
+                  existingMeta.pythonCommandId !== pythonCommandId
+                ) {
+                  // Don't reuse a marker from a different Python command id.
+                } else {
+                  existingMeta.isPythonREPL = isPythonREPL;
+                  existingMeta.isRREPL = isRREPL;
+                  if (pythonCommandId) {
+                    existingMeta.pythonCommandId = pythonCommandId;
+                    pythonMarkersById.set(pythonCommandId, currentMarker);
+                  }
+
+                  if ((isPythonREPL || isRREPL) && !existingMeta.outputStartMarker) {
+                    existingMeta.outputStartMarker = term.registerMarker(0);
+                    existingMeta.streamingOutput = true;
+                    if (pendingStartTime) {
+                      existingMeta.startTime = pendingStartTime;
+                      pendingStartTime = null;
+                    }
+                  }
+
+                  markerMeta.set(currentMarker, existingMeta);
+                  return true;
+                }
               }
             }
-
-            markerMeta.set(currentMarker, existingMeta);
-            return true;
-            }
-          }
           }
         }
 
@@ -801,6 +936,7 @@ export function createMarkerManager({
           marker.onDispose(() => removeMarker(marker));
           currentMarker = marker;
           markers.push(marker);
+          notifyMarkersChanged();
           // Only mark as bootstrap if we haven't seen any commands yet AND it's in the first few lines.
           // Never treat REPL markers as bootstrap; otherwise the first prompt marker gets hidden.
           const isBootstrap =
@@ -871,6 +1007,7 @@ export function createMarkerManager({
             marker.onDispose(() => removeMarker(marker));
             currentMarker = marker;
             markers.push(marker);
+            notifyMarkersChanged();
             const isBootstrap =
               !hasSeenFirstCommand &&
               !isPythonREPL &&
@@ -884,6 +1021,8 @@ export function createMarkerManager({
             }
             markerMeta.set(marker, meta);
             (marker as any)._aiterm_meta = meta;
+            const markerEl = (marker as any).element ?? markerElement.get(marker);
+            if (markerEl) renderMarkerElement(markerEl, meta);
             
             if (isBootstrap) {
             }
@@ -898,6 +1037,11 @@ export function createMarkerManager({
 
         if (currentMarker) {
           const meta = markerMeta.get(currentMarker) || {};
+          // If the initial prompt created a hidden bootstrap marker, the first real command
+          // should convert it into a normal marker.
+          if (meta.isBootstrap) {
+            meta.isBootstrap = false;
+          }
           if (pythonCommandId && !meta.pythonCommandId) {
             meta.pythonCommandId = pythonCommandId;
             pythonMarkersById.set(pythonCommandId, currentMarker);
@@ -911,6 +1055,8 @@ export function createMarkerManager({
             }
             markerMeta.set(currentMarker, meta);
             (currentMarker as any)._aiterm_meta = meta;
+            const cmEl = (currentMarker as any).element ?? markerElement.get(currentMarker);
+            if (cmEl) renderMarkerElement(cmEl, meta);
           }
         }
       } else if (type === 'D') {
@@ -921,8 +1067,21 @@ export function createMarkerManager({
         // Mark that we've seen at least one complete command
         hasSeenFirstCommand = true;
         
-        const markerToClose =
-          (pythonCommandId ? pythonMarkersById.get(pythonCommandId) : undefined) ?? currentMarker;
+        let markerToClose: IDecoration | undefined = undefined;
+
+        if (pythonCommandId) {
+          markerToClose = pythonMarkersById.get(pythonCommandId);
+
+          // In REPL mode, never fall back to an unrelated currentMarker; only close if ids match.
+          if (!markerToClose && (isPythonREPL || isRREPL) && currentMarker) {
+            const currentMeta = markerMeta.get(currentMarker);
+            if (currentMeta?.pythonCommandId === pythonCommandId) {
+              markerToClose = currentMarker;
+            }
+          }
+        } else {
+          markerToClose = currentMarker ?? undefined;
+        }
 
         if (markerToClose) {
           const marker = markerToClose;
@@ -1143,10 +1302,32 @@ export function createMarkerManager({
     }
   };
 
+  const getMarkerTicks = () => {
+    return markers
+      .map((marker) => {
+        const line = marker.marker.line;
+        const meta = markerMeta.get(marker);
+        if (!Number.isFinite(line) || line < 0) return null;
+        if (meta?.isBootstrap) return null;
+
+        const classes: string[] = [];
+        if (meta?.isPythonREPL) classes.push('python');
+        if (meta?.isRREPL) classes.push('r');
+
+        if (meta?.exitCode !== undefined) {
+          classes.push(meta.exitCode === 0 ? 'success' : 'error');
+        }
+
+        return { line, classes };
+      })
+      .filter((tick): tick is { line: number; classes: string[] } => Boolean(tick));
+  };
+
   return { 
     captureLast, 
     cleanup, 
     attachTerminalClickHandler,
+    getMarkerTicks,
     getCommandHistory,
     jumpToLine,
     copyCommandAtLine,
