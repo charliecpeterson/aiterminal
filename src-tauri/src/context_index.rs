@@ -87,7 +87,10 @@ fn l2_norm(v: &[f32]) -> f32 {
     sum.sqrt()
 }
 
-pub fn plan_sync(index: &ContextIndex, chunks: &[ContextChunkInput]) -> (HashSet<String>, Vec<ContextChunkInput>) {
+pub fn plan_sync(
+    index: &ContextIndex,
+    chunks: &[ContextChunkInput],
+) -> (HashSet<String>, Vec<ContextChunkInput>) {
     let mut present: HashSet<String> = HashSet::with_capacity(chunks.len());
     let mut to_embed: Vec<ContextChunkInput> = Vec::new();
 
@@ -114,7 +117,9 @@ pub fn apply_sync(
 ) -> Result<ContextIndexSyncStats, String> {
     // Remove chunks not present anymore.
     let before = index.chunks.len();
-    index.chunks.retain(|chunk_id, _| present.contains(chunk_id));
+    index
+        .chunks
+        .retain(|chunk_id, _| present.contains(chunk_id));
     let removed = before.saturating_sub(index.chunks.len());
 
     let mut embedded_new_or_changed = 0usize;
@@ -240,7 +245,10 @@ async fn embed_gemini(
 
     // Gemini uses v1beta and has batch endpoint.
     let base = normalize_base_url(base_url);
-    let endpoint = format!("{}/models/{}:batchEmbedContents?key={}", base, model, api_key);
+    let endpoint = format!(
+        "{}/models/{}:batchEmbedContents?key={}",
+        base, model, api_key
+    );
 
     let requests: Vec<serde_json::Value> = inputs
         .iter()
@@ -333,7 +341,11 @@ pub async fn embed_texts_for_provider(
     embed_texts(client, provider, api_key, url, model, inputs).await
 }
 
-pub fn query_with_embedding(index: &ContextIndex, query_vec: Vec<f32>, top_k: usize) -> Vec<RetrievedChunk> {
+pub fn query_with_embedding(
+    index: &ContextIndex,
+    query_vec: Vec<f32>,
+    top_k: usize,
+) -> Vec<RetrievedChunk> {
     if index.chunks.is_empty() {
         return vec![];
     }
@@ -388,7 +400,9 @@ pub async fn context_index_sync(
 
     // Remove chunks not present anymore.
     let before = index.chunks.len();
-    index.chunks.retain(|chunk_id, _| present.contains(chunk_id));
+    index
+        .chunks
+        .retain(|chunk_id, _| present.contains(chunk_id));
     let removed = before.saturating_sub(index.chunks.len());
 
     // Determine which chunks need (re)embedding.
@@ -504,15 +518,8 @@ pub async fn context_index_query(
         .map_err(|e| e.to_string())?;
 
     let inputs = vec![query.trim().to_string()];
-    let mut vectors = embed_texts(
-        &client,
-        provider,
-        api_key,
-        url,
-        embedding_model,
-        &inputs,
-    )
-    .await?;
+    let mut vectors =
+        embed_texts(&client, provider, api_key, url, embedding_model, &inputs).await?;
 
     let query_vec = vectors
         .pop()
