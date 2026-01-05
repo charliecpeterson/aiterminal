@@ -570,13 +570,6 @@ aiterm_r() {
     local r_profile="${HOME}/.config/aiterminal/Rprofile.R"
     mkdir -p "${HOME}/.config/aiterminal" 2>/dev/null
 
-    # Optional debug log (does not print into the terminal).
-    if [ "${AITERM_R_DEBUG:-}" = "1" ]; then
-        {
-            printf '[%s] aiterm_r invoked (shell=%s, cmd=%s)\n' "$(date '+%F %T' 2>/dev/null || date)" "${SHELL:-unknown}" "$r_cmd"
-        } >>"${HOME}/.config/aiterminal/r_debug.log" 2>/dev/null || true
-    fi
-
     # Signal R REPL mode before launching R (helps confirm wrapper execution).
     printf "\033]1337;RREPL=1\007"
 
@@ -585,12 +578,6 @@ aiterm_r() {
         cat >"$r_profile" <<'RPROFILE'
 # AI Terminal R REPL Integration
 if (Sys.getenv("TERM_PROGRAM") == "aiterminal") {
-    .aiterm_debug <- function(msg) {
-        if (Sys.getenv("AITERM_R_DEBUG") != "1") return(invisible(NULL))
-        f <- file.path(Sys.getenv("HOME"), ".config", "aiterminal", "r_debug.log")
-        try(cat(sprintf("[%s] %s\n", format(Sys.time(), "%F %T"), msg), file = f, append = TRUE), silent = TRUE)
-        invisible(NULL)
-    }
     .aiterm_flush <- function() {
         # flush.console() is in utils; it may not be attached in some sessions
         if (requireNamespace("utils", quietly = TRUE)) {
@@ -615,7 +602,6 @@ if (Sys.getenv("TERM_PROGRAM") == "aiterminal") {
         wrapped <- paste0("\001", seq, "\002")
         options(prompt = paste0(wrapped, .aiterm_base_prompt))
         options(continue = .aiterm_base_continue)
-        .aiterm_debug(sprintf("set_prompt(has_prev=%s,last=%s)", .aiterm_has_prev, .aiterm_last_code))
         invisible(NULL)
     }
 
@@ -647,7 +633,6 @@ if (Sys.getenv("TERM_PROGRAM") == "aiterminal") {
             .aiterm_last_code <<- 0
         }
         .aiterm_has_prev <<- TRUE
-        .aiterm_debug(sprintf("taskcb(ok=%s, err_seen=%s) -> last=%s", ok, .aiterm_error_seen, .aiterm_last_code))
         try(.aiterm_set_prompt(), silent = TRUE)
         TRUE
     }, name = "aiterminal_taskcb"))
@@ -685,9 +670,6 @@ if [ -n "$BASH_VERSION" ]; then
     }
 
     if declare -p PROMPT_COMMAND 2>/dev/null | grep -q 'declare -a'; then
-        if [ -n "$AITERM_HOOK_DEBUG" ]; then
-            echo "AITERM hook: bash PROMPT_COMMAND is array" 1>&2
-        fi
         __AITERM_PC_MANAGED=1
         __aiterm_has_wrapper=0
         for __aiterm_pc in "${PROMPT_COMMAND[@]}"; do
@@ -701,9 +683,6 @@ if [ -n "$BASH_VERSION" ]; then
         fi
         unset __aiterm_pc __aiterm_has_wrapper
     else
-        if [ -n "$AITERM_HOOK_DEBUG" ]; then
-            echo "AITERM hook: bash PROMPT_COMMAND is string" 1>&2
-        fi
         __AITERM_PC_MANAGED=1
         if [ -n "$PROMPT_COMMAND" ]; then
             PROMPT_COMMAND=(__aiterm_prompt_wrapper "$PROMPT_COMMAND")
@@ -725,9 +704,6 @@ if [ -n "$BASH_VERSION" ]; then
     trap '__aiterm_preexec' DEBUG
 elif [ -n "$ZSH_VERSION" ]; then
     if [ -z "$__AITERM_ZSH_HOOKS" ]; then
-        if [ -n "$AITERM_HOOK_DEBUG" ]; then
-            echo "AITERM hook: zsh add hooks" 1>&2
-        fi
         __AITERM_ZSH_HOOKS=1
         autoload -Uz add-zsh-hook
         __aiterm_precmd() { __aiterm_mark_done $?; __aiterm_mark_prompt; __aiterm_emit_host; __AITERM_COMMAND_STARTED=; }
@@ -743,9 +719,6 @@ fi
 
 if [ -z "$__AITERM_OSC133_BANNER_SHOWN" ]; then
     export __AITERM_OSC133_BANNER_SHOWN=1
-    if [ -n "$AITERM_HOOK_DEBUG" ] || [ -n "$AITERM_SSH_DEBUG" ]; then
-        echo "AI Terminal OSC 133 shell integration active ($(basename "$SHELL"))"
-    fi
 fi
 
 # aiterm_render - Preview files in a popup window
@@ -787,8 +760,8 @@ aiterm_render() {
         return 1
     fi
     
-    # Get just the filename for display
-    local filename="${file##*/}"
+    # Use absolute path so previews can resolve relative assets
+    local filename="$abs_path"
     
     # Emit OSC sequence with filename and base64 content
     printf "\033]1337;PreviewFile=name=%s;content=%s\007" "$filename" "$content"

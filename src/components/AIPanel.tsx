@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import "./AIPanel.css";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
@@ -188,6 +188,11 @@ const AIPanel = ({
       abortController: controller,
       addPendingApproval,
       usedContextForNextAssistantMessage,
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('AI request failed:', err);
+      setSendError(message);
+      setIsSending(false);
     });
   }, [prompt, settings?.ai, settings, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval, contextSmartMode]);
 
@@ -249,6 +254,27 @@ const AIPanel = ({
       });
     }
   };
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      const message = event.error instanceof Error ? event.error.message : event.message;
+      setSendError(message || 'Unexpected error in AI panel');
+    };
+
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      setSendError(reason || 'Unhandled promise rejection in AI panel');
+      event.preventDefault();
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  }, []);
 
   return (
     <div className="ai-panel">

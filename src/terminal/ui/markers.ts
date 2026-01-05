@@ -8,12 +8,6 @@ import {
   computeRangesForMarkers,
 } from '../../utils/markerRanges';
 
-declare global {
-  interface Window {
-    __aiterm_dumpMarkers?: () => void;
-  }
-}
-
 export interface CopyMenuState {
   x: number;
   y: number;
@@ -61,20 +55,6 @@ interface MarkerMeta {
   duration?: number;   // Duration in ms
 }
 
-
-function isMarkerDebugEnabled(): boolean {
-  try {
-    return window.localStorage.getItem('AITERM_DEBUG_MARKERS') === '1';
-  } catch {
-    return false;
-  }
-}
-
-function debugLog(...args: unknown[]) {
-  if (!isMarkerDebugEnabled()) return;
-  // eslint-disable-next-line no-console
-  console.log('[Markers][DEBUG]', ...args);
-}
 
 function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
   const startLine = marker.marker.line;
@@ -158,14 +138,10 @@ export function createMarkerManager({
   
   // Allow external control of Python REPL state
   const setPythonREPL = (enabled: boolean) => {
-    debugLog('setPythonREPL:', enabled, 'was:', isPythonREPL);
     isPythonREPL = enabled;
-    
-    debugLog('pythonModeNow=', isPythonREPL);
   };
 
   const setRREPL = (enabled: boolean) => {
-    debugLog('setRREPL:', enabled, 'was:', isRREPL);
     if (enabled === isRREPL) return;
 
     if (enabled) {
@@ -191,7 +167,6 @@ export function createMarkerManager({
     }
 
     isRREPL = enabled;
-    debugLog('rModeNow=', isRREPL, 'outerMarkerLine=', rOuterMarker?.marker.line);
   };
   
   // Notify external callback if provided
@@ -202,50 +177,8 @@ export function createMarkerManager({
   let currentOutputButton: HTMLDivElement | null = null;
   const pythonMarkersById = new Map<string, IDecoration>();
 
-  const dumpMarkers = () => {
-    try {
-      const rows = markers.slice(-25).map((marker) => {
-        const startLine = marker.marker.line;
-        const endLine = computeEndLine(term, markers, marker);
-        const meta = markerMeta.get(marker);
-        const outputStartLine = meta?.outputStartMarker?.line ?? null;
-        const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
-        return {
-          startLine,
-          endLine,
-          outputStartLine,
-          hasOutput: outputInfo.hasOutput,
-          python: Boolean(meta?.isPythonREPL),
-          r: Boolean(meta?.isRREPL),
-          py: meta?.pythonCommandId,
-          doneLine: meta?.doneMarker?.line,
-          bootstrap: Boolean(meta?.isBootstrap),
-          exitCode: meta?.exitCode,
-        };
-      });
-      // eslint-disable-next-line no-console
-      console.table(rows);
-      // eslint-disable-next-line no-console
-      debugLog('currentMarkerLine=', currentMarker?.marker.line, 'pythonMode=', isPythonREPL, 'rMode=', isRREPL);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[Markers][DEBUG] dump failed:', e);
-    }
-  };
-
-  const finalizeMarker = (marker: IDecoration, exitCode?: number, reason?: string) => {
+  const finalizeMarker = (marker: IDecoration, exitCode?: number) => {
     const meta = markerMeta.get(marker) || {};
-
-    if (reason) {
-      debugLog('Finalizing marker', {
-        line: marker.marker.line,
-        reason,
-        exitCode,
-        hasOutputStart: Boolean(meta.outputStartMarker),
-        isPythonREPL: meta.isPythonREPL,
-        isRREPL: meta.isRREPL,
-      });
-    }
 
     if (exitCode !== undefined) {
       meta.exitCode = exitCode;
@@ -343,13 +276,11 @@ export function createMarkerManager({
       const meta = markerMeta.get(currentMarker);
       if (meta && meta.exitCode === undefined && meta.outputStartMarker) {
         hasSeenFirstCommand = true;
-        debugLog('Prompt detected with open marker', { line: currentMarker.marker.line });
-        finalizeMarker(currentMarker, undefined, 'prompt-detected');
+        finalizeMarker(currentMarker, undefined);
         return;
       }
     }
     if (commandRunning) {
-      debugLog('Prompt detected -> command end (no open marker)');
       commandRunning = false;
       pendingStartTime = null;
       onCommandEnd?.();
@@ -360,14 +291,8 @@ export function createMarkerManager({
     if (commandRunning) return;
     pendingStartTime = Date.now();
     commandRunning = true;
-    debugLog('User command issued -> start timer', { at: pendingStartTime });
     onCommandStart?.();
   };
-
-  if (isMarkerDebugEnabled()) {
-    window.__aiterm_dumpMarkers = dumpMarkers;
-    debugLog('Debug enabled. Use window.__aiterm_dumpMarkers() after reproducing.');
-  }
 
   // Find which command block contains a given line
   const findMarkerAtLine = (lineNumber: number): IDecoration | null => {
@@ -636,17 +561,15 @@ export function createMarkerManager({
       return;
     }
 
-    if (meta?.isPythonREPL) {
-      element.classList.add('python');
-      element.title = 'Python REPL command';
-      debugLog('Applied .python class to marker at line', marker.marker.line);
-    }
+      if (meta?.isPythonREPL) {
+        element.classList.add('python');
+        element.title = 'Python REPL command';
+      }
 
-    if (meta?.isRREPL) {
-      element.classList.add('r');
-      element.title = 'R REPL command';
-      debugLog('Applied .r class to marker at line', marker.marker.line);
-    }
+      if (meta?.isRREPL) {
+        element.classList.add('r');
+        element.title = 'R REPL command';
+      }
 
     if (exitCode !== undefined) {
       if (exitCode === 0) element.classList.add('success');
@@ -701,29 +624,15 @@ export function createMarkerManager({
       const pythonIdPart = parts.find((p) => p.startsWith('py='));
       const pythonCommandId = pythonIdPart ? pythonIdPart.substring('py='.length) : undefined;
 
-      debugLog(
-        'OSC 133 raw=',
-        JSON.stringify(data),
-        'type=',
-        type,
-        'pythonMode=',
-        isPythonREPL,
-        'rMode=',
-        isRREPL,
-        'currentMarkerLine=',
-        currentMarker?.marker.line
-      );
       // R REPL uses the same prompt-time marker style as Python: A marks prompt, D marks completion.
 
       if (type === 'A') {
         // Prompt Start - Create Marker
-        debugLog('OSC 133;A');
-
         if (!isPythonREPL && !isRREPL && currentMarker) {
           const meta = markerMeta.get(currentMarker);
           if (meta && meta.exitCode === undefined && meta.outputStartMarker) {
             hasSeenFirstCommand = true;
-            finalizeMarker(currentMarker, undefined, 'osc-133-A-fallback');
+            finalizeMarker(currentMarker, undefined);
           }
         }
 
@@ -742,7 +651,6 @@ export function createMarkerManager({
               meta.streamingOutput = true;
               if (pendingStartTime) {
                 meta.startTime = pendingStartTime;
-                debugLog('Command start (osc-133;A repl existing)', { line: existing.marker.line });
                 pendingStartTime = null;
               }
             }
@@ -784,7 +692,6 @@ export function createMarkerManager({
               existingMeta.streamingOutput = true;
               if (pendingStartTime) {
                 existingMeta.startTime = pendingStartTime;
-                debugLog('Command start (osc-133;A repl reuse)', { line: currentMarker.marker.line });
                 pendingStartTime = null;
               }
             }
@@ -830,7 +737,6 @@ export function createMarkerManager({
             meta.streamingOutput = true;
             if (pendingStartTime) {
               meta.startTime = pendingStartTime;
-              debugLog('Command start (osc-133;A repl new)', { line: marker.marker.line });
               pendingStartTime = null;
             }
           }
@@ -853,13 +759,11 @@ export function createMarkerManager({
           const meta = markerMeta.get(currentMarker);
           if (meta && meta.exitCode === undefined && meta.outputStartMarker) {
             hasSeenFirstCommand = true;
-            finalizeMarker(currentMarker, undefined, 'osc-133-B-fallback');
+            finalizeMarker(currentMarker, undefined);
           }
         }
       } else if (type === 'C') {
         // Command Output Start
-        debugLog('OSC 133;C');
-
         // If we already have a marker for this Python command id, use it.
         if (pythonCommandId) {
           const existing = pythonMarkersById.get(pythonCommandId);
@@ -917,7 +821,6 @@ export function createMarkerManager({
             meta.streamingOutput = true; // Mark as streaming
             if (pendingStartTime) {
               meta.startTime = pendingStartTime; // Record start time
-              debugLog('Command start (osc-133;C)', { line: currentMarker.marker.line });
               pendingStartTime = null;
             }
             markerMeta.set(currentMarker, meta);
@@ -929,8 +832,6 @@ export function createMarkerManager({
         const parsed = Number.parseInt(parts[1] || '0', 10);
         const exitCode = Number.isFinite(parsed) ? parsed : 0;
         
-        debugLog('OSC 133;D exitCode=', exitCode);
-        
         // Mark that we've seen at least one complete command
         hasSeenFirstCommand = true;
         
@@ -940,14 +841,7 @@ export function createMarkerManager({
         if (markerToClose) {
           const marker = markerToClose;
           const meta = markerMeta.get(marker) || {};
-          debugLog('Marker meta before D update:', {
-            line: marker.marker.line,
-            isPythonREPL: meta.isPythonREPL,
-            isRREPL: meta.isRREPL,
-            pythonCommandId: meta.pythonCommandId,
-          });
-
-          finalizeMarker(marker, exitCode, 'osc-133-D');
+          finalizeMarker(marker, exitCode);
         }
       }
     } catch (e) {

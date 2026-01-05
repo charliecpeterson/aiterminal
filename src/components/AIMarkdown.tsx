@@ -1,12 +1,17 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import 'katex/dist/katex.min.css';
 
 export function AIMarkdown(props: {
   content: string;
   onRunCommand?: (command: string) => void;
+  basePath?: string;
 }) {
-  const { content, onRunCommand } = props;
+  const { content, onRunCommand, basePath } = props;
 
   const handleCopyCode = async (code: string) => {
     try {
@@ -18,13 +23,35 @@ export function AIMarkdown(props: {
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
       components={{
         a: ({ href, children }) => (
           <a href={href} target="_blank" rel="noreferrer">
             {children}
           </a>
         ),
+        img: ({ src, alt }) => {
+          if (!src) {
+            return null;
+          }
+
+          const isExternal = /^(https?:|data:|blob:|file:)/i.test(src);
+          if (isExternal) {
+            return <img src={src} alt={alt || ''} />;
+          }
+
+          const base = basePath || '';
+          const hasSeparator = base.includes('/') || base.includes('\\');
+          const isAbsolute = base.startsWith('/') || /^[A-Za-z]:[\\/]/.test(base);
+          if (!hasSeparator || !isAbsolute) {
+            return <img src={src} alt={alt || ''} />;
+          }
+
+          const baseDir = base.replace(/[/\\][^/\\]*$/, '');
+          const combined = `${baseDir}/${src}`.replace(/\\/g, '/');
+          return <img src={convertFileSrc(combined)} alt={alt || ''} />;
+        },
         code: ({ className, children }) => {
           const raw = String(children).replace(/\n$/, '');
           const language = className?.replace('language-', '');

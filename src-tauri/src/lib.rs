@@ -40,7 +40,6 @@ use tools::{
     git_status_tool, list_directory_tool, make_directory_tool, read_file_tool, search_files_tool,
     tail_file_tool, web_search_tool, write_file_tool,
 };
-
 #[tauri::command]
 async fn context_index_sync(
     state: tauri::State<'_, AppState>,

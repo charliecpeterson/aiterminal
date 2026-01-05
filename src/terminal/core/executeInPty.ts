@@ -35,7 +35,6 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
     `(${command})`,
     'status=$?',
     `printf '%s:%s\\n' "${endMarker}" "$status"`,
-    'exit $status',
   ].join(' ; ') + '\n';
   
   return new Promise(async (resolve, reject) => {
@@ -114,6 +113,13 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
               .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Remove ANSI codes
               .replace(/\r\n/g, '\n') // Normalize line endings
               .replace(/\r/g, '\n') // Convert CR to LF
+              .trim();
+            
+            // Strip any marker lines that may have leaked into output
+            finalOutput = finalOutput
+              .split('\n')
+              .filter((line) => !line.includes(startMarker) && !line.includes(endMarker))
+              .join('\n')
               .trim();
             
             // Defer cleanup to avoid calling unlisten while in its own callback

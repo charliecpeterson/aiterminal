@@ -78,13 +78,21 @@ pub async fn read_file_tool(path: String, max_bytes: usize) -> Result<String, St
     }
 }
 
+#[derive(serde::Serialize)]
+pub struct DirectoryListing {
+    pub files: Vec<String>,
+    pub directories: Vec<String>,
+    pub total_count: usize,
+}
+
 #[tauri::command]
 pub async fn list_directory_tool(
     path: Option<String>,
-    show_hidden: bool,
-) -> Result<Vec<String>, String> {
+    show_hidden: Option<bool>,
+) -> Result<DirectoryListing, String> {
     let dir_path = path.as_deref().unwrap_or(".");
     let path = Path::new(dir_path);
+    let show_hidden = show_hidden.unwrap_or(false);
 
     if !path.exists() {
         return Err(format!("Directory does not exist: {}", path.display()));
@@ -96,7 +104,8 @@ pub async fn list_directory_tool(
 
     let entries = fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
-    let mut result = Vec::new();
+    let mut files = Vec::new();
+    let mut directories = Vec::new();
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
@@ -112,12 +121,22 @@ pub async fn list_directory_tool(
             .metadata()
             .map_err(|e| format!("Failed to read metadata: {}", e))?;
 
-        let prefix = if metadata.is_dir() { "📁 " } else { "📄 " };
-        result.push(format!("{}{}", prefix, name));
+        if metadata.is_dir() {
+            directories.push(name.to_string());
+        } else {
+            files.push(name.to_string());
+        }
     }
 
-    result.sort();
-    Ok(result)
+    files.sort();
+    directories.sort();
+    let total_count = files.len() + directories.len();
+
+    Ok(DirectoryListing {
+        files,
+        directories,
+        total_count,
+    })
 }
 
 #[tauri::command]
@@ -190,26 +209,33 @@ pub async fn get_env_var_tool(variable: String) -> Result<Option<String>, String
 }
 
 // Write content to a file (create or overwrite)
-// Uses shell command so it works everywhere (local, SSH, docker, etc.)
 #[tauri::command]
 pub async fn write_file_tool(
     path: String,
     content: String,
     working_directory: Option<String>,
 ) -> Result<String, String> {
-    // Use cat with heredoc for reliable multi-line writing
-    let command = format!(
-        "cat > '{}' << 'AITERMINAL_EOF'\n{}\nAITERMINAL_EOF",
-        path, content
-    );
+    use std::fs;
+    use std::io::Write;
 
-    let result = execute_tool_command(command, working_directory).await?;
-
-    if result.exit_code == 0 {
-        Ok(format!("Successfully wrote to {}", path))
+    let full_path = if let Some(cwd) = working_directory {
+        Path::new(&cwd).join(&path)
     } else {
-        Err(format!("Failed to write file: {}", result.stderr))
+        Path::new(&path).to_path_buf()
+    };
+
+    if let Some(parent) = full_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
     }
+
+    let mut file = fs::File::create(&full_path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(format!("Successfully wrote to {}", full_path.display()))
 }
 
 // Append content to a file

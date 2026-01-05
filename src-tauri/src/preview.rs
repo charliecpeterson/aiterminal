@@ -28,6 +28,11 @@ pub async fn open_preview_window(
     content: String,
 ) -> Result<(), String> {
     let window_label = format!("preview-{}", uuid::Uuid::new_v4());
+    let display_name = PathBuf::from(&filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&filename)
+        .to_string();
 
     // Store content in app state to avoid URL length limits
     let content_store: tauri::State<ContentStore> = app.state();
@@ -41,7 +46,7 @@ pub async fn open_preview_window(
 
     // Create window
     WebviewWindowBuilder::new(&app, &window_label, WebviewUrl::App(url.into()))
-        .title(format!("Preview: {}", filename))
+        .title(format!("Preview: {}", display_name))
         .inner_size(900.0, 700.0)
         .resizable(true)
         .build()

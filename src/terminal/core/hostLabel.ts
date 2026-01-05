@@ -13,14 +13,6 @@ export function attachHostLabelOsc(
   onRREPL?: (enabled: boolean) => void,
   onPrompt?: () => void
 ): HostLabelHandle {
-  const debugEnabled = (() => {
-    try {
-      return window.localStorage.getItem('AITERM_DEBUG_MARKERS') === '1';
-    } catch {
-      return false;
-    }
-  })();
-
   // Handle OSC 633;H;hostname (custom format)
   const disposable633 = term.parser.registerOscHandler(633, (data) => {
     try {
@@ -37,10 +29,6 @@ export function attachHostLabelOsc(
 
   // Handle OSC 1337;RemoteHost=user@host:ip;Depth=N (iTerm2 format from shell integration)
   const disposable1337 = term.parser.registerOscHandler(1337, (data) => {
-    if (debugEnabled) {
-      // eslint-disable-next-line no-console
-      console.log('[HostLabel][DEBUG] OSC 1337 RAW:', JSON.stringify(data));
-    }
     try {
       // Format: RemoteHost=user@host or RemoteHost=user@host:ip;Depth=N or RemoteHost=;Depth=0 (for local)
       if (data.startsWith('RemoteHost=')) {
@@ -87,10 +75,6 @@ export function attachHostLabelOsc(
         // Handle Python REPL detection
         const value = data.substring('PythonREPL='.length);
         const enabled = value === '1';
-        if (debugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log('[HostLabel][DEBUG] PythonREPL signal:', value, '-> enabled=', enabled);
-        }
         // Pass the enabled state to marker manager
         // enabled=true when Python starts, enabled=false when Python exits
         onPythonREPL?.(enabled);
@@ -98,16 +82,7 @@ export function attachHostLabelOsc(
         // Handle R REPL detection
         const value = data.substring('RREPL='.length);
         const enabled = value === '1';
-        if (debugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log('[HostLabel][DEBUG] RREPL signal:', value, '-> enabled=', enabled);
-        }
         onRREPL?.(enabled);
-      } else {
-        if (debugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log('[HostLabel][DEBUG] OSC 1337 (other):', data.substring(0, 50));
-        }
       }
     } catch (e) {
       // eslint-disable-next-line no-console

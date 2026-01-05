@@ -179,7 +179,7 @@ const PreviewWindow: React.FC = () => {
       case 'markdown':
         return (
           <div className="preview-markdown">
-            <AIMarkdown content={content} />
+            <AIMarkdown content={content} basePath={filePath} />
           </div>
         );
       
