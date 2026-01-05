@@ -2,6 +2,30 @@
 
 Welcome to AI Terminal! This guide documents the features and shortcuts available in the application.
 
+## Development
+
+### Prerequisites
+
+- Rust & Cargo
+- Node.js & npm
+
+### Setup
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Run in development mode:
+   ```bash
+   npm run tauri dev
+   ```
+
+## Tech Stack
+
+- **Frontend**: React, TypeScript, xterm.js
+- **Backend**: Rust, Tauri, portable-pty
+
 ## Features
 
 ### 1. Shell Integration & Markers
@@ -41,7 +65,7 @@ Notes:
 - If you update AI Terminal and don’t see changes, fully restart the app so the embedded shell integration scripts get rewritten into `~/.config/aiterminal/`.
 - Optional R debug logging: set `AITERM_R_DEBUG=1` (writes to `~/.config/aiterminal/r_debug.log`).
 
-#### Technical Details: SSH Integration
+#### SSH Integration
 The SSH integration uses exported bash functions to intercept ssh calls:
 
 1. **Function export**: Both `aiterm_ssh` and `ssh` functions are exported with `export -f`, making them available in:
@@ -62,19 +86,6 @@ The SSH integration uses exported bash functions to intercept ssh calls:
 
 This architecture ensures SSH integration works reliably across different shells, execution contexts, and remote configurations without requiring system-level modifications or permanent files on remote hosts.
 
-#### Remote install (recommended for HPC reliability)
-If you frequently SSH into the same accounts, install the integration script on the remote side once. This avoids relying on SSH bootstrapping tricks and is more resilient across long sessions.
-
-- Run: `aiterm_install_remote user@host`
-- What it does:
-  - Copies `~/.config/aiterminal/bash_init.sh` to `user@host:~/.config/aiterminal/bash_init.sh`
-  - Appends a single `source ~/.config/aiterminal/bash_init.sh` line to the remote `~/.bashrc` and `~/.zshrc` (idempotent)
-
-Notes:
-- Requires `ssh` and `scp` availability.
-- Targets bash/zsh initialization (`~/.bashrc`, `~/.zshrc`). Other shells may require manual setup.
-
-If markers are missing in a particular environment, you can still manually select output text or use the copy tools for the nearest marker.
 
 ### 2. Command Block Interaction & Output Management
 AI Terminal provides powerful ways to interact with command output, inspired by modern IDEs.

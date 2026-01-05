@@ -10,56 +10,17 @@ A modern, AI-ready terminal emulator built with Tauri, React, and TypeScript.
 - **Shell Integration**: Automatic detection of command start/end with visual markers.
 - **Smart Copy**: Easily copy command output or command text via markers.
 - **AI Integration**: Separate AI panel window for chat and context management.
-- **Productivity Tools**:
-  - Font Zooming (`Cmd/Ctrl + +/-`)
-  - Search (`Cmd/Ctrl + F`)
-  - Clickable Links
 - **Cross-Platform**: Runs on macOS, Windows, and Linux.
 
-## Keyboard Shortcuts
-
-### Tabs
-- **Cmd/Ctrl + T** - New tab
-- **Cmd/Ctrl + W** - Close current pane/tab
-
-### Split Panes
-- **Cmd/Ctrl + D** - Split vertically
-- **Cmd/Ctrl + Shift + D** - Split horizontally
-- **Cmd/Ctrl + [** - Focus previous pane
-- **Cmd/Ctrl + ]** - Focus next pane
-
-### SSH Sessions
-- **Cmd/Ctrl + Shift + O** - Toggle SSH session panel window
-- **📡 SSH button** - Click to open/close SSH panel
-
-### Other
-- **Cmd/Ctrl + B** - Open AI Panel
-- **Cmd + ,** - Open Settings
 
 ## Documentation
 
 For detailed usage instructions and keyboard shortcuts, please refer to the [User Guide](docs/USER_GUIDE.md).
 
-## Development
+## Install / Download
 
-### Prerequisites
+Download the latest build from GitHub Releases:
 
-- Rust & Cargo
-- Node.js & npm
+https://github.com/charliecpeterson/aiterminal/releases
 
-### Setup
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-2. Run in development mode:
-   ```bash
-   npm run tauri dev
-   ```
-
-## Tech Stack
-
-- **Frontend**: React, TypeScript, xterm.js
-- **Backend**: Rust, Tauri, portable-pty
+Choose the installer for your OS (for example: DMG for macOS, MSI/EXE for Windows, DEB for Linux).
