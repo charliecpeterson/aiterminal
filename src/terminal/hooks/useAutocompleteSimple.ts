@@ -186,7 +186,6 @@ export function useAutocompleteSimple(
           handleLLMKey(event, key, terminal, llmEngine, ptyId, debounceMs);
         }
       } else if (source === 'hybrid') {
-        // TODO: Hybrid mode (history instant + LLM upgrade)
         if (historyEngine) {
           handleHistoryKey(event, key, terminal, historyEngine, ptyId, refreshDirEntries);
         }

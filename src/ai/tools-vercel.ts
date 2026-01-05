@@ -80,6 +80,20 @@ export function createTools(
   onPendingApproval?: (approval: PendingApproval) => void
 ) {
   return {
+    get_current_directory: tool({
+      description: `Get the current working directory of the active terminal.`,
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const result = await invoke<string>('get_current_directory_tool', {
+            terminalId,
+          });
+          return result;
+        } catch (error) {
+          return `Error getting current directory: ${error}`;
+        }
+      },
+    }),
     execute_command: tool({
       description: `Execute a shell command in the terminal. Use this to run commands, check system state, install packages, etc.
 

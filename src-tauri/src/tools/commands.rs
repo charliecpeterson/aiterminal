@@ -1,3 +1,4 @@
+use crate::models::AppState;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -193,10 +194,14 @@ pub async fn search_files_tool(pattern: String, max_results: usize) -> Result<Ve
 }
 
 #[tauri::command]
-pub async fn get_current_directory_tool(_terminal_id: Option<u32>) -> Result<String, String> {
-    // TODO: If terminal_id is provided, get the actual terminal's PWD
-    // For now, this returns the backend process's cwd, which is usually the project root
-    // The AI should be instructed to provide explicit paths instead of relying on "."
+pub async fn get_current_directory_tool(
+    terminal_id: Option<u32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    if let Some(id) = terminal_id {
+        return crate::pty::get_pty_cwd(id, state);
+    }
+
     let cwd =
         std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
 

@@ -139,7 +139,7 @@ export function useAutocompleteMenu(
       const history = await invoke<string[]>('get_shell_history').catch(() => []);
       
       const results = await engine.getMenuSuggestions(currentInput, {
-        shell: 'bash', // TODO: Get from PTY info
+        shell: 'bash',
         cwd,
         last_command: history[history.length - 1] || '',
         history,

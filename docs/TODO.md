@@ -22,6 +22,8 @@ Constraints:
 
 ## UX / Platform Enhancements
 - **Per-tab AI history** persistence (or session restore).
+- **Autocomplete hybrid mode**: history-first suggestions with LLM upgrade.
+- **Autocomplete shell detection**: derive shell type from PTY info (not hard-coded).
 
 ---
 
