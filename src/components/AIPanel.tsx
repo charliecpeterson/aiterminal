@@ -73,8 +73,6 @@ const AIPanel = ({
   const handleApprove = useCallback(async (id: string) => {
     const approval = pendingApprovals.find(a => a.id === id);
     if (!approval) return;
-
-    console.log('✅ Approving command:', approval.command);
     
     try {
       // Execute the command via Tauri (same format as executeCommand in tools-vercel.ts)
@@ -86,8 +84,6 @@ const AIPanel = ({
         command: approval.command,
         workingDirectory: approval.cwd || null,
       });
-
-      console.log('Command result:', { exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr });
 
       // Format the result like executeCommand does
       let formattedResult: string;
@@ -117,8 +113,6 @@ const AIPanel = ({
   const handleDeny = useCallback((id: string) => {
     const approval = pendingApprovals.find(a => a.id === id);
     if (!approval) return;
-
-    console.log('❌ Denying command:', approval.command);
     
     // Reject the promise
     rejectApproval(id, 'User denied command execution');
@@ -199,7 +193,6 @@ const AIPanel = ({
 
   const handleCancel = useCallback(() => {
     if (abortController) {
-      console.log('🛑 Cancelling AI request...');
       abortController.abort();
       setAbortController(null);
       setIsSending(false);
@@ -207,7 +200,6 @@ const AIPanel = ({
   }, [abortController]);
 
   const handleCaptureLast = () => {
-    console.log('[AIPanel] handleCaptureLast called', { captureCount });
     requestCaptureLast(captureCount).catch((err) => {
       console.error("Failed to request capture:", err);
     });
@@ -245,7 +237,6 @@ const AIPanel = ({
         timestamp: Date.now(),
       });
 
-      console.log('✅ File captured silently:', filePath);
       setFilePath(''); // Clear input after successful capture
     } catch (err) {
       console.error('Failed to capture file:', err);

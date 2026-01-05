@@ -174,10 +174,8 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
   // Load profiles and SSH config on mount
   useEffect(() => {
     const init = async () => {
-      console.log('[SSHProfilesContext] Initializing...');
       await loadProfiles();
       await loadSSHConfig();
-      console.log('[SSHProfilesContext] Initialized');
     };
     init();
   }, [loadProfiles, loadSSHConfig]);

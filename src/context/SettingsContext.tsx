@@ -87,18 +87,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 try {
                     const keychainKey = await invoke<string>('get_api_key_from_keychain');
                     loadedSettings.ai.api_key = keychainKey;
-                    console.log('✅ API key loaded from keychain');
                 } catch (err) {
                     console.warn('⚠️ Failed to load API key from keychain:', err);
                     // Key might have been deleted from keychain - that's okay
                 }
             }
             
-            console.log('✅ Settings loaded successfully:', { 
-                provider: loadedSettings.ai?.provider, 
-                model: loadedSettings.ai?.model,
-                hasApiKey: !!loadedSettings.ai?.api_key 
-            });
             setSettings(loadedSettings);
         } catch (error) {
             console.error('❌ Failed to load settings:', error);
@@ -132,7 +126,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 },
                 streaming: { max_tokens: 4096, timeout_secs: 120, buffer_size_limit: 1048576 }
             };
-            console.log('📋 Using default settings');
             setSettings(defaultSettings);
         } finally {
             setLoading(false);

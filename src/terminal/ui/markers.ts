@@ -226,7 +226,7 @@ export function createMarkerManager({
       // eslint-disable-next-line no-console
       console.table(rows);
       // eslint-disable-next-line no-console
-      console.log('[Markers][DEBUG] currentMarkerLine=', currentMarker?.marker.line, 'pythonMode=', isPythonREPL, 'rMode=', isRREPL);
+      debugLog('currentMarkerLine=', currentMarker?.marker.line, 'pythonMode=', isPythonREPL, 'rMode=', isRREPL);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[Markers][DEBUG] dump failed:', e);
@@ -564,12 +564,9 @@ export function createMarkerManager({
     // Get the output content
     const content = getRangeText([startLine, endLine]);
     
-    console.log('[Fold] Opening output window with', lineCount, 'lines');
-    console.log('[Fold] Content preview:', content.substring(0, 500));
     
     // Copy to clipboard
     navigator.clipboard.writeText(content).then(() => {
-      console.log('[Fold] Output copied to clipboard!');
     }).catch(err => {
       console.error('[Fold] Failed to copy:', err);
     });
@@ -590,7 +587,6 @@ export function createMarkerManager({
       });
 
       outputWindow.once('tauri://created', () => {
-        console.log('[Fold] Output window created');
       });
 
       outputWindow.once('tauri://error', (event) => {
@@ -843,7 +839,6 @@ export function createMarkerManager({
           (marker as any)._aiterm_meta = meta;
           
           if (isBootstrap) {
-            console.log('[Fold] Marking as bootstrap marker at line', marker.marker.line);
           }
 
           if (markers.length > maxMarkers) {
@@ -901,7 +896,6 @@ export function createMarkerManager({
             (marker as any)._aiterm_meta = meta;
             
             if (isBootstrap) {
-              console.log('[Fold] Marking as bootstrap marker at line', marker.marker.line);
             }
 
             if (markers.length > maxMarkers) {

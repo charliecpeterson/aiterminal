@@ -100,9 +100,6 @@ Examples:
         if (requireApproval && onPendingApproval) {
           const safetyCheck = isCommandSafe(command);
           if (!safetyCheck.isSafe) {
-            console.log(`⚠️ Dangerous command detected: ${command}`);
-            console.log(`   Reason: ${safetyCheck.reason}`);
-            
             // Get current directory for context
             const cwd = await getTerminalCwd(terminalId);
             
@@ -123,7 +120,6 @@ Examples:
             });
             
             // Add to pending approvals immediately (shows UI)
-            console.log(`⏸️ Adding pending approval: ${command}`);
             onPendingApproval(approval);
             
             // Wait for user decision

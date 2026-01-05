@@ -198,7 +198,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const unlistenPromises = [
       listen<ContextItem>("ai-context:sync-add", (event) => {
-        console.log('[AIContext] Received sync-add event', event.payload);
         dispatch({ type: "context:add", item: event.payload });
       }),
       listen<{ id: string }>("ai-context:sync-remove", (event) => {
@@ -215,7 +214,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const addContextItem = useCallback((item: ContextItem) => {
-    console.log('[AIContext] Adding context item', item);
     dispatch({ type: "context:add", item });
     // Broadcast to other windows
     invoke("emit_event", {
@@ -276,21 +274,13 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
     type: ContextType,
     metadata?: ContextItem['metadata']
   ) => {
-    console.log('[AIContext] addContextItemWithScan called', { 
-      type, 
-      contentLength: content.length,
-      contentPreview: content.substring(0, 100)
-    });
     try {
       // Scan content for secrets
-      console.log('[AIContext] Invoking scan_content_for_secrets...');
       const scanResult = await invoke<{
         has_secrets: boolean;
         findings: SecretFinding[];
         redacted_content: string;
       }>("scan_content_for_secrets", { content });
-
-      console.log('[AIContext] Scan result:', JSON.stringify(scanResult, null, 2));
 
       // Also redact metadata fields if they contain secrets
       let redactedMetadata = metadata;
@@ -333,16 +323,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
         redactedContent: scanResult.has_secrets ? scanResult.redacted_content : undefined,
         secretFindings: scanResult.has_secrets ? scanResult.findings : undefined,
       };
-
-      console.log('[AIContext] Item structure:', JSON.stringify({
-        id: item.id,
-        type: item.type,
-        hasSecrets: item.hasSecrets,
-        secretsRedacted: item.secretsRedacted,
-        findingsCount: item.secretFindings?.length,
-        contentLength: item.content.length,
-        redactedContentLength: item.redactedContent?.length
-      }, null, 2));
       
       addContextItem(item);
     } catch (error) {
@@ -377,17 +357,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
         ? item.redactedContent
         : item.content;
 
-      console.log('[AIContext] Formatting item:', {
-        type: item.type,
-        hasSecrets: item.hasSecrets,
-        secretsRedacted: item.secretsRedacted,
-        hasRedactedContent: !!item.redactedContent,
-        hasMetadataCommand: !!item.metadata?.command,
-        usingRedacted: item.hasSecrets && item.secretsRedacted && !!item.redactedContent,
-        contentPreview: contentToUse.substring(0, 100),
-        redactedContentPreview: item.redactedContent?.substring(0, 100)
-      });
-
       if (item.type === "command_output") {
         // For command_output, extract command and output from redacted content
         const command = item.metadata?.command || "";
@@ -414,12 +383,6 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       const contextBlock = hasContext
         ? formattedContextItems.join("\n\n")
         : "";
-
-      console.log('[AIContext] Building prompt with context:', {
-        itemCount: formattedContextItems.length,
-        contextPreview: contextBlock.substring(0, 200),
-        fullContext: contextBlock
-      });
 
       const sections = [];
       if (contextBlock) {

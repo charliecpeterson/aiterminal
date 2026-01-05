@@ -118,14 +118,6 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       timestamp: Date.now(),
     }]);
 
-    console.log('🤖 Sending to Vercel AI SDK:', {
-      model: settingsAi.model,
-      messageCount: coreMessages.length,
-      terminalId,
-      requireApproval: settingsAi.require_command_approval !== false,
-      aiMode: settingsAi.mode || 'agent',
-    });
-
     const aiMode = settingsAi.mode || 'agent';
     const enableTools = aiMode === 'agent';
 
@@ -205,11 +197,8 @@ ${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\
       }
     }
 
-    console.log('✅ Stream completed');
-    
     // Get final text after all tool executions
     const finalText = await result.text;
-    console.log('📝 Final text length:', finalText.length);
     
     // If we got final text but haven't displayed it (tools only, no streaming text)
     if (finalText && finalText.length > 0) {
@@ -219,9 +208,8 @@ ${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\
       }
     }
     
-    const steps = await result.steps;
-    console.log('📊 Total steps:', steps.length);
-    console.log('📝 Usage:', await result.usage);
+    await result.steps;
+    await result.usage;
     
     setIsSending(false);
 

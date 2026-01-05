@@ -228,7 +228,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
   }, [id]);
   
   useEffect(() => {
-      console.log(`[Terminal ${id}] Visibility changed to:`, visible, 'xtermRef:', xtermRef.current ? 'exists' : 'null', 'terminalReady:', terminalReady);
       if (!terminalReady) return; // Don't handle visibility until terminal is initialized
       handleTerminalVisibilityChange({
           id,

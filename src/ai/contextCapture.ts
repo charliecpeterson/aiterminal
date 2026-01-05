@@ -18,12 +18,10 @@ import { invoke } from '@tauri-apps/api/core';
 
 export async function requestCaptureLast(count: number): Promise<void> {
   const safeCount = Math.max(1, Math.min(50, count));
-  console.log('[contextCapture] Emitting ai-context:capture-last', { count: safeCount });
   await invoke('emit_event', { 
     event: 'ai-context:capture-last', 
     payload: { count: safeCount } 
   });
-  console.log('[contextCapture] Emit completed');
 }
 
 /**

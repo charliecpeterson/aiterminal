@@ -78,16 +78,10 @@ export default function AppContent() {
 
   const handleGoToTab = useCallback(
     (tabId: string) => {
-      console.log('[Main Window] handleGoToTab called with tabId:', tabId);
       const ptyId = parseInt(tabId);
-      console.log('[Main Window] Parsed ptyId:', ptyId);
       const tab = tabsRef.current.find(t => t.panes.some(p => p.id === ptyId));
-      console.log('[Main Window] Found tab:', tab?.id, 'with panes:', tab?.panes.map(p => p.id));
       if (tab) {
-        console.log('[Main Window] Switching to tab:', tab.id);
         setActiveTabId(tab.id);
-      } else {
-        console.log('[Main Window] No tab found for ptyId:', ptyId);
       }
     },
     [setActiveTabId]
@@ -331,9 +325,7 @@ export default function AppContent() {
 
   useEffect(() => {
     if (!isQuickActionsWindow) return;
-    console.log('[Quick Actions] Setting up listener for active terminal updates');
     const unlistenPromise = listen<{ id: number | null }>('quick-actions:active-terminal', (event) => {
-      console.log('[Quick Actions] Received active terminal event:', event.payload);
       setMainActiveTabId(event.payload?.id ?? null);
     });
     return () => {
@@ -378,14 +370,6 @@ export default function AppContent() {
       activePty = tabs.find(t => t.id === activeTabId)?.focusedPaneId || activeTabId;
     }
 
-    console.log('[Quick Actions] Execute called:', {
-      isQuickActionsWindow,
-      mainActiveTabId,
-      activeTabId,
-      activePty,
-      action: action.name
-    });
-
     if (activePty === null || activePty === undefined) {
       console.error('No active terminal - mainActiveTabId:', mainActiveTabId, 'activeTabId:', activeTabId);
       alert('No active terminal found. Please make sure a terminal is active in the main window and try again.');
@@ -394,7 +378,6 @@ export default function AppContent() {
 
     for (let i = 0; i < action.commands.length; i++) {
       const command = action.commands[i];
-      console.log(`[Quick Action: ${action.name}] Executing command ${i + 1}/${action.commands.length}: ${command}`);
 
       try {
         await invoke('write_to_pty', {
@@ -403,15 +386,10 @@ export default function AppContent() {
         });
 
         await waitForCommandComplete(activePty);
-
-        console.log(`[Quick Action: ${action.name}] Command ${i + 1} finished`);
-
       } catch (error) {
         console.error(`[Quick Action: ${action.name}] Failed to execute command: ${command}`, error);
       }
     }
-
-    console.log(`[Quick Action: ${action.name}] Completed`);
   };
 
   const openAIPanelWindow = async () => {

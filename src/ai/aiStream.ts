@@ -32,7 +32,6 @@ export function attachAiStreamListeners(params: {
     unlistenPromises.push(
         listen<{ request_id: string; content: string }>('ai-stream:chunk', (event) => {
             if (event.payload.request_id !== requestId) return;
-            console.log('📨 Chunk received:', event.payload.content);
             handlers.onChunk(event.payload.content);
         })
     );
@@ -42,7 +41,6 @@ export function attachAiStreamListeners(params: {
         unlistenPromises.push(
             listen<{ request_id: string; tool_calls: any[] }>('ai-stream:tool-calls', (event) => {
                 if (event.payload.request_id !== requestId) return;
-                console.log('🔧 Tool calls event received:', event.payload.tool_calls);
                 handlers.onToolCalls!(event.payload.tool_calls);
             })
         );

@@ -223,7 +223,7 @@ export function AIContextTab(props: {
               setCaptureCount(value);
             }}
           />
-          <button className="ai-panel-action ghost" onClick={() => { console.log("[AIContextTab] Capture clicked"); onCaptureLast(); }}>
+          <button className="ai-panel-action ghost" onClick={onCaptureLast}>
             Capture
           </button>
         </div>

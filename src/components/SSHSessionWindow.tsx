@@ -20,7 +20,6 @@ const SSHSessionWindow: React.FC = () => {
       latency?: number;
       tabId: string;
     }>("connection-status-update", (event) => {
-      console.log('[SSH Window] Received connection-status-update:', event.payload);
       updateConnection(event.payload.ptyId, {
         profileId: event.payload.profileId,
         tabId: event.payload.tabId,
@@ -48,7 +47,6 @@ const SSHSessionWindow: React.FC = () => {
 
   const handleGoToTab = (ptyId: string) => {
     // Emit event to main window to focus the tab for this ptyId
-    console.log('[SSH Window] Emitting ssh:goto-tab with ptyId:', ptyId);
     emit("ssh:goto-tab", { ptyId }).catch((err) => {
       console.error("Failed to emit ssh:goto-tab event:", err);
     });

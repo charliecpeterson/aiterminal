@@ -25,8 +25,6 @@ export function useAutocompleteSimple(
   const dirRequestRef = useRef<{ path: string; input: string } | null>(null);
 
 
-  console.log('🎯 Autocomplete inline source:', source);
-
   // Initialize engines based on source
   useEffect(() => {
     if (!enabled) return;
@@ -34,7 +32,6 @@ export function useAutocompleteSimple(
     // Init history engine (for history or hybrid)
     if ((source === 'history' || source === 'hybrid') && !historyEngineRef.current) {
       historyEngineRef.current = new SimpleAutocomplete();
-      console.log('📚 History engine initialized');
     }
 
     // Init LLM engine (for llm or hybrid)
@@ -42,7 +39,6 @@ export function useAutocompleteSimple(
       llmEngineRef.current = new LLMInlineAutocomplete();
       const modelPath = '~/.config/aiterminal/models/qwen3-1.7b-q4_k_m.gguf';
       llmEngineRef.current.initialize(modelPath).catch(console.error);
-      console.log('🤖 LLM inline engine initializing...');
     }
   }, [enabled, source]);
 
@@ -161,16 +157,11 @@ export function useAutocompleteSimple(
   useEffect(() => {
     const terminal = terminalRef.current;
     
-    console.log(`[useEffect keyboard] enabled=${enabled} terminal=${!!terminal} terminalReady=${terminalReady} source=${source}`);
-    
     if (!enabled || !terminal || !terminalReady) {
-      console.log('[useEffect keyboard] Skipping - not ready');
       onKeyDisposerRef.current?.dispose();
       onKeyDisposerRef.current = null;
       return;
     }
-
-    console.log('[useEffect keyboard] Attaching keyboard handler');
 
     // Dispose previous listener
     onKeyDisposerRef.current?.dispose();
@@ -179,8 +170,6 @@ export function useAutocompleteSimple(
       const key = event.domEvent.key;
       const historyEngine = historyEngineRef.current;
       const llmEngine = llmEngineRef.current;
-
-      console.log(`[Router] key="${key}" source="${source}" llmEngine=${!!llmEngine} historyEngine=${!!historyEngine}`);
 
       // Route to appropriate handler based on source
       if (historyEngine) {
@@ -194,7 +183,6 @@ export function useAutocompleteSimple(
         const lastToken = tokens[tokens.length - 1] ?? '';
         const allowLLM = tokens.length >= 2 && lastToken.length >= 2;
         if (allowLLM) {
-          console.log('[Router] Routing to LLM handler');
           handleLLMKey(event, key, terminal, llmEngine, ptyId, debounceMs);
         }
       } else if (source === 'hybrid') {
@@ -368,11 +356,7 @@ function handleLLMKey(
           shell: 'bash',
           cwd: cwdRef.current || '/',
         };
-        const startTime = performance.now();
         const suggestion = await engine.getSuggestionAsync(currentInput, context, 0);
-        const elapsed = performance.now() - startTime;
-        
-        console.log(`[LLM inline] Latency: ${elapsed.toFixed(0)}ms for "${currentInput}" → "${suggestion}"`);
         
         // Only render if input hasn't changed
         if (suggestion && currentInput === engine.getCurrentInput()) {

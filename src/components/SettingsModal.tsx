@@ -22,7 +22,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     // Load settings when modal opens
     useEffect(() => {
         if (isOpen && settings) {
-            console.log('📋 Loading settings into modal:', settings);
             setLocalSettings(JSON.parse(JSON.stringify(settings)));
         }
     }, [settings, isOpen]);
@@ -144,7 +143,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     
     // Show loading state if settings not loaded yet
     if (!settings) {
-        console.log('⚠️ Settings not available in context');
         return (
             <div className="settings-overlay" onClick={onClose}>
                 <div className="settings-modal" onClick={(e) => e.stopPropagation()}>

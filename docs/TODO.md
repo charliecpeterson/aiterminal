@@ -21,7 +21,6 @@ Constraints:
 - **Auto-pruning** and smarter truncation/summarization for large outputs.
 
 ## UX / Platform Enhancements
-- **Streaming cancel/stop** button for long responses.
 - **Per-tab AI history** persistence (or session restore).
 
 ---
@@ -47,7 +46,6 @@ Constraints:
 ### Type safety / maintainability
 - Replace `any` in marker plumbing with **typed marker models**:
   - `currentMarker`, `markers[]`, `WeakMap` payloads, marker metadata/ranges.
-- Add invariants/tests around **marker boundaries** and **output slicing** (prevent off-by-one and misattribution across commands).
 
 ### Secrets & configuration
 - Stop storing **AI API keys in plaintext** in `~/.config/aiterminal/settings.json`.
@@ -153,7 +151,6 @@ Constraints:
 ### Type safety / maintainability
 - Replace `any` in marker plumbing with **typed marker models**:
   - `currentMarker`, `markers[]`, `WeakMap` payloads, marker metadata/ranges.
-- Add invariants/tests around **marker boundaries** and **output slicing** (prevent off-by-one and misattribution across commands).
 
 ### Secrets & configuration
 - Stop storing **AI API keys in plaintext** in `~/.config/aiterminal/settings.json`.

@@ -23,14 +23,12 @@ export class LLMInlineAutocomplete {
   private commandAllowedCache = new Map<string, boolean>();
 
   constructor() {
-    console.log('🤖 LLM Inline Autocomplete initialized');
   }
 
   async initialize(modelPath: string): Promise<void> {
     try {
       await invoke('init_llm', { modelPath });
       this.enabled = true;
-      console.log('✅ LLM Inline ready');
     } catch (error) {
       console.error('❌ LLM Inline init failed:', error);
       this.enabled = false;
@@ -77,8 +75,6 @@ export class LLMInlineAutocomplete {
     this.lastQueryInput = input;
 
     try {
-      const startTime = performance.now();
-
       const completionContext: CompletionContext = {
         shell: context.shell,
         cwd: context.cwd,
@@ -87,15 +83,10 @@ export class LLMInlineAutocomplete {
         shell_history: [],
       };
 
-      console.log(`[LLM query] input="${input}" cwd="${context.cwd}"`);
-
       // Call optimized inline completion endpoint
       const result = await invoke<string>('get_llm_inline_completion', {
         context: completionContext,
       });
-
-      const latency = Math.round(performance.now() - startTime);
-      console.log(`⚡ LLM inline latency: ${latency}ms`);
 
       // Only update if input hasn't changed
       if (this.lastQueryInput === input) {
@@ -118,7 +109,6 @@ export class LLMInlineAutocomplete {
         }
 
         this.currentSuggestion = suffix;
-        console.log(`[LLM result] input="${input}" raw="${result}" completion="${suffix}"`);
         return suffix;
       }
       
@@ -143,17 +133,13 @@ export class LLMInlineAutocomplete {
       .replace(/["']$/, '')
       .trim();
 
-    console.log(`[LLM extract] input="${input}" raw="${llmOutput}" cleaned="${cleaned}"`);
-
     // If it starts with the input, return only the completion part after the input
     if (cleaned.startsWith(input)) {
       const completion = cleaned.substring(input.length);
-      console.log(`[LLM extract] completion="${completion}"`);
       return { full: cleaned, suffix: completion };
     }
 
     // Full-command mode expects the model to echo the input.
-    console.log('[LLM extract] output does not start with input, dropping');
     return null;
   }
 
@@ -238,7 +224,6 @@ export class LLMInlineAutocomplete {
    */
   onChar(char: string): void {
     this.currentInput += char;
-    console.log(`[LLM onChar] currentInput="${this.currentInput}"`);
   }
 
   /**
@@ -248,7 +233,6 @@ export class LLMInlineAutocomplete {
     if (this.currentInput.length > 0) {
       this.currentInput = this.currentInput.slice(0, -1);
     }
-    console.log(`[LLM onBackspace] currentInput="${this.currentInput}"`);
   }
 
   /**
@@ -287,7 +271,6 @@ export class LLMInlineAutocomplete {
   render(terminal: any, suggestion?: string): void {
     const text = suggestion !== undefined ? suggestion : this.currentSuggestion;
     if (!text) {
-      console.log('[render] No text to render');
       return;
     }
 
@@ -301,7 +284,6 @@ export class LLMInlineAutocomplete {
     const cursorY = buffer.cursorY;
     const line = buffer.getLine(cursorY);
     if (!line) {
-      console.log('[render] No line at cursorY');
       return;
     }
 
@@ -317,19 +299,14 @@ export class LLMInlineAutocomplete {
     const totalUsed = promptLength + visualCursorPos;
     const availableSpace = terminalWidth - totalUsed;
     
-    console.log(`[render] currentInput="${this.currentInput}" lineText="${lineText}" promptLen=${promptLength} visualCursor=${visualCursorPos} totalUsed=${totalUsed} avail=${availableSpace} termWidth=${terminalWidth}`);
-    
     // Truncate suggestion if it would wrap to next line
     const displayText = availableSpace > 0 && text.length > availableSpace 
       ? text.substring(0, availableSpace) 
       : text;
 
     if (displayText.length === 0) {
-      console.log('[render] displayText is empty after truncation');
       return;
     }
-
-    console.log(`[render] Writing gray text: "${displayText}"`);
 
     // Save cursor position, write gray text, restore cursor
     terminal.write(`\x1b7`); // Save cursor position (ESC 7)

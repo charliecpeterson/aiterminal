@@ -21,12 +21,22 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
   
   // Generate unique markers
   const timestamp = Date.now();
-  const startMarker = `__AITERM_START_${timestamp}__`;
-  const endMarker = `__AITERM_END_${timestamp}__`;
+  const markerToken =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+  const startMarker = `__AITERM_START_${markerToken}__`;
+  const endMarker = `__AITERM_END_${markerToken}__`;
   
   // Build the command with markers
   // We use printf to avoid extra newlines and escape sequences
-  const wrappedCommand = `printf '${startMarker}\\n' && (${command}) && printf '\\n${endMarker}\\n'\n`;
+  const wrappedCommand = [
+    `printf '%s\\n' "${startMarker}"`,
+    `(${command})`,
+    'status=$?',
+    `printf '%s:%s\\n' "${endMarker}" "$status"`,
+    'exit $status',
+  ].join(' ; ') + '\n';
   
   return new Promise(async (resolve, reject) => {
     let outputBuffer = '';
@@ -35,6 +45,7 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
     let unlisten: UnlistenFn | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let resolveTimer: ReturnType<typeof setTimeout> | null = null;
+    let capturedExitCode = 0;
     
     const cleanup = () => {
       if (unlisten) {
@@ -70,7 +81,6 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
           const startIndex = outputBuffer.indexOf(startMarker) + startMarker.length;
           outputBuffer = outputBuffer.substring(startIndex);
           capturedOutput = [];
-          console.log('📥 Started capturing output');
         }
         
         // Check for end marker
@@ -86,6 +96,14 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
           const output = outputBuffer.substring(0, endIndex);
           capturedOutput.push(output);
           
+          const afterMarker = outputBuffer.substring(endIndex + endMarker.length);
+          if (afterMarker.startsWith(':')) {
+            const match = afterMarker.slice(1).match(/^\d+/);
+            if (match) {
+              capturedExitCode = parseInt(match[0], 10);
+            }
+          }
+          
           // Wait a tiny bit to ensure we got all the data
           resolveTimer = setTimeout(() => {
             // Join captured output and clean it up
@@ -98,14 +116,12 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
               .replace(/\r/g, '\n') // Convert CR to LF
               .trim();
             
-            console.log('✅ Command completed, output length:', finalOutput.length);
-            
             // Defer cleanup to avoid calling unlisten while in its own callback
             setTimeout(() => cleanup(), 0);
             
             resolve({
               output: finalOutput,
-              exitCode: 0, // TODO: Capture actual exit code
+              exitCode: capturedExitCode,
             });
           }, 50); // Wait 50ms to ensure all chunks are received
         }

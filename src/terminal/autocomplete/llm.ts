@@ -23,11 +23,9 @@ export class LLMAutocomplete {
   
   async initialize(modelPath: string): Promise<void> {
     try {
-      console.log('Initializing LLM with model:', modelPath);
       await invoke('init_llm', { modelPath });
       this.initialized = true;
       this.enabled = true;
-      console.log('✅ LLM initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize LLM:', error);
       this.enabled = false;
@@ -70,7 +68,6 @@ export class LLMAutocomplete {
     try {
       await invoke('stop_llm');
       this.enabled = false;
-      console.log('LLM server stopped');
     } catch (error) {
       console.error('Failed to stop LLM:', error);
     }
