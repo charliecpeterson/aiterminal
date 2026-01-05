@@ -88,7 +88,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     const keychainKey = await invoke<string>('get_api_key_from_keychain');
                     loadedSettings.ai.api_key = keychainKey;
                 } catch (err) {
-                    console.warn('⚠️ Failed to load API key from keychain:', err);
+                    console.warn('Failed to load API key from keychain:', err);
                     // Key might have been deleted from keychain - that's okay
                 }
             }

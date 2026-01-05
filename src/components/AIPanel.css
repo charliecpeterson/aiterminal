@@ -258,9 +258,7 @@
   font-weight: 500;
   position: relative;
   transition: color 120ms ease, border-color 120ms ease;
-}
   letter-spacing: -0.01em;
-  transition: all 100ms ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;

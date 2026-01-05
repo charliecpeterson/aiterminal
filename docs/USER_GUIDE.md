@@ -49,11 +49,13 @@ The terminal detects when commands start and finish (bash and zsh supported).
   3. Sets up OSC 133 command markers and OSC 1337 SSH detection
   4. Falls back to normal ssh if integration fails
 - **SSH detection**: When connected via SSH, the terminal label changes from "Local" to "🔒 user@host" using OSC 1337;RemoteHost sequences.
-- **Privilege changes (`su`)**: `su` is **not** overridden by default. `su` implementations vary (util-linux, busybox, BSD), and wrapper-based bootstrapping can silently fail. If you need markers after `su`, the sustainable approach is to install the integration in that target account (see “Remote install” below).
+- **Privilege changes (`sudo`/`su`)**: For interactive elevation shells (e.g., `sudo -i`, `sudo -s`, plain `su`), AI Terminal bootstraps the integration so markers continue working after elevation.
+  - Commands like `sudo <cmd>` and `su -c <cmd>` are not intercepted.
+  - To bypass the wrappers, use `command sudo ...` / `command su ...`.
 - **Containers**: In AI Terminal, interactive `docker` / `podman` and `apptainer` shells attempt to bootstrap integration so markers keep working inside long container sessions.
 - **Remote bootstrap safety**: The SSH helper is sent as a base64 payload; if it fails to decode or validate, the session falls back to a normal login shell without markers.
 - **Bypassing the wrapper**: To use plain ssh without integration, run `command ssh user@host` or `\ssh user@host`.
-- **Debugging hooks**: Set `AITERM_HOOK_DEBUG=1` before launching a shell to print which hook path is used (bash `PROMPT_COMMAND` array vs string, zsh hook install).
+- **Bypassing the wrapper**: To use plain ssh without integration, run `command ssh user@host` or `\ssh user@host`.
 
 #### REPL markers (Python + R)
 AI Terminal also supports command markers inside interactive REPLs:
@@ -63,7 +65,10 @@ AI Terminal also supports command markers inside interactive REPLs:
 Notes:
 - REPL markers use a prompt-embedded technique, so the *prompt line* is considered part of the command block.
 - If you update AI Terminal and don’t see changes, fully restart the app so the embedded shell integration scripts get rewritten into `~/.config/aiterminal/`.
-- Optional R debug logging: set `AITERM_R_DEBUG=1` (writes to `~/.config/aiterminal/r_debug.log`).
+
+REPL marker colors:
+- **Python**: Blue for success, yellow for errors.
+- **R**: Purple for success, deep orange for errors.
 
 #### SSH Integration
 The SSH integration uses exported bash functions to intercept ssh calls:
@@ -92,7 +97,8 @@ AI Terminal provides powerful ways to interact with command output, inspired by 
 
 #### Click-to-Highlight (Cursor IDE Style)
 - **Click anywhere in a command's output**: The entire command block (prompt → command → output) gets highlighted with a subtle background.
-- **Floating Action Button**: A "View in Window" button appears in the top-right corner of highlighted blocks.
+- **Floating Action Buttons**: "View in Window" and "Copy to Clipboard" appear in the top-right corner of highlighted blocks.
+  - "Copy to Clipboard" copies the exact same output range that would be sent to the Output Viewer.
 - **Quick Dismissal**: Click elsewhere in the terminal to remove the highlight.
 
 #### Large Output Viewer
@@ -100,10 +106,12 @@ For commands that generate lots of output, use the Output Viewer window:
 - **Trigger**: Click "View in Window" button on any highlighted command block.
 - **Features**:
   - **Separate Window**: Opens output in a dedicated popup window
-  - **Search**: Built-in search bar to find text in large outputs
-  - **Line Numbers**: Optional line numbering for reference
-  - **Export**: Save output to a file with native file dialog
-  - **Syntax**: Displays output in a clean, readable format
+  - **Search**: Highlights matches in-place (does not filter output)
+    - Prev/Next navigation (Enter / Shift+Enter)
+    - Match counter (e.g., "3/12")
+    - Match ruler on the right showing where matches are
+  - **Copy**: Copy full output to clipboard
+  - **Export**: Download output as a `.txt`
 - **Use Cases**: Log file dumps, large JSON responses, build outputs, test results
 
 #### Smart Copy (Marker Menu)
@@ -163,69 +171,72 @@ To make it clear what the model actually saw, assistant messages include an expa
 - Lists retrieved snippets (with source type/path when available).
 
 #### AI Capabilities & Tools
-The AI assistant has access to 16 powerful tools that execute automatically to help you:
+The AI assistant has access to 17 tools that execute automatically to help you:
 
 **File Operations**
-1. **execute_command** - Run any shell command in your current terminal directory
+1. **get_current_directory** - Get the active terminal's current working directory
+
+2. **execute_command** - Run any shell command in your current terminal directory
    - Examples: Check versions, run git commands, install packages, view logs
    - Dangerous commands (rm, sudo, etc.) require approval when enabled in settings
 
-2. **read_file** - Read and analyze file contents
+3. **read_file** - Read and analyze file contents
    - Examples: Check package.json, read configuration files, examine logs
    - Supports text files up to 50KB by default
 
-3. **write_file** - Create new files or overwrite existing ones
+4. **write_file** - Create new files or overwrite existing ones
    - Examples: Create config files, generate scripts, fix code files
-   - Overwrites require approval when enabled
+  - Note: this writes locally; for remote/SSH edits use `execute_command`
 
-4. **append_to_file** - Add content to the end of a file
+5. **append_to_file** - Add content to the end of a file
    - Examples: Add to logs, update lists, append notes
    - Creates file if it doesn't exist
 
-5. **list_directory** - Browse directory contents
+6. **list_directory** - Browse directory contents
    - Shows files and subdirectories
    - Works with absolute paths
 
-6. **tail_file** - Read the last N lines of a file
+7. **tail_file** - Read the last N lines of a file
    - More efficient than reading entire large log files
    - Default: 50 lines, configurable
 
-7. **make_directory** - Create directories (and parents if needed)
+8. **make_directory** - Create directories (and parents if needed)
    - Examples: Set up project structure, create nested folders
+  - Note: this runs locally; for remote/SSH mkdir use `execute_command`
 
 **Search & Discovery**
-8. **search_files** - Find files by name pattern or content
+9. **search_files** - Find files by name pattern or content
    - Glob patterns for filenames (e.g., `*.ts`, `**/*.json`)
    - Content search across files
 
 **Git Operations**
-9. **git_status** - Get current branch, staged files, uncommitted changes
+10. **git_status** - Get current branch, staged files, uncommitted changes
    - Helps AI understand your git repository state
 
-10. **get_git_diff** - Show uncommitted changes
+11. **get_git_diff** - Show uncommitted changes
     - See what's been modified before committing
 
 **System & Process**
-11. **find_process** - Search for running processes by name
+12. **find_process** - Search for running processes by name
     - Examples: Find node processes, check for running servers
     - Useful for debugging "port already in use" errors
 
-12. **check_port** - Check if a network port is in use
+13. **check_port** - Check if a network port is in use
     - Shows which process is using the port
     - Common for debugging port conflicts
 
-13. **get_system_info** - Get OS, architecture, and disk space
+14. **get_system_info** - Get OS, architecture, and disk space
     - Useful for environment debugging
 
-14. **get_environment_variable** - Check environment variables
+15. **get_environment_variable** - Check environment variables
     - Examples: PATH, HOME, custom variables
 
 **Utilities**
-15. **calculate** - Evaluate mathematical expressions
+16. **calculate** - Evaluate mathematical expressions
     - Examples: Unit conversions, sizing calculations
     - Supports arithmetic and math functions
 
-16. **web_search** - Generate search URLs for documentation
+17. **web_search** - Generate search URLs for documentation
     - Suggests Google searches when external info is needed
     - Cannot actually browse but provides helpful links
 
@@ -241,7 +252,7 @@ Dangerous commands are protected by an interactive approval system:
   3. Click **✓ Run** to execute or **✗ Cancel** to deny
   4. AI receives result or denial and continues accordingly
 - **Safe Commands**: Read-only commands (pwd, ls, cat, grep, etc.) run automatically
-- **Transparency**: All tool executions are logged in the console for debugging
+- **Transparency**: Tool execution/approval state is surfaced in the UI; for deep debugging you can open Developer Tools.
 
 #### Multi-Step Tool Execution
 The AI can automatically chain multiple tools together to accomplish complex tasks:
@@ -325,6 +336,7 @@ Find text within your terminal buffer.
 ### 6. Scrolling & Scrollbar
 - Mouse wheel/trackpad scrolling is supported. A visible right-hand scrollbar overlay appears; you can click or drag it to move through the buffer.
 - If system scrollbars are hidden (e.g., macOS auto-hide), the overlay ensures you still see position and can drag to scroll.
+- The scrollbar overlay also shows small colored ticks for command markers, matching the gutter marker colors.
 
 ### 7. Clickable Links
 URLs in the terminal are automatically detected.
@@ -704,7 +716,6 @@ The integration files are embedded in the application binary and written to disk
 Open Settings → AI to configure providers and models.
 - **Providers**: OpenAI (recommended), Anthropic, Gemini, Ollama
 - **Models**: Any model that supports function calling/tool use
-  - OpenAI: gpt-4, gpt-4o, gpt-4-turbo, gpt-3.5-turbo
   - Requires tool calling support for automatic command execution
 - **API Key**: Required for cloud providers (OpenAI, Anthropic, Gemini)
 - **Custom URL**: Override base API endpoints (useful for Ollama or proxies)
@@ -717,7 +728,7 @@ Open Settings → AI to configure providers and models.
 ### Technical Implementation
 The AI system is built on:
 - **Vercel AI SDK v5** for robust streaming and tool execution
-- **Automatic Tool Calling**: 16 tools execute seamlessly to accomplish tasks
+- **Automatic Tool Calling**: 17 tools execute seamlessly to accomplish tasks
 - **Multi-Step Execution**: Up to 5 sequential tool calls per request using `stopWhen`
 - **Approval System**: Promise-based blocking for dangerous command approval
 - **Terminal Integration**: Uses `get_pty_cwd` to determine your actual working directory
@@ -747,11 +758,11 @@ Notes:
 ### Terminal Markers
 - **Markers not showing (local)?** Open a fresh tab so the helper re-sources; bash and zsh are supported.
 - **Markers not showing (remote)?** Use `aiterm_ssh <user@host>` (or plain `ssh` is already aliased to it inside AI Terminal). If the remote blocks sourcing, bypass with `\ssh` to avoid the alias.
-- **Markers missing after `su`/restricted shells?** Install integration into that account with `aiterm_install_remote` (or manually add `source ~/.config/aiterminal/bash_init.sh` in that account's `~/.bashrc`/`~/.zshrc`). Some environments intentionally scrub environment variables; in those cases, exact command markers may not be available.
+- **Markers missing after `su`/restricted shells?** Manually source `~/.config/aiterminal/bash_init.sh` in that shell (or add it to that account’s `~/.bashrc`/`~/.zshrc`). Some environments intentionally scrub environment variables; in those cases, exact command markers may not be available.
 
 ### AI Panel
 - **Blank AI responses?** Ensure your AI settings are configured with a valid API key and model that supports tool calling.
-- **AI not using tools?** Check that you're using a model with function calling support (e.g., gpt-4, gpt-4o, gpt-4-turbo, not base models).
+- **AI not using tools?** Check that you're using a model with function calling support (tool-enabled chat models).
 - **Wrong directory for commands?** The AI automatically detects your terminal's working directory. If issues persist, try `cd` to refresh.
 - **Tool execution errors?** Check console logs (View → Developer → Developer Tools) for detailed error messages.
 - **Connection errors?** Verify your API key and internet connection. Test with the "Test Connection" button in Settings.
@@ -784,20 +795,3 @@ Notes:
 - **Remote file preview fails?** Ensure `base64` or `openssl` is available on the remote system for encoding. Check that the file path is correct and readable.
 - **Garbled content?** File may be binary or use incompatible encoding. Preview is designed for UTF-8 text files.
 - **Multiple preview windows?** Each `aiterm_render` call opens a new window. Close unused windows manually.
-
-## Testing
-
-### Automated (fast)
-- Run unit tests: `npm test`
-- CI-friendly run: `npm run test:run`
-
-### Manual smoke checklist (core terminal flows)
-- Terminal renders, typing works, and prompt updates after resize.
-- Marker highlights work: click a command block; click outside clears.
-- "View in Window" opens for highlighted output.
-- Quick Actions: create, edit, execute in active terminal.
-- AI Panel receives context and runs a quick action without errors.
-- SSH: connect profile, latency pill updates, host label shows lock.
-
-### Notes
-- Terminal/PTy behavior is hard to simulate in unit tests; use the manual checklist before release.
