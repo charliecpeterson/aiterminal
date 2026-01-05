@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './OutputViewer.css';
 
 interface OutputViewerProps {}
@@ -7,6 +7,12 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
   const [content, setContent] = useState<string>('');
   const [lineCount, setLineCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState<number>(-1);
+
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const matchElementsRef = useRef<Map<number, HTMLElement>>(new Map());
+
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   useEffect(() => {
     // Read content from URL parameters
@@ -43,12 +49,136 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
     URL.revokeObjectURL(url);
   };
 
-  const filteredContent = searchQuery
-    ? content
-        .split('\n')
-        .filter((line) => line.toLowerCase().includes(searchQuery.toLowerCase()))
-        .join('\n')
-    : content;
+  const matches = useMemo(() => {
+    const query = searchQuery.trim();
+    if (!query) return [] as Array<{ start: number; end: number }>;
+
+    const result: Array<{ start: number; end: number }> = [];
+    const re = new RegExp(escapeRegExp(query), 'gi');
+    for (const match of content.matchAll(re)) {
+      const start = match.index ?? -1;
+      if (start < 0) continue;
+      result.push({ start, end: start + match[0].length });
+    }
+    return result;
+  }, [content, searchQuery]);
+
+  const lineStartOffsets = useMemo(() => {
+    // Offsets of the first character of each line.
+    const offsets: number[] = [0];
+    for (let i = 0; i < content.length; i++) {
+      if (content.charCodeAt(i) === 10 /* \n */) {
+        offsets.push(i + 1);
+      }
+    }
+    return offsets;
+  }, [content]);
+
+  const findLineIndexForOffset = (offset: number) => {
+    // Returns the line index such that lineStartOffsets[i] <= offset < lineStartOffsets[i+1]
+    const arr = lineStartOffsets;
+    let lo = 0;
+    let hi = arr.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] <= offset) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return Math.max(0, lo - 1);
+  };
+
+  const matchLineIndices = useMemo(() => {
+    if (matches.length === 0) return [] as number[];
+    const seen = new Set<number>();
+    const indices: number[] = [];
+    for (const m of matches) {
+      const li = findLineIndexForOffset(m.start);
+      if (!seen.has(li)) {
+        seen.add(li);
+        indices.push(li);
+      }
+    }
+    return indices;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches, lineStartOffsets]);
+
+  const activeMatchLineIndex = useMemo(() => {
+    if (activeMatchIndex < 0 || activeMatchIndex >= matches.length) return null;
+    return findLineIndexForOffset(matches[activeMatchIndex].start);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMatchIndex, matches, lineStartOffsets]);
+
+  const scrollToMatch = (index: number) => {
+    if (index < 0) return;
+    requestAnimationFrame(() => {
+      const el = matchElementsRef.current.get(index);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    });
+  };
+
+  useEffect(() => {
+    matchElementsRef.current.clear();
+    const query = searchQuery.trim();
+    if (!query || matches.length === 0) {
+      setActiveMatchIndex(-1);
+      return;
+    }
+    setActiveMatchIndex(0);
+    scrollToMatch(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, matches.length]);
+
+  const goToNextMatch = () => {
+    if (matches.length === 0) return;
+    const next = activeMatchIndex < 0 ? 0 : (activeMatchIndex + 1) % matches.length;
+    setActiveMatchIndex(next);
+    scrollToMatch(next);
+  };
+
+  const goToPrevMatch = () => {
+    if (matches.length === 0) return;
+    const prev =
+      activeMatchIndex < 0
+        ? matches.length - 1
+        : (activeMatchIndex - 1 + matches.length) % matches.length;
+    setActiveMatchIndex(prev);
+    scrollToMatch(prev);
+  };
+
+  const renderedContent = useMemo(() => {
+    const query = searchQuery.trim();
+    if (!query || matches.length === 0) return content;
+
+    const nodes: React.ReactNode[] = [];
+    let cursor = 0;
+
+    matches.forEach((m, i) => {
+      if (m.start > cursor) {
+        nodes.push(content.slice(cursor, m.start));
+      }
+
+      const text = content.slice(m.start, m.end);
+      nodes.push(
+        <span
+          key={`m-${i}-${m.start}`}
+          ref={(el) => {
+            if (el) matchElementsRef.current.set(i, el);
+          }}
+          className={`output-viewer-highlight ${i === activeMatchIndex ? 'active' : ''}`}
+        >
+          {text}
+        </span>
+      );
+      cursor = m.end;
+    });
+
+    if (cursor < content.length) {
+      nodes.push(content.slice(cursor));
+    }
+
+    return nodes;
+  }, [content, matches, searchQuery, activeMatchIndex]);
 
   return (
     <div className="output-viewer">
@@ -63,7 +193,37 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) goToPrevMatch();
+                else goToNextMatch();
+              }
+            }}
           />
+          {searchQuery.trim() ? (
+            <div className="output-viewer-match-count">
+              {matches.length === 0
+                ? '0/0'
+                : `${Math.max(activeMatchIndex, 0) + 1}/${matches.length}`}
+            </div>
+          ) : null}
+          <button
+            className="output-viewer-btn"
+            onClick={goToPrevMatch}
+            disabled={matches.length === 0}
+            title="Previous match (Shift+Enter)"
+          >
+            Prev
+          </button>
+          <button
+            className="output-viewer-btn"
+            onClick={goToNextMatch}
+            disabled={matches.length === 0}
+            title="Next match (Enter)"
+          >
+            Next
+          </button>
           <button className="output-viewer-btn" onClick={handleCopy}>
             Copy
           </button>
@@ -72,8 +232,26 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
           </button>
         </div>
       </div>
-      <div className="output-viewer-content">
-        <pre>{filteredContent || 'Loading...'}</pre>
+      <div className="output-viewer-content-wrap">
+        <div className="output-viewer-content" ref={contentRef}>
+          <pre>{renderedContent || 'Loading...'}</pre>
+        </div>
+        {searchQuery.trim() && matchLineIndices.length > 0 ? (
+          <div className="output-viewer-ruler" aria-hidden="true">
+            {matchLineIndices.map((lineIndex) => {
+              const denom = Math.max(1, lineStartOffsets.length - 1);
+              const topPct = (lineIndex / denom) * 100;
+              const isActive = activeMatchLineIndex === lineIndex;
+              return (
+                <div
+                  key={`tick-${lineIndex}`}
+                  className={`output-viewer-tick ${isActive ? 'active' : ''}`}
+                  style={{ top: `${Math.min(100, Math.max(0, topPct))}%` }}
+                />
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </div>
   );
