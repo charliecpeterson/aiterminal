@@ -23,4 +23,12 @@ Download the latest build from GitHub Releases:
 
 https://github.com/charliecpeterson/aiterminal/releases
 
-Choose the installer for your OS (for example: DMG for macOS, MSI/EXE for Windows, DEB for Linux).
+Choose the installer for your OS (for example: DMG for macOS, MSI/EXE for Windows, AppImage/DEB for Linux).
+
+## Development
+
+Vite 7 requires Node.js 20.19+ (or 22.12+). This repo includes a pinned version in `.nvmrc`.
+
+- If you use `nvm`: run `nvm install` then `nvm use` (optional: `nvm alias default 20.19.0`)
+- Install deps: `npm ci`
+- Run: `npm run tauri dev`

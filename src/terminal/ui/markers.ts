@@ -840,7 +840,6 @@ export function createMarkerManager({
 
         if (markerToClose) {
           const marker = markerToClose;
-          const meta = markerMeta.get(marker) || {};
           finalizeMarker(marker, exitCode);
         }
       }
