@@ -129,7 +129,10 @@ export function createMarkerManager({
   const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
   let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
   let currentHighlight: IDecoration | null = null;
+  let currentHighlightMarker: IMarker | null = null;
   let currentHighlightedMarker: IDecoration | null = null;
+  let currentHighlightVisibleStart: number | null = null;
+  let currentHighlightHeight: number | null = null;
   let isPythonREPL = false; // Track if we're currently inside a Python REPL
   let isRREPL = false; // Track if we're currently inside an R REPL
   let rOuterMarker: IDecoration | null = null; // Shell marker for the long-running `R` command
@@ -306,37 +309,71 @@ export function createMarkerManager({
     return null;
   };
 
-  // Highlight a command block
-  const highlightCommandBlock = (marker: IDecoration) => {
-    if (currentHighlightedMarker === marker) {
-      if (currentHighlight) {
-        currentHighlight.dispose();
-        currentHighlight = null;
-      }
-      currentHighlightedMarker = null;
-      return false;
-    }
-
-    // Remove previous highlight
+  const clearHighlight = () => {
     if (currentHighlight) {
       currentHighlight.dispose();
       currentHighlight = null;
     }
+    if (currentHighlightMarker) {
+      currentHighlightMarker.dispose();
+      currentHighlightMarker = null;
+    }
+    currentHighlightVisibleStart = null;
+    currentHighlightHeight = null;
+  };
 
+  const computeVisibleHighlight = (marker: IDecoration) => {
     const startLine = marker.marker.line;
     const endLine = computeEndLine(term, markers, marker);
-    const height = endLine - startLine + 1;
 
-    // Create highlight decoration
+    const viewportStart = term.buffer.active.viewportY;
+    const viewportEnd = viewportStart + term.rows - 1;
+    const visibleStart = Math.max(startLine, viewportStart);
+    const visibleEnd = Math.min(endLine, viewportEnd);
+    const height = visibleEnd - visibleStart + 1;
+
+    if (height <= 0) return null;
+    return { visibleStart, height };
+  };
+
+  const renderHighlightForMarker = (marker: IDecoration) => {
+    const visible = computeVisibleHighlight(marker);
+    if (!visible) {
+      // Keep the selected marker; just don't draw a highlight while it's off-screen.
+      clearHighlight();
+      return;
+    }
+
+    // Avoid thrashing on scroll if nothing changed.
+    if (
+      currentHighlight &&
+      currentHighlightVisibleStart === visible.visibleStart &&
+      currentHighlightHeight === visible.height
+    ) {
+      return;
+    }
+
+    clearHighlight();
+
+    // registerMarker() positions relative to the current cursor location.
+    // cursorY is relative to baseY (not viewportY), so compute an absolute buffer line via baseY.
+    const cursorLine = term.buffer.active.baseY + term.buffer.active.cursorY;
+    const highlightMarker = term.registerMarker(visible.visibleStart - cursorLine);
+    if (!highlightMarker) return;
+    currentHighlightMarker = highlightMarker;
+
     const highlight = term.registerDecoration({
-      marker: marker.marker,
+      marker: highlightMarker,
       x: 0,
       width: term.cols,
-      height: height,
+      height: visible.height,
       layer: 'bottom',
     });
 
-    if (!highlight) return;
+    if (!highlight) {
+      clearHighlight();
+      return;
+    }
 
     highlight.onRender((element: HTMLElement) => {
       element.style.backgroundColor = 'rgba(91, 141, 232, 0.1)';
@@ -346,12 +383,43 @@ export function createMarkerManager({
     });
 
     currentHighlight = highlight;
+    currentHighlightVisibleStart = visible.visibleStart;
+    currentHighlightHeight = visible.height;
+  };
+
+  // Highlight a command block
+  const highlightCommandBlock = (marker: IDecoration) => {
+    if (currentHighlightedMarker === marker) {
+      clearHighlight();
+      currentHighlightedMarker = null;
+      return false;
+    }
     currentHighlightedMarker = marker;
+    renderHighlightForMarker(marker);
     return true;
   };
 
   // Terminal click handler
   const attachTerminalClickHandler = () => {
+    // Keep highlight anchored to the visible portion while scrolling.
+    const viewport = term.element?.querySelector('.xterm-viewport') as HTMLElement | null;
+    let rafId: number | null = null;
+    let xtermScrollDisposable: IDisposable | null = null;
+    let xtermResizeDisposable: IDisposable | null = null;
+    const scheduleHighlightRefresh = () => {
+      if (!currentHighlightedMarker) return;
+      if (rafId != null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (!currentHighlightedMarker) return;
+        renderHighlightForMarker(currentHighlightedMarker);
+      });
+    };
+
+    // Prefer xterm's scroll/resize events (covers keyboard + programmatic scroll).
+    xtermScrollDisposable = term.onScroll(() => scheduleHighlightRefresh());
+    xtermResizeDisposable = term.onResize(() => scheduleHighlightRefresh());
+
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       
@@ -375,10 +443,7 @@ export function createMarkerManager({
       const marker = findMarkerAtLine(clickedLine);
       if (!marker) {
         // Clicked outside any command block - remove highlight and button
-        if (currentHighlight) {
-          currentHighlight.dispose();
-          currentHighlight = null;
-        }
+        clearHighlight();
         currentHighlightedMarker = null;
         if (currentOutputButton) {
           currentOutputButton.remove();
@@ -391,10 +456,7 @@ export function createMarkerManager({
       const meta = markerMeta.get(marker);
       if (!meta || meta.exitCode === undefined) {
         // This is the current/pending command (gray marker) - don't highlight
-        if (currentHighlight) {
-          currentHighlight.dispose();
-          currentHighlight = null;
-        }
+        clearHighlight();
         currentHighlightedMarker = null;
         if (currentOutputButton) {
           currentOutputButton.remove();
@@ -413,6 +475,9 @@ export function createMarkerManager({
         return;
       }
 
+      // Ensure highlight is consistent with the current viewport.
+      scheduleHighlightRefresh();
+
       // Show output button if there's output
       const startLine = marker.marker.line;
       const endLine = computeEndLine(term, markers, marker);
@@ -426,13 +491,22 @@ export function createMarkerManager({
     };
 
     term.element?.addEventListener('click', handleClick);
+    viewport?.addEventListener('scroll', scheduleHighlightRefresh);
+    window.addEventListener('resize', scheduleHighlightRefresh);
 
     return () => {
       term.element?.removeEventListener('click', handleClick);
-      if (currentHighlight) {
-        currentHighlight.dispose();
-        currentHighlight = null;
+      viewport?.removeEventListener('scroll', scheduleHighlightRefresh);
+      window.removeEventListener('resize', scheduleHighlightRefresh);
+      xtermScrollDisposable?.dispose();
+      xtermScrollDisposable = null;
+      xtermResizeDisposable?.dispose();
+      xtermResizeDisposable = null;
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
       }
+      clearHighlight();
       currentHighlightedMarker = null;
       if (currentOutputButton) {
         currentOutputButton.remove();
