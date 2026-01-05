@@ -527,6 +527,7 @@ export function createMarkerManager({
     button.className = 'output-actions-button';
     button.innerHTML = `
       <button class="output-view-window">View in Window</button>
+      <button class="output-copy-clipboard">Copy to Clipboard</button>
     `;
 
     // Position in top-right corner of terminal
@@ -544,6 +545,17 @@ export function createMarkerManager({
     viewBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       openOutputWindow(startLine, endLine, lineCount);
+      button.remove();
+      currentOutputButton = null;
+    });
+
+    const copyBtn = button.querySelector('.output-copy-clipboard');
+    copyBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const content = getRangeText([startLine, endLine]);
+      navigator.clipboard.writeText(content).catch((err) => {
+        console.error('[Fold] Failed to copy:', err);
+      });
       button.remove();
       currentOutputButton = null;
     });

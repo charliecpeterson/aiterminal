@@ -37,11 +37,32 @@
   transition: background 0.2s;
 }
 
+.output-copy-clipboard {
+  padding: 6px 16px;
+  background: #0e639c;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
 .output-view-window:hover {
   background: #1177bb;
 }
 
+.output-copy-clipboard:hover {
+  background: #1177bb;
+}
+
 .output-view-window:active {
+  background: #0d5a8f;
+  transform: translateY(1px);
+}
+
+.output-copy-clipboard:active {
   background: #0d5a8f;
   transform: translateY(1px);
 }
