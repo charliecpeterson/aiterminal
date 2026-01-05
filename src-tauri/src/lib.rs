@@ -20,13 +20,13 @@ use autocomplete::{
     is_command_in_path, list_dir_entries, llm_health_check, stop_llm, LLMEngine,
 };
 use chat::{ai_chat, ai_chat_stream, test_ai_connection};
+use context_index::{ContextChunkInput, ContextIndexSyncStats, RetrievedChunk};
 use history::get_shell_history;
 use keychain::{
     check_keychain_available, delete_api_key_from_keychain, get_api_key_from_keychain,
     save_api_key_to_keychain,
 };
 pub use models::AppState;
-use context_index::{ContextChunkInput, ContextIndexSyncStats, RetrievedChunk};
 use preview::{get_preview_content, open_preview_window, read_preview_file, stop_preview_watcher};
 use pty::{close_pty, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
 use quick_actions::{load_quick_actions, save_quick_actions};

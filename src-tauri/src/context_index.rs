@@ -354,7 +354,11 @@ pub fn query_with_embedding(index: &ContextIndex, query_vec: Vec<f32>, top_k: us
         });
     }
 
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let k = std::cmp::max(1, top_k);
     scored.truncate(std::cmp::min(k, scored.len()));
     scored
@@ -530,7 +534,11 @@ pub async fn context_index_query(
         });
     }
 
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let k = std::cmp::max(1, top_k);
     scored.truncate(std::cmp::min(k, scored.len()));

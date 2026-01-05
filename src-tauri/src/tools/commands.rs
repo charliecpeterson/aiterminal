@@ -234,8 +234,7 @@ pub async fn write_file_tool(
             .map_err(|e| format!("Failed to create parent directory: {}", e))?;
     }
 
-    let mut file = fs::File::create(&full_path)
-        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut file = fs::File::create(&full_path).map_err(|e| format!("Failed to open file: {}", e))?;
 
     file.write_all(content.as_bytes())
         .map_err(|e| format!("Failed to write file: {}", e))?;
