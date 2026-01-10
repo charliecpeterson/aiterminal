@@ -68,6 +68,7 @@ const AIPanel = ({
     pendingApprovals,
     removePendingApproval,
     toggleSecretRedaction,
+    markContextAsUsed,
   } = useAIContext();
 
   const handleApprove = useCallback(async (id: string) => {
@@ -184,6 +185,7 @@ const AIPanel = ({
       abortController: controller,
       addPendingApproval,
       usedContextForNextAssistantMessage,
+      markContextAsUsed,
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
       console.error('AI request failed:', err);

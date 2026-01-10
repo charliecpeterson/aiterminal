@@ -9,6 +9,19 @@ export interface RankedContext {
   item: ContextItem;
   relevanceScore: number;
   reason: string;
+  breakdown?: {
+    recency: number;
+    queryMatch: number;
+    typeRelevance: number;
+    usagePenalty: number;
+    timeDecay: number;
+    conversationRelevance: number;
+  };
+}
+
+interface ScoringContext {
+  recentMessageTopics?: string[];
+  currentMessageId?: string;
 }
 
 /**
@@ -17,19 +30,30 @@ export interface RankedContext {
 export function rankContextByRelevance(
   contextItems: ContextItem[],
   userQuery: string,
-  maxTokens: number = 8000
+  maxTokens: number = 8000,
+  scoringContext?: ScoringContext
 ): RankedContext[] {
   const queryLower = userQuery.toLowerCase();
   const queryTerms = extractKeyTerms(queryLower);
+  const now = Date.now();
   
   const ranked: RankedContext[] = contextItems.map(item => {
-    const score = calculateRelevanceScore(item, queryLower, queryTerms);
-    const reason = explainRelevance(item, score);
+    const breakdown = calculateRelevanceScoreWithBreakdown(item, queryLower, queryTerms, now, scoringContext);
+    const score = breakdown.total;
+    const reason = explainRelevance(item, score, breakdown);
     
     return {
       item,
       relevanceScore: score,
       reason,
+      breakdown: {
+        recency: breakdown.recency,
+        queryMatch: breakdown.queryMatch,
+        typeRelevance: breakdown.typeRelevance,
+        usagePenalty: breakdown.usagePenalty,
+        timeDecay: breakdown.timeDecay,
+        conversationRelevance: breakdown.conversationRelevance,
+      },
     };
   });
 
@@ -43,76 +67,156 @@ export function rankContextByRelevance(
 }
 
 /**
- * Calculate relevance score for a context item (0-100)
+ * Calculate relevance score with detailed breakdown for a context item (0-100)
  */
-function calculateRelevanceScore(
+function calculateRelevanceScoreWithBreakdown(
   item: ContextItem,
   queryLower: string,
-  queryTerms: string[]
-): number {
-  let score = 0;
+  queryTerms: string[],
+  now: number,
+  scoringContext?: ScoringContext
+): {
+  total: number;
+  recency: number;
+  queryMatch: number;
+  typeRelevance: number;
+  usagePenalty: number;
+  timeDecay: number;
+  conversationRelevance: number;
+} {
+  let recency = 0;
+  let queryMatch = 0;
+  let typeRelevance = 0;
+  let usagePenalty = 0;
+  let timeDecay = 0;
+  let conversationRelevance = 0;
+
   const content = item.content.toLowerCase();
   const metadata = item.metadata;
 
-  // Recency boost (newer = better)
-  const ageMs = Date.now() - item.timestamp;
+  // 1. TIME DECAY - Context gets stale over time
+  const ageMs = now - item.timestamp;
   const ageMinutes = ageMs / (1000 * 60);
-  if (ageMinutes < 5) score += 20;
-  else if (ageMinutes < 30) score += 10;
-  else if (ageMinutes < 60) score += 5;
+  const ageHours = ageMinutes / 60;
+  
+  if (ageMinutes < 5) {
+    recency = 25;
+    timeDecay = 0;
+  } else if (ageMinutes < 30) {
+    recency = 15;
+    timeDecay = -5;
+  } else if (ageHours < 1) {
+    recency = 8;
+    timeDecay = -10;
+  } else if (ageHours < 3) {
+    recency = 3;
+    timeDecay = -15;
+  } else {
+    recency = 0;
+    timeDecay = -25; // Very old context heavily penalized
+  }
 
-  // Type relevance
+  // 2. USAGE PENALTY - Recently used context gets lower priority
+  if (item.lastUsedTimestamp) {
+    const timeSinceLastUse = now - item.lastUsedTimestamp;
+    const minutesSinceLastUse = timeSinceLastUse / (1000 * 60);
+    
+    if (minutesSinceLastUse < 2) {
+      usagePenalty = -30; // Just used, probably not needed again immediately
+    } else if (minutesSinceLastUse < 5) {
+      usagePenalty = -20;
+    } else if (minutesSinceLastUse < 15) {
+      usagePenalty = -10;
+    }
+    
+    // Heavy usage penalty (sent many times already)
+    const usageCount = item.usageCount || 0;
+    if (usageCount > 5) {
+      usagePenalty -= 15;
+    } else if (usageCount > 3) {
+      usagePenalty -= 10;
+    } else if (usageCount > 1) {
+      usagePenalty -= 5;
+    }
+  }
+
+  // 3. TYPE RELEVANCE based on query
   if (queryLower.includes('error') || queryLower.includes('fail') || queryLower.includes('fix')) {
-    if (metadata?.exitCode && metadata.exitCode !== 0) score += 30;
-    if (item.type === 'output' || item.type === 'command_output') score += 15;
+    if (metadata?.exitCode && metadata.exitCode !== 0) typeRelevance += 35;
+    if (item.type === 'output' || item.type === 'command_output') typeRelevance += 20;
   }
 
   if (queryLower.includes('file') || queryLower.includes('code')) {
-    if (item.type === 'file') score += 20;
+    if (item.type === 'file') typeRelevance += 25;
   }
 
   if (queryLower.includes('command') || queryLower.includes('ran')) {
-    if (item.type === 'command' || metadata?.command) score += 20;
+    if (item.type === 'command' || metadata?.command) typeRelevance += 25;
   }
 
-  // Term matching
+  // 4. QUERY TERM MATCHING
   let termMatches = 0;
   for (const term of queryTerms) {
     if (content.includes(term)) {
       termMatches++;
-      score += 10;
+      queryMatch += 12;
     }
     if (metadata?.command?.toLowerCase().includes(term)) {
       termMatches++;
-      score += 15;
+      queryMatch += 18;
     }
     if (metadata?.path?.toLowerCase().includes(term)) {
       termMatches++;
-      score += 10;
+      queryMatch += 12;
     }
   }
 
   // Boost if multiple terms match
   if (termMatches > 1) {
-    score += termMatches * 5;
+    queryMatch += termMatches * 8;
   }
 
+  // 5. CONVERSATION RELEVANCE - based on recent topics
+  if (scoringContext?.recentMessageTopics) {
+    for (const topic of scoringContext.recentMessageTopics) {
+      if (content.includes(topic.toLowerCase())) {
+        conversationRelevance += 10;
+      }
+      if (metadata?.command?.toLowerCase().includes(topic.toLowerCase())) {
+        conversationRelevance += 15;
+      }
+    }
+  }
+
+  // 6. SPECIAL BOOSTS
   // Explicit inclusion boost
   if (item.metadata?.includeMode === 'always') {
-    score += 50;
+    conversationRelevance += 50;
   }
-
-  // Size penalty for very large items (prefer concise context)
-  const contentLength = item.content.length;
-  if (contentLength > 10000) score -= 10;
-  else if (contentLength > 5000) score -= 5;
 
   // Error context is usually important
   if (content.includes('error') || content.includes('fail')) {
-    score += 15;
+    typeRelevance += 15;
   }
 
-  return Math.min(100, Math.max(0, score));
+  // 7. SIZE PENALTY for very large items (prefer concise context)
+  const contentLength = item.content.length;
+  if (contentLength > 10000) timeDecay -= 10;
+  else if (contentLength > 5000) timeDecay -= 5;
+
+  const total = Math.min(100, Math.max(0, 
+    recency + queryMatch + typeRelevance + usagePenalty + timeDecay + conversationRelevance
+  ));
+
+  return {
+    total,
+    recency,
+    queryMatch,
+    typeRelevance,
+    usagePenalty,
+    timeDecay,
+    conversationRelevance,
+  };
 }
 
 /**
@@ -136,11 +240,28 @@ function extractKeyTerms(query: string): string[] {
 /**
  * Explain why a context item is relevant
  */
-function explainRelevance(item: ContextItem, score: number): string {
-  if (score >= 70) return 'Highly relevant';
-  if (score >= 50) return 'Relevant';
-  if (score >= 30) return 'Possibly relevant';
-  return 'Low relevance';
+function explainRelevance(item: ContextItem, score: number, breakdown?: any): string {
+  const parts: string[] = [];
+  
+  if (score >= 70) parts.push('Highly relevant');
+  else if (score >= 50) parts.push('Relevant');
+  else if (score >= 30) parts.push('Possibly relevant');
+  else parts.push('Low relevance');
+  
+  if (breakdown) {
+    const details: string[] = [];
+    if (breakdown.recency > 15) details.push('recent');
+    if (breakdown.queryMatch > 20) details.push('matches query');
+    if (breakdown.usagePenalty < -15) details.push('recently used');
+    if (breakdown.timeDecay < -15) details.push('stale');
+    if (breakdown.conversationRelevance > 15) details.push('conversation-related');
+    
+    if (details.length > 0) {
+      parts.push(`(${details.join(', ')})`);
+    }
+  }
+  
+  return parts.join(' ');
 }
 
 /**

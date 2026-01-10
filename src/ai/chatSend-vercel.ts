@@ -13,6 +13,7 @@ import type { ChatMessage, PendingApproval, ContextItem } from '../context/AICon
 import { createTools } from './tools-vercel';
 import { buildEnhancedSystemPrompt, summarizeContext, addChainOfThought } from './prompts';
 import { rankContextByRelevance, deduplicateContext, formatRankedContext } from './contextRanker';
+import { extractRecentTopics } from './contextTracking';
 
 export interface ChatSendDeps {
   prompt: string;
@@ -31,6 +32,7 @@ export interface ChatSendDeps {
   setSendError: (value: string | null) => void;
   abortController?: AbortController; // For cancellation
   addPendingApproval: (approval: PendingApproval) => void;
+  markContextAsUsed?: (ids: string[], messageId: string) => void; // Track context usage
 }
 
 /**
@@ -126,14 +128,22 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     const aiMode = settingsAi.mode || 'agent';
     const enableTools = aiMode === 'agent';
 
-    // Deduplicate and rank context by relevance
+    // Extract recent conversation topics for better relevance scoring
+    const recentTopics = extractRecentTopics(messages, 3);
+
+    // Deduplicate and rank context by relevance with conversation awareness
     const deduped = deduplicateContext(deps.contextItems);
-    const rankedContext = rankContextByRelevance(deduped, trimmed, 8000);
+    const rankedContext = rankContextByRelevance(deduped, trimmed, 8000, {
+      recentMessageTopics: recentTopics,
+    });
     const contextSummary = summarizeContext(deps.contextItems);
     
     // Format ranked context
     const formattedRankedContext = formatRankedContext(rankedContext);
     const contextForPrompt = formattedRankedContext.join('\n\n---\n\n');
+    
+    // Track which context IDs are being used
+    const usedContextIds = rankedContext.map(r => r.item.id);
 
     // Build enhanced system prompt
     const systemPrompt = buildEnhancedSystemPrompt({
@@ -177,6 +187,11 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
 
     // Create assistant message
     const assistantId = crypto.randomUUID();
+    
+    // Mark context as used in this message
+    if (deps.markContextAsUsed && usedContextIds.length > 0) {
+      deps.markContextAsUsed(usedContextIds, assistantId);
+    }
     
     addMessage({
       id: assistantId,

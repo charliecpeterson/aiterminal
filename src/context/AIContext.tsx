@@ -36,6 +36,10 @@ export interface ContextItem {
   secretsRedacted: boolean;
   redactedContent?: string;
   secretFindings?: SecretFinding[];
+  // Usage tracking
+  lastUsedInMessageId?: string;
+  lastUsedTimestamp?: number;
+  usageCount?: number;
 }
 
 export interface ChatMessage {
@@ -79,6 +83,7 @@ type AIAction =
   | { type: "context:set-smart-mode"; value: boolean }
   | { type: "context:set-include-mode"; id: string; mode: ContextIncludeMode }
   | { type: "context:toggle-redaction"; id: string }
+  | { type: "context:mark-used"; ids: string[]; messageId: string; timestamp: number }
   | { type: "chat:add"; message: ChatMessage }
   | { type: "chat:clear" }
   | { type: "chat:append"; id: string; content: string }
@@ -138,6 +143,20 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
             : item
         ),
       };
+    case "context:mark-used":
+      return {
+        ...state,
+        contextItems: state.contextItems.map((item) =>
+          action.ids.includes(item.id)
+            ? {
+                ...item,
+                lastUsedInMessageId: action.messageId,
+                lastUsedTimestamp: action.timestamp,
+                usageCount: (item.usageCount || 0) + 1,
+              }
+            : item
+        ),
+      };
     case "chat:add":
       return {
         ...state,
@@ -180,6 +199,7 @@ interface AIContextValue extends AIState {
   clearContext: () => void;
   setContextSmartMode: (value: boolean) => void;
   setContextItemIncludeMode: (id: string, mode: ContextIncludeMode) => void;
+  markContextAsUsed: (ids: string[], messageId: string) => void;
   addMessage: (message: ChatMessage) => void;
   clearChat: () => void;
   buildPrompt: (userInput: string) => string;
@@ -246,6 +266,10 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
 
   const setContextItemIncludeMode = useCallback((id: string, mode: ContextIncludeMode) => {
     dispatch({ type: 'context:set-include-mode', id, mode });
+  }, []);
+
+  const markContextAsUsed = useCallback((ids: string[], messageId: string) => {
+    dispatch({ type: 'context:mark-used', ids, messageId, timestamp: Date.now() });
   }, []);
 
   const addMessage = useCallback((message: ChatMessage) => {
@@ -405,6 +429,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       clearContext,
       setContextSmartMode,
       setContextItemIncludeMode,
+      markContextAsUsed,
       addMessage,
       clearChat,
       appendMessage,
@@ -422,6 +447,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       clearContext,
       setContextSmartMode,
       setContextItemIncludeMode,
+      markContextAsUsed,
       addMessage,
       clearChat,
       appendMessage,
