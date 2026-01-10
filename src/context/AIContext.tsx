@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 export type ContextType = "command" | "output" | "selection" | "file" | "command_output";
