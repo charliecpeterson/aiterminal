@@ -159,18 +159,14 @@ const AIPanel = ({
             chunkCount: 0,
             alwaysIncludedCount: 0,
           };
-          setSmartContextStatus('Smart context: no matches (sent full context)');
+          setSmartContextStatus(null);
         }
       } else {
         setSmartContextStatus(null);
       }
     } catch (err) {
       console.warn('Smart context retrieval failed; falling back to full context:', err);
-      if (settings?.ai?.embedding_model?.trim()) {
-        setSmartContextStatus('Smart context: failed (sent full context)');
-      } else {
-        setSmartContextStatus(null);
-      }
+      setSmartContextStatus(null);
     }
     
     sendChatMessage({

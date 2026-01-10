@@ -11,6 +11,8 @@ import type { CoreMessage } from 'ai';
 import type { AiSettings } from '../context/SettingsContext';
 import type { ChatMessage, PendingApproval, ContextItem } from '../context/AIContext';
 import { createTools } from './tools-vercel';
+import { buildEnhancedSystemPrompt, summarizeContext, addChainOfThought } from './prompts';
+import { rankContextByRelevance, deduplicateContext, formatRankedContext } from './contextRanker';
 
 export interface ChatSendDeps {
   prompt: string;
@@ -104,53 +106,50 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
   setIsSending(true);
 
   try {
+    // Enhance user prompt with chain-of-thought for complex queries
+    const enhancedUserPrompt = addChainOfThought(trimmed);
+
     // Create OpenAI client with user's settings
     const openai = createOpenAI({
       apiKey: settingsAi.api_key,
       baseURL: settingsAi.url || 'https://api.openai.com/v1',
     });
 
-    // Convert message history
+    // Convert message history with enhanced prompt
     const coreMessages = convertToCoreMessages([...messages, {
       id: crypto.randomUUID(),
       role: 'user',
-      content: trimmed,
+      content: enhancedUserPrompt,
       timestamp: Date.now(),
     }]);
 
     const aiMode = settingsAi.mode || 'agent';
     const enableTools = aiMode === 'agent';
 
-    const systemPromptAgent = `You are a helpful AI assistant embedded in a terminal emulator.
-You have access to tools to help users interact with their system.
+    // Deduplicate and rank context by relevance
+    const deduped = deduplicateContext(deps.contextItems);
+    const rankedContext = rankContextByRelevance(deduped, trimmed, 8000);
+    const contextSummary = summarizeContext(deps.contextItems);
+    
+    // Format ranked context
+    const formattedRankedContext = formatRankedContext(rankedContext);
+    const contextForPrompt = formattedRankedContext.join('\n\n---\n\n');
 
-IMPORTANT GUIDELINES:
-- Use tools proactively to answer questions
-- When users ask about "current directory" or "here", use execute_command("pwd") to get the path
-- After getting pwd, use that path for subsequent operations
-- Be concise but helpful
-- Explain what you're doing with tools
-- If a command might be destructive, warn the user first
-
-CURRENT CONTEXT:
-- Terminal ID: ${terminalId}
-- You have access to: execute_command, read_file, list_directory, search_files, get_environment_variable
-
-${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\n` : ''}Use the terminal context above to answer the user's question.`;
-
-    const systemPromptChat = `You are a helpful AI assistant embedded in a terminal emulator.
-You do NOT have access to any tools and you MUST NOT claim that you executed commands or read files.
-
-IMPORTANT GUIDELINES:
-- Provide explanations and suggested commands the user can run
-- Put commands in fenced code blocks
-- If a command might be destructive, warn the user first and suggest safer alternatives
-- Be concise but helpful
-
-CURRENT CONTEXT:
-- Terminal ID: ${terminalId}
-
-${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\n` : ''}Use the terminal context above to answer the user's question.`;
+    // Build enhanced system prompt
+    const systemPrompt = buildEnhancedSystemPrompt({
+      mode: aiMode,
+      terminalId,
+      config: {
+        userLevel: 'intermediate', // Could be detected or set in settings
+        shellType: 'bash', // Could be detected from terminal
+      },
+      contextSummary,
+    });
+    
+    // Add context to system prompt if available
+    const finalSystemPrompt = contextForPrompt 
+      ? `${systemPrompt}\n\nTERMINAL CONTEXT PROVIDED BY USER:\n${contextForPrompt}`
+      : systemPrompt;
 
     // Create tools only when enabled (Agent mode)
     const tools = enableTools
@@ -171,7 +170,9 @@ ${formattedContext ? `TERMINAL CONTEXT PROVIDED BY USER:\n${formattedContext}\n\
           }
         : {}),
       abortSignal: abortController?.signal, // Enable cancellation
-      system: enableTools ? systemPromptAgent : systemPromptChat,
+      system: finalSystemPrompt,
+      temperature: 0.7, // Balanced creativity
+      maxTokens: 2000, // Reasonable response length
     });
 
     // Create assistant message
