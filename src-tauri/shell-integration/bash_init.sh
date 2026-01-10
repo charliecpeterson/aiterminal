@@ -659,6 +659,10 @@ if [ "$TERM_PROGRAM" = "aiterminal" ]; then
 fi
 
 if [ -n "$BASH_VERSION" ]; then
+    # Enable checkwinsize to ensure bash updates LINES and COLUMNS after SIGWINCH
+    # This is critical for proper line wrapping, especially in SSH sessions
+    shopt -s checkwinsize 2>/dev/null || true
+    
     __aiterm_prompt_wrapper() {
         local ret=$?
         __AITERM_IN_PROMPT=1

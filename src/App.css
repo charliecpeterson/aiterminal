@@ -390,7 +390,9 @@ body, html, #root {
 }
 
 .selection-badge {
-  position: fixed;
+  position: absolute;
+  top: 8px;
+  right: 8px;
   z-index: 210;
 }
 

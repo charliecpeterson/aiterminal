@@ -55,6 +55,11 @@ export function createTerminalSession(params: {
     }
 
     term.open(container);
+    
+    // Force browser to reflow before fitting
+    // This ensures the container has its final dimensions
+    container.offsetHeight; // Force reflow
+    
     fitAddon.fit();
     applyTerminalAppearance({ term, appearance, fitAddon });
 

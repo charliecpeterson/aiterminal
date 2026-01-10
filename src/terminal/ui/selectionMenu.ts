@@ -32,16 +32,10 @@ export function attachSelectionMenu({
       return;
     }
 
-    const point = selectionPointRef.current;
-    const rect = container.getBoundingClientRect();
-    const baseX = point ? point.x : rect.left + rect.width / 2;
-    const baseY = point ? point.y : rect.top + rect.height / 2;
-    const nextX = baseX + 8;
-    const nextY = baseY - 32;
-
+    // Just indicate that selection exists, no position needed
     setSelectionMenu({
-      x: Math.max(rect.left + 8, Math.min(nextX, rect.right - 120)),
-      y: Math.max(rect.top + 8, Math.min(nextY, rect.bottom - 40)),
+      x: 0,
+      y: 0,
     });
   };
 

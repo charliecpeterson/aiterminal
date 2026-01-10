@@ -500,7 +500,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
             {selectionMenu && (
                 <div
                     className="selection-badge"
-                    style={{ top: selectionMenu.y, left: selectionMenu.x }}
                     ref={selectionMenuRef}
                 >
                     <button onClick={addSelection}>+ Context</button>

@@ -19,10 +19,14 @@ pub fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, S
 
     let pty_system = NativePtySystem::default();
 
+    // Use more realistic default dimensions to minimize issues if resize is delayed
+    // Modern terminals are typically 100-200 cols × 30-50 rows
+    // Using larger defaults prevents line wrapping issues in SSH sessions
+    // The frontend will send the correct size immediately after connection
     let pair = pty_system
         .openpty(PtySize {
-            rows: 24,
-            cols: 80,
+            rows: 50,
+            cols: 200,
             pixel_width: 0,
             pixel_height: 0,
         })

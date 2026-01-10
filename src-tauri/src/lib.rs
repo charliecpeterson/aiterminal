@@ -14,6 +14,14 @@ mod settings;
 mod ssh;
 mod tools;
 
+// macOS-specific imports
+#[cfg(target_os = "macos")]
+#[macro_use]
+extern crate objc;
+
+#[cfg(target_os = "macos")]
+extern crate cocoa;
+
 // Re-export models and commands
 use autocomplete::{
     get_llm_completions, get_llm_inline_completion, get_path_commands, init_llm,
@@ -210,6 +218,29 @@ pub fn run() {
         )))
         .setup(|app| {
             preview::init_preview_watchers(&app.handle());
+            
+            // Disable press-and-hold accent menu for all windows
+            #[cfg(target_os = "macos")]
+            {
+                use cocoa::foundation::NSString;
+                use tauri::Manager;
+                for (_label, window) in app.webview_windows() {
+                    let _ = window.with_webview(|webview| {
+                        #[cfg(target_os = "macos")]
+                        unsafe {
+                            use cocoa::base::id;
+                            let ns_view: id = webview.inner() as *const _ as *mut _;
+                            let _: () = msg_send![ns_view, setAllowedTouchTypes: 0];
+                            
+                            // Disable press and hold at the window level
+                            let defaults: id = msg_send![class!(NSUserDefaults), standardUserDefaults];
+                            let key = NSString::alloc(cocoa::base::nil).init_str("ApplePressAndHoldEnabled");
+                            let _: () = msg_send![defaults, setBool:false forKey:key];
+                        }
+                    });
+                }
+            }
+            
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

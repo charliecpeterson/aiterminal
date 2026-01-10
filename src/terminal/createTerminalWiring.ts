@@ -97,6 +97,15 @@ export function createTerminalWiring(params: {
     if (fitAddonRef) fitAddonRef.current = session.fitAddon;
     if (searchAddonRef) searchAddonRef.current = session.searchAddon;
 
+    // Immediately resize PTY to match terminal dimensions after opening
+    // This prevents the shell from assuming wrong columns before we send the real size
+    Promise.resolve().then(() => {
+        session.fitAddon.fit();
+        const rows = Math.max(1, Math.min(1000, term.rows));
+        const cols = Math.max(1, Math.min(1000, term.cols));
+        invoke('resize_pty', { id, rows, cols });
+    });
+
     const markerManagerRef: { current: MarkerManager | null } = { current: null };
 
     // Scrollbar overlay with marker ticks.
