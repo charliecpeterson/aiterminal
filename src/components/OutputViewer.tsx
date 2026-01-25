@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import './OutputViewer.css';
+import { createLogger } from '../utils/logger';
+import {
+  outputViewerStyles,
+  getSearchStyle,
+  getButtonStyle,
+  getTickStyle,
+  getHighlightStyle,
+} from './OutputViewer.styles';
+
+const log = createLogger('OutputViewer');
 
 interface OutputViewerProps {}
 
@@ -11,6 +20,15 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
 
   const contentRef = useRef<HTMLDivElement | null>(null);
   const matchElementsRef = useRef<Map<number, HTMLElement>>(new Map());
+
+  // Hover states for interactive elements
+  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({
+    searchFocus: false,
+    prevBtn: false,
+    nextBtn: false,
+    copyBtn: false,
+    exportBtn: false,
+  });
 
   const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -29,7 +47,7 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
         const decoded = decodeURIComponent(atob(contentBase64));
         setContent(decoded);
       } catch (err) {
-        console.error('Failed to decode content:', err);
+        log.error('Failed to decode content', err);
         setContent('Error: Failed to decode content');
       }
     }
@@ -165,7 +183,7 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
           ref={(el) => {
             if (el) matchElementsRef.current.set(i, el);
           }}
-          className={`output-viewer-highlight ${i === activeMatchIndex ? 'active' : ''}`}
+          style={getHighlightStyle(i === activeMatchIndex)}
         >
           {text}
         </span>
@@ -181,18 +199,20 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
   }, [content, matches, searchQuery, activeMatchIndex]);
 
   return (
-    <div className="output-viewer">
-      <div className="output-viewer-header">
-        <div className="output-viewer-title">
+    <div style={outputViewerStyles.viewer}>
+      <div style={outputViewerStyles.header}>
+        <div style={outputViewerStyles.title}>
           Command Output ({lineCount} lines)
         </div>
-        <div className="output-viewer-actions">
+        <div style={outputViewerStyles.actions}>
           <input
             type="text"
-            className="output-viewer-search"
+            style={getSearchStyle(hoverStates.searchFocus)}
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setHoverStates(prev => ({ ...prev, searchFocus: true }))}
+            onBlur={() => setHoverStates(prev => ({ ...prev, searchFocus: false }))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -202,42 +222,56 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
             }}
           />
           {searchQuery.trim() ? (
-            <div className="output-viewer-match-count">
+            <div style={outputViewerStyles.matchCount}>
               {matches.length === 0
                 ? '0/0'
                 : `${Math.max(activeMatchIndex, 0) + 1}/${matches.length}`}
             </div>
           ) : null}
           <button
-            className="output-viewer-btn"
+            style={getButtonStyle(hoverStates.prevBtn)}
             onClick={goToPrevMatch}
             disabled={matches.length === 0}
             title="Previous match (Shift+Enter)"
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, prevBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, prevBtn: false }))}
           >
             Prev
           </button>
           <button
-            className="output-viewer-btn"
+            style={getButtonStyle(hoverStates.nextBtn)}
             onClick={goToNextMatch}
             disabled={matches.length === 0}
             title="Next match (Enter)"
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, nextBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, nextBtn: false }))}
           >
             Next
           </button>
-          <button className="output-viewer-btn" onClick={handleCopy}>
+          <button 
+            style={getButtonStyle(hoverStates.copyBtn)}
+            onClick={handleCopy}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, copyBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, copyBtn: false }))}
+          >
             Copy
           </button>
-          <button className="output-viewer-btn" onClick={handleExport}>
+          <button 
+            style={getButtonStyle(hoverStates.exportBtn)}
+            onClick={handleExport}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, exportBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, exportBtn: false }))}
+          >
             Export
           </button>
         </div>
       </div>
-      <div className="output-viewer-content-wrap">
-        <div className="output-viewer-content" ref={contentRef}>
-          <pre>{renderedContent || 'Loading...'}</pre>
+      <div style={outputViewerStyles.contentWrap}>
+        <div style={outputViewerStyles.content} ref={contentRef}>
+          <pre style={outputViewerStyles.pre}>{renderedContent || 'Loading...'}</pre>
         </div>
         {searchQuery.trim() && matchLineIndices.length > 0 ? (
-          <div className="output-viewer-ruler" aria-hidden="true">
+          <div style={outputViewerStyles.ruler} aria-hidden="true">
             {matchLineIndices.map((lineIndex) => {
               const denom = Math.max(1, lineStartOffsets.length - 1);
               const topPct = (lineIndex / denom) * 100;
@@ -245,8 +279,10 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
               return (
                 <div
                   key={`tick-${lineIndex}`}
-                  className={`output-viewer-tick ${isActive ? 'active' : ''}`}
-                  style={{ top: `${Math.min(100, Math.max(0, topPct))}%` }}
+                  style={{
+                    ...getTickStyle(isActive),
+                    top: `${Math.min(100, Math.max(0, topPct))}%`,
+                  }}
                 />
               );
             })}

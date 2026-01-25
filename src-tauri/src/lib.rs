@@ -10,9 +10,15 @@ mod preview;
 mod pty;
 mod quick_actions;
 mod secret_scanner;
+mod security;
 mod settings;
 mod ssh;
 mod tools;
+mod utils;
+
+// Test modules
+#[cfg(test)]
+mod tests;
 
 // macOS-specific imports
 #[cfg(target_os = "macos")]

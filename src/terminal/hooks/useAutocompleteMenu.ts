@@ -7,6 +7,9 @@ import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { invoke } from '@tauri-apps/api/core';
 import { HybridAutocomplete } from '../autocomplete/hybrid';
 import type { Suggestion } from '../autocomplete/llm';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('AutocompleteMenu');
 
 export function useAutocompleteMenu(
   terminalRef: React.RefObject<XTermTerminal | null>,
@@ -38,7 +41,7 @@ export function useAutocompleteMenu(
     if (enabled && engineRef.current) {
       const modelPath = '~/.config/aiterminal/models/qwen3-1.7b-q4_k_m.gguf';
       engineRef.current.initLLM(modelPath).catch((error) => {
-        console.error('Failed to initialize LLM:', error);
+        log.error('Failed to initialize LLM', error);
       });
     }
   }, [enabled]);
@@ -52,7 +55,7 @@ export function useAutocompleteMenu(
         const history = await invoke<string[]>('get_shell_history');
         engineRef.current?.updateHistory(history);
       } catch (error) {
-        console.error('Failed to load history:', error);
+        log.error('Failed to load history', error);
       }
     };
     
@@ -147,7 +150,7 @@ export function useAutocompleteMenu(
       
       setSuggestions(results);
     } catch (error) {
-      console.error('Failed to get suggestions:', error);
+      log.error('Failed to get suggestions', error);
       setSuggestions([]);
     } finally {
       setLoading(false);
@@ -176,7 +179,7 @@ export function useAutocompleteMenu(
     
     
     // Send as single operation to avoid race conditions
-    invoke('write_to_pty', { id: ptyId, data: command }).catch(console.error);
+    invoke('write_to_pty', { id: ptyId, data: command }).catch(err => log.error('Failed to write to PTY', err));
     
     setMenuVisible(false);
   }, [terminalRef, ptyId]);

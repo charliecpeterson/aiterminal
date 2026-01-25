@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AIMarkdown } from './AIMarkdown';
 import { NotebookRenderer } from './NotebookRenderer';
-import './PreviewWindow.css';
+import { previewStyles } from './PreviewWindow.styles';
 import Asciidoctor from '@asciidoctor/core';
 import JsonView from '@uiw/react-json-view';
 import yaml from 'js-yaml';
 import mammoth from 'mammoth';
+import { sanitizeHTML, sanitizeAsciiDocHTML, createSafeIframeSrcDoc } from '../utils/sanitize';
 
 // Component to render DOCX files
 const DocxRenderer: React.FC<{ base64Content: string }> = ({ base64Content }) => {
@@ -38,16 +39,16 @@ const DocxRenderer: React.FC<{ base64Content: string }> = ({ base64Content }) =>
   }, [base64Content]);
 
   if (loading) {
-    return <div className="preview-loading">Converting DOCX...</div>;
+    return <div style={previewStyles.loading}>Converting DOCX...</div>;
   }
 
   if (error) {
-    return <div className="preview-error">Error converting DOCX: {error}</div>;
+    return <div style={previewStyles.error}>Error converting DOCX: {error}</div>;
   }
 
   return (
-    <div className="preview-docx">
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+    <div style={previewStyles.docx}>
+      <div dangerouslySetInnerHTML={{ __html: sanitizeHTML(html) }} />
     </div>
   );
 };
@@ -168,28 +169,29 @@ const PreviewWindow: React.FC = () => {
 
   const renderContent = () => {
     if (loading) {
-      return <div className="preview-loading">Loading file...</div>;
+      return <div style={previewStyles.loading}>Loading file...</div>;
     }
 
     if (error) {
-      return <div className="preview-error">Error: {error}</div>;
+      return <div style={previewStyles.error}>Error: {error}</div>;
     }
 
     switch (fileType) {
       case 'markdown':
         return (
-          <div className="preview-markdown">
+          <div style={previewStyles.markdown}>
             <AIMarkdown content={content} basePath={filePath} />
           </div>
         );
       
       case 'html':
+        const { srcDoc, sandbox } = createSafeIframeSrcDoc(content);
         return (
-          <div className="preview-html">
+          <div style={previewStyles.html}>
             <iframe
-              srcDoc={content}
+              srcDoc={srcDoc}
               title="HTML Preview"
-              sandbox="allow-scripts allow-same-origin"
+              sandbox={sandbox}
               style={{ width: '100%', height: '100%', border: 'none' }}
             />
           </div>
@@ -197,22 +199,22 @@ const PreviewWindow: React.FC = () => {
       
       case 'image':
         return (
-          <div className="preview-image">
+          <div style={previewStyles.image}>
             <img
               src={`data:${imageMimeType};base64,${content}`}
               alt={filePath}
-              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+              style={previewStyles.imageImg}
             />
           </div>
         );
       
       case 'pdf':
         return (
-          <div className="preview-pdf">
+          <div style={previewStyles.pdf}>
             <iframe
               src={`data:application/pdf;base64,${content}`}
               title="PDF Preview"
-              style={{ width: '100%', height: '100%', border: 'none' }}
+              style={previewStyles.pdfIframe}
             />
           </div>
         );
@@ -222,7 +224,7 @@ const PreviewWindow: React.FC = () => {
       
       case 'notebook':
         return (
-          <div className="preview-notebook">
+          <div style={previewStyles.notebook}>
             <NotebookRenderer content={content} />
           </div>
         );
@@ -230,15 +232,16 @@ const PreviewWindow: React.FC = () => {
       case 'asciidoc':
         try {
           const asciidoctor = Asciidoctor();
-          const html = asciidoctor.convert(content, { safe: 'safe' });
+          const rawHtml = asciidoctor.convert(content, { safe: 'safe' });
+          const sanitizedHtml = sanitizeAsciiDocHTML(String(rawHtml));
           return (
-            <div className="preview-asciidoc">
-              <div dangerouslySetInnerHTML={{ __html: String(html) }} />
+            <div style={previewStyles.asciidoc}>
+              <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />
             </div>
           );
         } catch (err) {
           return (
-            <div className="preview-error">
+            <div style={previewStyles.error}>
               Error rendering AsciiDoc: {String(err)}
               <pre>{content}</pre>
             </div>
@@ -249,7 +252,7 @@ const PreviewWindow: React.FC = () => {
         try {
           const jsonData = JSON.parse(content);
           return (
-            <div className="preview-json">
+            <div style={previewStyles.json}>
               <JsonView
                 value={jsonData}
                 collapsed={2}
@@ -283,7 +286,7 @@ const PreviewWindow: React.FC = () => {
           );
         } catch (err) {
           return (
-            <div className="preview-error">
+            <div style={previewStyles.error}>
               Error parsing JSON: {String(err)}
               <pre>{content}</pre>
             </div>
@@ -294,7 +297,7 @@ const PreviewWindow: React.FC = () => {
         try {
           const yamlData = yaml.load(content) as object;
           return (
-            <div className="preview-yaml">
+            <div style={previewStyles.yaml}>
               <JsonView
                 value={yamlData}
                 collapsed={2}
@@ -328,7 +331,7 @@ const PreviewWindow: React.FC = () => {
           );
         } catch (err) {
           return (
-            <div className="preview-error">
+            <div style={previewStyles.error}>
               Error parsing YAML: {String(err)}
               <pre>{content}</pre>
             </div>
@@ -338,22 +341,22 @@ const PreviewWindow: React.FC = () => {
       case 'text':
       default:
         return (
-          <div className="preview-text">
-            <pre>{content}</pre>
+          <div style={previewStyles.text}>
+            <pre style={previewStyles.textPre}>{content}</pre>
           </div>
         );
     }
   };
 
   return (
-    <div className="preview-window">
-      <div className="preview-header">
-        <div className="preview-file-path" title={filePath}>
+    <div style={previewStyles.window}>
+      <div style={previewStyles.header}>
+        <div style={previewStyles.filePath} title={filePath}>
           {filePath.split('/').pop()}
         </div>
-        <div className="preview-file-type">{fileType.toUpperCase()}</div>
+        <div style={previewStyles.fileType}>{fileType.toUpperCase()}</div>
       </div>
-      <div className="preview-content">
+      <div style={previewStyles.content}>
         {renderContent()}
       </div>
     </div>

@@ -46,6 +46,29 @@ body, html, #root {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  -webkit-app-region: no-drag;
+}
+
+.tabs-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
 .tab {
   padding: 5px 12px;
   margin-right: 2px;
@@ -284,6 +307,23 @@ body, html, #root {
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.workbench {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: #1b1c21;
+}
+
+.terminal-pane {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
 .terminal-container {
@@ -751,4 +791,19 @@ body, html, #root {
 .split-divider-horizontal {
   cursor: row-resize;
   height: 4px;
+}
+
+/* Popup window wrappers */
+.ai-window {
+  width: 100%;
+  height: 100%;
+  background: #16171d;
+}
+
+.ssh-window {
+  width: 100%;
+  height: 100vh;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  overflow: hidden;
 }

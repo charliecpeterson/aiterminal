@@ -1,4 +1,5 @@
 use crate::models::{AppSettings, AppState};
+use crate::utils::mutex::safe_lock_with_context;
 use keyring::Entry;
 use std::fs;
 use std::path::PathBuf;
@@ -124,9 +125,10 @@ pub fn save_settings(settings: AppSettings) -> Result<(), String> {
 #[tauri::command]
 pub fn get_api_key(provider: String, state: State<AppState>) -> Result<String, String> {
     // Check cache first
-    let mut cache = state.api_key_cache.lock().unwrap();
+    let mut cache = safe_lock_with_context(&state.api_key_cache, "Failed to lock API key cache")?;
     if let Some(cached_key) = cache.get(&provider) {
-        return Ok(cached_key.clone());
+        let result: String = cached_key.clone();
+        return Ok(result);
     }
 
     // Load from keychain and cache it
@@ -144,7 +146,7 @@ pub fn save_api_key(
     save_api_key_to_keychain(&provider, &api_key)?;
 
     // Update cache
-    let mut cache = state.api_key_cache.lock().unwrap();
+    let mut cache = safe_lock_with_context(&state.api_key_cache, "Failed to lock API key cache")?;
     if api_key.is_empty() {
         cache.remove(&provider);
     } else {
@@ -159,7 +161,7 @@ pub fn delete_api_key(provider: String, state: State<AppState>) -> Result<(), St
     delete_api_key_from_keychain(&provider)?;
 
     // Clear from cache
-    let mut cache = state.api_key_cache.lock().unwrap();
+    let mut cache = safe_lock_with_context(&state.api_key_cache, "Failed to lock API key cache")?;
     cache.remove(&provider);
 
     Ok(())

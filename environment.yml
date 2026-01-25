@@ -1,0 +1,126 @@
+name: aiterminal
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Node.js (closest available to 20.19.0 from .nvmrc)
+  # npm is included with nodejs package
+  - nodejs=20.19.*
+  
+  # Rust toolchain (latest stable)
+  - rust>=1.82
+  
+  # Build tools
+  - pkg-config
+  - openssl>=3.0
+  
+  # Development utilities
+  - git
+  - make
+  
+  # Optional Python tools
+  - python>=3.11
+  - pip
+
+# Platform-specific notes:
+# 
+# macOS:
+# ------
+# Tauri requires Xcode Command Line Tools:
+#   xcode-select --install
+#
+# The following system frameworks are required (already present on macOS):
+#   - WebKit.framework
+#   - AppKit.framework
+#   - Security.framework
+#
+# Linux:
+# ------
+# Additional system packages may be needed:
+#   sudo apt-get install libwebkit2gtk-4.1-dev \
+#     build-essential \
+#     curl \
+#     wget \
+#     file \
+#     libxdo-dev \
+#     libssl-dev \
+#     libayatana-appindicator3-dev \
+#     librsvg2-dev
+#
+# For Fedora/RHEL:
+#   sudo dnf install webkit2gtk4.1-devel \
+#     openssl-devel \
+#     curl \
+#     wget \
+#     file \
+#     libappindicator-gtk3-devel \
+#     librsvg2-devel
+#
+# Windows:
+# --------
+# Tauri requires:
+#   - Microsoft Visual Studio C++ Build Tools
+#   - WebView2 (usually pre-installed on Windows 11)
+#
+# Install via:
+#   https://visualstudio.microsoft.com/visual-cpp-build-tools/
+
+# Post-installation steps:
+# ------------------------
+# 1. Activate the environment:
+#    conda activate aiterminal
+#
+# 2. Verify installations:
+#    node --version    # Should be 20.19.0
+#    npm --version     # Should be >=10.0.0
+#    rustc --version   # Should be 1.82.0
+#    cargo --version   # Should match rust version
+#
+# 3. Install Rust targets (if needed):
+#    rustup target add wasm32-unknown-unknown
+#
+# 4. Install project dependencies:
+#    npm ci
+#
+# 5. Build the application:
+#    npm run build              # Frontend only
+#    npm run tauri build        # Full application
+#
+# 6. Development mode:
+#    npm run tauri dev          # Run with hot reload
+
+# Project structure:
+# ------------------
+# Frontend:  React 19 + TypeScript 5.8 + Vite 7 + xterm.js 5.5
+# Backend:   Rust (Tauri 2) with tokio async runtime
+# Tests:     Vitest 4 (frontend), cargo test (backend)
+#
+# Key dependencies:
+# - Node.js 20.19.0 (LTS) - Required by package.json engines
+# - Rust 1.82.0 - Latest stable for Tauri 2
+# - npm 10+ - For lockfile v3 support
+# - OpenSSL 3.0+ - Required by reqwest/rustls
+# - WebKit2GTK 2.44+ (Linux) - GTK webview backend
+#
+# Optional tools:
+# - cargo-watch: Auto-rebuild on Rust changes
+# - cargo-edit: Manage Cargo.toml dependencies
+# - node-gyp: Native addon build tool (usually via npm)
+
+# Notes:
+# ------
+# 1. This environment file is cross-platform but some dependencies
+#    are platform-specific (webkit2gtk is Linux-only)
+#
+# 2. macOS and Windows users should use conda-forge channel for
+#    most dependencies to ensure compatibility
+#
+# 3. Rust installation via conda may not include rustup - you may
+#    need to install additional targets manually
+#
+# 4. For production builds, consider using system-installed Rust
+#    via rustup for better toolchain management
+#
+# 5. If you encounter SSL/TLS errors, ensure OpenSSL is properly
+#    linked: export OPENSSL_DIR=$CONDA_PREFIX

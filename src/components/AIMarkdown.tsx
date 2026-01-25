@@ -5,6 +5,9 @@ import rehypeKatex from 'rehype-katex';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import 'katex/dist/katex.min.css';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('AIMarkdown');
 
 export function AIMarkdown(props: {
   content: string;
@@ -17,7 +20,7 @@ export function AIMarkdown(props: {
     try {
       await writeText(code);
     } catch (err) {
-      console.error('Failed to copy code:', err);
+      log.error('Failed to copy code', err);
     }
   };
 

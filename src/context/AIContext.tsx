@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, useEffect } from "react";
-import { listen, emit } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger('AIContext');
 
 export type ContextType = "command" | "output" | "selection" | "file" | "command_output";
 
@@ -239,7 +242,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
     invoke("emit_event", {
       event: "ai-context:sync-add",
       payload: item,
-    }).catch((err) => console.error("Failed to broadcast context item:", err));
+    }).catch((err) => log.error("Failed to broadcast context item", err));
   }, []);
 
   const removeContextItem = useCallback((id: string) => {
@@ -248,7 +251,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
     invoke("emit_event", {
       event: "ai-context:sync-remove",
       payload: { id },
-    }).catch((err) => console.error("Failed to broadcast remove:", err));
+    }).catch((err) => log.error("Failed to broadcast remove", err));
   }, []);
 
   const clearContext = useCallback(() => {
@@ -257,7 +260,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
     invoke("emit_event", {
       event: "ai-context:sync-clear",
       payload: {},
-    }).catch((err) => console.error("Failed to broadcast clear:", err));
+    }).catch((err) => log.error("Failed to broadcast clear", err));
   }, []);
 
   const setContextSmartMode = useCallback((value: boolean) => {
@@ -350,7 +353,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       
       addContextItem(item);
     } catch (error) {
-      console.error("Failed to scan content for secrets:", error);
+      log.error("Failed to scan content for secrets", error);
       // Fall back to adding without secret detection
       const item: ContextItem = {
         id: crypto.randomUUID(),

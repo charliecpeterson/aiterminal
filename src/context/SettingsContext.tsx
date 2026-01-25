@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('SettingsContext');
 
 export interface AppearanceSettings {
     theme: string;
@@ -88,14 +91,14 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     const keychainKey = await invoke<string>('get_api_key_from_keychain');
                     loadedSettings.ai.api_key = keychainKey;
                 } catch (err) {
-                    console.warn('Failed to load API key from keychain:', err);
+                    log.warn('Failed to load API key from keychain', err);
                     // Key might have been deleted from keychain - that's okay
                 }
             }
             
             setSettings(loadedSettings);
         } catch (error) {
-            console.error('❌ Failed to load settings:', error);
+            log.error('Failed to load settings', error);
             // Load defaults if settings file is corrupted
             const defaultSettings = {
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
@@ -137,7 +140,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             await invoke('save_settings', { settings: newSettings });
             setSettings(newSettings);
         } catch (error) {
-            console.error('Failed to save settings:', error);
+            log.error('Failed to save settings', error);
             throw error;
         }
     };

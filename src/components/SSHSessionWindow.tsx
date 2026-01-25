@@ -4,6 +4,10 @@ import { SSHProfileEditor } from "./SSHProfileEditor";
 import { useSSHProfiles } from "../context/SSHProfilesContext";
 import { SSHProfile } from "../types/ssh";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
+import { createLogger } from "../utils/logger";
+import { sshWindowStyles } from "./SSHSessionWindow.styles";
+
+const log = createLogger('SSHSessionWindow');
 
 const SSHSessionWindow: React.FC = () => {
   const { addProfile, updateProfile, updateConnection } = useSSHProfiles();
@@ -41,14 +45,14 @@ const SSHSessionWindow: React.FC = () => {
   const handleConnect = (profile: SSHProfile) => {
     // Emit event to main window to connect this profile
     emitTo("main", "ssh:connect", { profile }).catch((err) => {
-      console.error("Failed to emit ssh:connect event:", err);
+      log.error('Failed to emit ssh:connect event', err);
     });
   };
 
   const handleGoToTab = (ptyId: string) => {
     // Emit event to main window to focus the tab for this ptyId
     emit("ssh:goto-tab", { ptyId }).catch((err) => {
-      console.error("Failed to emit ssh:goto-tab event:", err);
+      log.error('Failed to emit ssh:goto-tab event', err);
     });
   };
 
@@ -72,7 +76,7 @@ const SSHSessionWindow: React.FC = () => {
   };
 
   return (
-    <div className="ssh-window">
+    <div style={sshWindowStyles.window}>
       <SSHProfileEditor
         profile={editingProfile || undefined}
         isOpen={showEditor}

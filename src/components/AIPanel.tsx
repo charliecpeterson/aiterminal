@@ -1,5 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
-import "./AIPanel.css";
+import {
+  aiPanelStyles,
+  getModeButtonStyle,
+  getHeaderButtonStyle,
+  getTabStyle,
+} from "./AIPanel.styles";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendChatMessage } from "../ai/chatSend-vercel";
@@ -9,6 +14,9 @@ import { AIChatTab } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveApproval, rejectApproval } from "../ai/tools-vercel";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger('AIPanel');
 
 type PanelTab = "chat" | "context";
 
@@ -34,6 +42,9 @@ const AIPanel = ({
   const [smartContextStatus, setSmartContextStatus] = useState<string | null>(null);
   const { settings, updateSettings } = useSettings();
 
+  // Hover states for interactive elements
+  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
+
   const aiMode: 'chat' | 'agent' = settings?.ai?.mode === 'chat' ? 'chat' : 'agent';
 
   const setAiMode = useCallback((mode: 'chat' | 'agent') => {
@@ -46,7 +57,7 @@ const AIPanel = ({
         mode,
       },
     }).catch((err) => {
-      console.error('Failed to update AI mode:', err);
+      log.error('Failed to update AI mode', err);
     });
   }, [settings, updateSettings]);
 
@@ -100,7 +111,7 @@ const AIPanel = ({
       // Remove from pending
       removePendingApproval(id);
     } catch (error) {
-      console.error('Failed to execute approved command:', error);
+      log.error('Failed to execute approved command', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
       
       // Reject the promise
@@ -166,7 +177,7 @@ const AIPanel = ({
         setSmartContextStatus(null);
       }
     } catch (err) {
-      console.warn('Smart context retrieval failed; falling back to full context:', err);
+      log.warn('Smart context retrieval failed; falling back to full context', err);
       setSmartContextStatus(null);
     }
     
@@ -188,7 +199,7 @@ const AIPanel = ({
       markContextAsUsed,
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('AI request failed:', err);
+      log.error('AI request failed', err);
       setSendError(message);
       setIsSending(false);
     });
@@ -204,7 +215,7 @@ const AIPanel = ({
 
   const handleCaptureLast = () => {
     requestCaptureLast(captureCount).catch((err) => {
-      console.error("Failed to request capture:", err);
+      log.error('Failed to request capture', err);
     });
   };
 
@@ -242,7 +253,7 @@ const AIPanel = ({
 
       setFilePath(''); // Clear input after successful capture
     } catch (err) {
-      console.error('Failed to capture file:', err);
+      log.error('Failed to capture file', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
       addMessage({
         id: crypto.randomUUID(),
@@ -275,82 +286,111 @@ const AIPanel = ({
   }, []);
 
   return (
-    <div className="ai-panel">
-      <div className="ai-panel-header">
-        <div className="ai-panel-title">
-          <div className="ai-panel-title-text">AI Panel</div>
+    <div style={aiPanelStyles.panel}>
+      <div style={aiPanelStyles.header}>
+        <div style={aiPanelStyles.title}>
+          <div style={aiPanelStyles.titleText}>AI Panel</div>
           {settings?.ai?.embedding_model?.trim() && smartContextStatus && (
-            <div className="ai-panel-subtitle">{smartContextStatus}</div>
+            <div style={aiPanelStyles.subtitle}>{smartContextStatus}</div>
           )}
         </div>
-        <div className="ai-panel-tabs">
+        <div style={aiPanelStyles.tabs}>
           <button
-            className={`ai-panel-tab ${activeTab === "chat" ? "active" : ""}`}
+            style={getTabStyle(activeTab === "chat", hoverStates.chatTab || false)}
             onClick={() => setActiveTab("chat")}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, chatTab: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, chatTab: false }))}
           >
             Chat
           </button>
           <button
-            className={`ai-panel-tab ${activeTab === "context" ? "active" : ""}`}
+            style={getTabStyle(activeTab === "context", hoverStates.contextTab || false)}
             onClick={() => setActiveTab("context")}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, contextTab: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, contextTab: false }))}
           >
             Context
             {contextItems.length > 0 && (
-              <span className="ai-panel-tab-badge">{contextItems.length}</span>
+              <span style={aiPanelStyles.tabBadge}>{contextItems.length}</span>
             )}
           </button>
         </div>
-        <div className="ai-panel-actions">
-          <div className="ai-panel-mode" title="Chat: no tools. Agent: tools enabled.">
+        <div style={aiPanelStyles.actions}>
+          <div style={aiPanelStyles.mode} title="Chat: no tools. Agent: tools enabled.">
             <button
-              className={`ai-panel-mode-btn ${aiMode === 'chat' ? 'active' : ''}`}
+              style={getModeButtonStyle(
+                aiMode === 'chat',
+                hoverStates.chatMode || false,
+                !settings
+              )}
               onClick={() => setAiMode('chat')}
               disabled={!settings}
               type="button"
+              onMouseEnter={() => setHoverStates(prev => ({ ...prev, chatMode: true }))}
+              onMouseLeave={() => setHoverStates(prev => ({ ...prev, chatMode: false }))}
             >
               Chat
             </button>
             <button
-              className={`ai-panel-mode-btn ${aiMode === 'agent' ? 'active' : ''}`}
+              style={getModeButtonStyle(
+                aiMode === 'agent',
+                hoverStates.agentMode || false,
+                !settings
+              )}
               onClick={() => setAiMode('agent')}
               disabled={!settings}
               type="button"
+              onMouseEnter={() => setHoverStates(prev => ({ ...prev, agentMode: true }))}
+              onMouseLeave={() => setHoverStates(prev => ({ ...prev, agentMode: false }))}
             >
               Agent
             </button>
           </div>
           {activeTab === "chat" && (
             <>
-              <button className="ai-panel-header-btn" onClick={async () => {
-                if (messages.length === 0) return;
-                try {
-                  const { save } = await import('@tauri-apps/plugin-dialog');
-                  const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-                  const filePath = await save({
-                    defaultPath: `aiterminal-chat-${Date.now()}.md`,
-                    filters: [{ name: 'Markdown', extensions: ['md'] }]
-                  });
-                  if (!filePath) return;
-                  const exportContent = messages.map(msg => {
-                    const timestamp = new Date(msg.timestamp).toLocaleString();
-                    const role = msg.role.toUpperCase();
-                    return `## ${role} - ${timestamp}\n\n${msg.content}\n`;
-                  }).join('\n---\n\n');
-                  await writeTextFile(filePath, exportContent);
-                } catch (error) {
-                  console.error('Failed to export chat:', error);
-                }
-              }} disabled={messages.length === 0} title="Export chat">
+              <button 
+                style={getHeaderButtonStyle(hoverStates.exportBtn || false, messages.length === 0)}
+                onClick={async () => {
+                  if (messages.length === 0) return;
+                  try {
+                    const { save } = await import('@tauri-apps/plugin-dialog');
+                    const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+                    const filePath = await save({
+                      defaultPath: `aiterminal-chat-${Date.now()}.md`,
+                      filters: [{ name: 'Markdown', extensions: ['md'] }]
+                    });
+                    if (!filePath) return;
+                    const exportContent = messages.map(msg => {
+                      const timestamp = new Date(msg.timestamp).toLocaleString();
+                      const role = msg.role.toUpperCase();
+                      return `## ${role} - ${timestamp}\n\n${msg.content}\n`;
+                    }).join('\n---\n\n');
+                    await writeTextFile(filePath, exportContent);
+                  } catch (error) {
+                    log.error('Failed to export chat', error);
+                  }
+                }}
+                disabled={messages.length === 0}
+                title="Export chat"
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, exportBtn: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, exportBtn: false }))}
+              >
                 Export
               </button>
-              <button className="ai-panel-header-btn" onClick={clearChat} title="Clear chat">
+              <button 
+                style={getHeaderButtonStyle(hoverStates.clearBtn || false, false)}
+                onClick={clearChat}
+                title="Clear chat"
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, clearBtn: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, clearBtn: false }))}
+              >
                 Clear
               </button>
             </>
           )}
         </div>
       </div>
-      <div className="ai-panel-body">
+      <div style={aiPanelStyles.body}>
         {activeTab === "chat" && (
           <AIChatTab
             messages={messages}

@@ -1,6 +1,9 @@
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { ContextItem, ContextType } from '../../context/AIContext';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('CopyContext');
 
 export type LineRange = [number, number];
 
@@ -24,8 +27,7 @@ export async function copyRangeToClipboard(term: XTermTerminal, range: LineRange
   try {
     await writeText(text);
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to copy:', err);
+    log.error('Failed to copy', err);
   } finally {
     term.clearSelection();
   }
@@ -72,7 +74,7 @@ export function addContextFromRange(params: {
   // Use scan function if available, otherwise fall back to direct add
   if (params.addContextItemWithScan) {
     params.addContextItemWithScan(content, params.type, undefined).catch(err => {
-      console.error('Failed to scan and add context:', err);
+      log.error('Failed to scan and add context', err);
       // Fallback to direct add without scanning
       params.addContextItem(
         buildContextItem({
@@ -114,7 +116,7 @@ export function addContextFromCombinedRanges(params: {
   // Use scan function if available
   if (params.addContextItemWithScan) {
     params.addContextItemWithScan(content, 'command_output', metadata).catch(err => {
-      console.error('Failed to scan and add context:', err);
+      log.error('Failed to scan and add context', err);
       // Fallback to direct add
       params.addContextItem(
         buildContextItem({
@@ -148,7 +150,7 @@ export function addSelectionToContext(params: {
   // Use scan function if available
   if (params.addContextItemWithScan) {
     params.addContextItemWithScan(text, 'selection', undefined).catch(err => {
-      console.error('Failed to scan and add context:', err);
+      log.error('Failed to scan and add context', err);
       // Fallback to direct add
       params.addContextItem(
         buildContextItem({

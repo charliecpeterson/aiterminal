@@ -1,0 +1,93 @@
+name: aiterminal-macos
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Node.js (closest available to 20.19.0 from .nvmrc)
+  # npm is included with nodejs package
+  - nodejs=20.19.*
+  
+  # Rust toolchain (latest stable)
+  - rust>=1.82
+  
+  # Build tools
+  - pkg-config
+  - openssl>=3.0
+  
+  # Development utilities
+  - git
+  - make
+  
+  # Optional Python tools
+  - python>=3.11
+  - pip
+
+# macOS-specific setup instructions:
+# -----------------------------------
+#
+# Prerequisites (one-time setup):
+# 1. Install Xcode Command Line Tools (if not already installed):
+#    xcode-select --install
+#
+# 2. Create and activate this environment:
+#    conda env create -f environment-macos.yml
+#    conda activate aiterminal-macos
+#
+# Verification:
+# 3. Verify installations:
+#    node --version     # Should output: v20.19.0
+#    npm --version      # Should output: 10.x.x or higher
+#    rustc --version    # Should output: rustc 1.82.0
+#    cargo --version    # Should output: cargo 1.82.0
+#
+# Project setup:
+# 4. Install JavaScript dependencies:
+#    npm ci
+#
+# 5. Verify Rust compilation works:
+#    cd src-tauri && cargo check
+#
+# Development:
+# 6. Run development server:
+#    npm run tauri dev
+#
+# 7. Run tests:
+#    npm run test          # Frontend tests (Vitest)
+#    cd src-tauri && cargo test  # Backend tests
+#
+# Building for production:
+# 8. Build the application:
+#    npm run tauri build
+#
+#    The built app will be in:
+#    src-tauri/target/release/bundle/macos/AIterminal.app
+#
+# Troubleshooting:
+# ----------------
+# If you get OpenSSL errors:
+#   export OPENSSL_DIR=$CONDA_PREFIX
+#   export OPENSSL_LIB_DIR=$CONDA_PREFIX/lib
+#   export OPENSSL_INCLUDE_DIR=$CONDA_PREFIX/include
+#
+# If rustc is not found:
+#   conda install -c conda-forge rust cargo
+#
+# If you prefer system Rust (recommended for macOS):
+#   1. Remove rust/cargo from this environment.yml
+#   2. Install via rustup:
+#      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+#   3. Add to PATH: source $HOME/.cargo/env
+#
+# Performance tips:
+# -----------------
+# For faster builds, set:
+#   export CARGO_INCREMENTAL=1
+#   export RUSTC_WRAPPER=sccache  # If sccache is installed
+#
+# Known working environment (tested on macOS):
+# - macOS 13+ (Ventura or later)
+# - Xcode Command Line Tools 15+
+# - Node.js 20.19.0 LTS
+# - Rust 1.82.0 stable
+# - Tauri 2.0

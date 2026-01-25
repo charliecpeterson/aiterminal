@@ -7,6 +7,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { SSHProfile, SSHConfigHost, ConnectionHealth } from '../types/ssh';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('SSHProfilesContext');
 
 interface SSHProfilesContextType {
   // Profile management
@@ -64,7 +67,7 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      console.error('Failed to load SSH profiles:', err);
+      log.error('Failed to load SSH profiles', err);
     } finally {
       setIsLoading(false);
     }
@@ -79,7 +82,7 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      console.error('Failed to save SSH profiles:', err);
+      log.error('Failed to save SSH profiles', err);
       throw err;
     }
   }, []);
@@ -95,7 +98,7 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      console.error('Failed to add SSH profile:', err);
+      log.error('Failed to add SSH profile', err);
       throw err;
     }
   }, []);
@@ -113,7 +116,7 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      console.error('Failed to update SSH profile:', err);
+      log.error('Failed to update SSH profile', err);
       throw err;
     }
   }, []);
@@ -129,7 +132,7 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      console.error('Failed to delete SSH profile:', err);
+      log.error('Failed to delete SSH profile', err);
       throw err;
     }
   }, []);
@@ -143,7 +146,7 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      console.error('Failed to load SSH config:', err);
+      log.error('Failed to load SSH config', err);
     }
   }, []);
 

@@ -1,4 +1,7 @@
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('HostLabel');
 
 type Disposable = { dispose: () => void };
 
@@ -21,8 +24,7 @@ export function attachHostLabelOsc(
         setHostLabel(parts.slice(1).join(';'));
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('Error handling OSC 633:', e);
+      log.error('Error handling OSC 633', e);
     }
     return true;
   }) as unknown as Disposable;
@@ -65,11 +67,11 @@ export function attachHostLabelOsc(
           const content = contentMatch[1];
           import('@tauri-apps/api/core').then(({ invoke }) => {
             invoke('open_preview_window', { filename, content }).catch((err: unknown) => {
-              console.error('[Preview] Failed to open window:', err);
+              log.error('Failed to open preview window', err);
             });
           });
         } else {
-          console.error('[Preview] Invalid preview format');
+          log.error('Invalid preview format');
         }
       } else if (data.startsWith('PythonREPL=')) {
         // Handle Python REPL detection
@@ -85,8 +87,7 @@ export function attachHostLabelOsc(
         onRREPL?.(enabled);
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('Error handling OSC 1337:', e);
+      log.error('Error handling OSC 1337', e);
     }
     return true;
   }) as unknown as Disposable;

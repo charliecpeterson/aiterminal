@@ -4,6 +4,9 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { applyTerminalAppearance, type AppearanceSettings, resolveXtermTheme } from './ui/appearance';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('TerminalSession');
 
 export interface TerminalSession {
     term: XTerm;
@@ -51,7 +54,7 @@ export function createTerminalSession(params: {
         const webglAddon = new WebglAddon();
         term.loadAddon(webglAddon);
     } catch (e) {
-        console.warn('WebGL addon failed to load', e);
+        log.warn('WebGL addon failed to load', e);
     }
 
     term.open(container);

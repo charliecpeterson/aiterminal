@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use crate::security::path_validator::validate_path;
+use crate::utils::mutex::safe_lock_with_context;
 
 type WatcherMap =
     Arc<Mutex<HashMap<String, notify_debouncer_mini::Debouncer<notify::RecommendedWatcher>>>>;
@@ -36,9 +38,7 @@ pub async fn open_preview_window(
 
     // Store content in app state to avoid URL length limits
     let content_store: tauri::State<ContentStore> = app.state();
-    content_store
-        .lock()
-        .unwrap()
+    safe_lock_with_context(&content_store, "Failed to lock content store")?
         .insert(window_label.clone(), (filename.clone(), content));
 
     // Pass only the window label in URL
@@ -61,7 +61,7 @@ pub async fn get_preview_content(
     window_label: String,
 ) -> Result<(String, String), String> {
     let content_store: tauri::State<ContentStore> = app.state();
-    let store = content_store.lock().unwrap();
+    let store = safe_lock_with_context(&content_store, "Failed to lock content store")?;
 
     store
         .get(&window_label)
@@ -72,21 +72,17 @@ pub async fn get_preview_content(
 #[tauri::command]
 pub async fn read_preview_file(file_path: String) -> Result<String, String> {
     let path = PathBuf::from(&file_path);
-    let abs_path = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir()
-            .map_err(|e| e.to_string())?
-            .join(&path)
-    };
-
-    std::fs::read_to_string(&abs_path).map_err(|e| format!("Failed to read file: {}", e))
+    
+    // SECURITY: Validate path to prevent traversal attacks
+    let safe_path = validate_path(&path)?;
+    
+    std::fs::read_to_string(&safe_path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
 #[tauri::command]
 pub async fn stop_preview_watcher(app: AppHandle, window_label: String) -> Result<(), String> {
     let watchers: tauri::State<WatcherMap> = app.state();
-    let mut map = watchers.lock().unwrap();
+    let mut map = safe_lock_with_context(&watchers, "Failed to lock preview watchers")?;
     map.remove(&window_label);
     Ok(())
 }
@@ -131,7 +127,7 @@ fn start_file_watcher(
 
     // Store watcher
     let watchers: tauri::State<WatcherMap> = app.state();
-    let mut map = watchers.lock().unwrap();
+    let mut map = safe_lock_with_context(&watchers, "Failed to lock preview watchers")?;
     map.insert(window_label, debouncer);
 
     Ok(())

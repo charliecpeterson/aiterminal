@@ -1,71 +1,49 @@
 use crate::models::AppState;
+use crate::security::path_validator::validate_path;
+use crate::tools::safe_commands::SafeCommand;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use walkdir::WalkDir;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CommandResult {
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: i32,
-}
+// Re-export CommandResult from safe_commands to avoid duplication
+pub use crate::tools::safe_commands::CommandResult;
 
 #[tauri::command]
 pub async fn execute_tool_command(
     command: String,
     working_directory: Option<String>,
 ) -> Result<CommandResult, String> {
-    // Parse command and execute via shell with optional working directory
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/C", &command]);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.arg("-c");
-        c.arg(&command);
-        c
-    };
-
-    // Set working directory if provided
-    if let Some(cwd) = working_directory {
-        cmd.current_dir(&cwd);
-    }
-
-    let output = cmd.output();
-
-    match output {
-        Ok(output) => Ok(CommandResult {
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-            exit_code: output.status.code().unwrap_or(-1),
-        }),
-        Err(e) => Err(format!("Failed to execute command: {}", e)),
-    }
+    // NEW: Parse command into safe command structure (no shell execution)
+    let safe_cmd = SafeCommand::from_string(&command)?;
+    
+    // Execute without shell
+    let cwd = working_directory.as_ref().map(|s| Path::new(s));
+    safe_cmd.execute(cwd)
 }
 
 #[tauri::command]
 pub async fn read_file_tool(path: String, max_bytes: usize) -> Result<String, String> {
-    let path = Path::new(&path);
+    // SECURITY: Validate path to prevent traversal attacks
+    let safe_path = validate_path(Path::new(&path))?;
 
-    if !path.exists() {
-        return Err(format!("File does not exist: {}", path.display()));
+    if !safe_path.exists() {
+        return Err(format!("File does not exist: {}", safe_path.display()));
     }
 
-    if !path.is_file() {
-        return Err(format!("Path is not a file: {}", path.display()));
+    if !safe_path.is_file() {
+        return Err(format!("Path is not a file: {}", safe_path.display()));
     }
 
     // Read file with size limit
     let metadata =
-        fs::metadata(path).map_err(|e| format!("Failed to read file metadata: {}", e))?;
+        fs::metadata(&safe_path).map_err(|e| format!("Failed to read file metadata: {}", e))?;
 
     let file_size = metadata.len() as usize;
     let bytes_to_read = file_size.min(max_bytes);
 
-    let mut file = fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut file = fs::File::open(&safe_path).map_err(|e| format!("Failed to open file: {}", e))?;
 
     use std::io::Read;
     let mut buffer = vec![0u8; bytes_to_read];
@@ -229,18 +207,21 @@ pub async fn write_file_tool(
         Path::new(&path).to_path_buf()
     };
 
-    if let Some(parent) = full_path.parent() {
+    // SECURITY: Validate path to prevent traversal attacks
+    let safe_path = validate_path(&full_path)?;
+
+    if let Some(parent) = safe_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create parent directory: {}", e))?;
     }
 
     let mut file =
-        fs::File::create(&full_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        fs::File::create(&safe_path).map_err(|e| format!("Failed to open file: {}", e))?;
 
     file.write_all(content.as_bytes())
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
-    Ok(format!("Successfully wrote to {}", full_path.display()))
+    Ok(format!("Successfully wrote to {}", safe_path.display()))
 }
 
 // Append content to a file
@@ -259,16 +240,19 @@ pub async fn append_to_file_tool(
         Path::new(&path).to_path_buf()
     };
 
+    // SECURITY: Validate path to prevent traversal attacks
+    let safe_path = validate_path(&full_path)?;
+
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&full_path)
+        .open(&safe_path)
         .map_err(|e| format!("Failed to open file: {}", e))?;
 
     file.write_all(content.as_bytes())
         .map_err(|e| format!("Failed to append to file: {}", e))?;
 
-    Ok(format!("Successfully appended to {}", full_path.display()))
+    Ok(format!("Successfully appended to {}", safe_path.display()))
 }
 
 // Get git status
@@ -377,8 +361,11 @@ pub async fn tail_file_tool(
         Path::new(&path).to_path_buf()
     };
 
+    // SECURITY: Validate path to prevent traversal attacks
+    let safe_path = validate_path(&full_path)?;
+
     let content =
-        fs::read_to_string(&full_path).map_err(|e| format!("Failed to read file: {}", e))?;
+        fs::read_to_string(&safe_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let all_lines: Vec<&str> = content.lines().collect();
     let start = all_lines.len().saturating_sub(lines);
@@ -388,20 +375,31 @@ pub async fn tail_file_tool(
 }
 
 // Create a directory
-// Uses shell command so it works everywhere (local, SSH, docker, etc.)
+// Uses filesystem directly for safety (no shell execution)
 #[tauri::command]
 pub async fn make_directory_tool(
     path: String,
     working_directory: Option<String>,
 ) -> Result<String, String> {
-    let command = format!("mkdir -p '{}'", path);
-    let result = execute_tool_command(command, working_directory).await?;
-
-    if result.exit_code == 0 {
-        Ok(format!("Successfully created directory: {}", path))
+    // Determine base directory
+    let base_dir = if let Some(cwd) = working_directory.as_ref() {
+        Path::new(cwd)
     } else {
-        Err(format!("Failed to create directory: {}", result.stderr))
-    }
+        Path::new(".")
+    };
+    
+    // Construct full path
+    let full_path = if Path::new(&path).is_absolute() {
+        Path::new(&path).to_path_buf()
+    } else {
+        base_dir.join(&path)
+    };
+    
+    // Create directory with parents (equivalent to mkdir -p)
+    fs::create_dir_all(&full_path)
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    
+    Ok(format!("Successfully created directory: {}", path))
 }
 
 // Get git diff
@@ -434,12 +432,30 @@ pub async fn get_git_diff_tool(working_directory: Option<String>) -> Result<Stri
 // Calculate math expression
 #[tauri::command]
 pub async fn calculate_tool(expression: String) -> Result<String, String> {
-    // Simple calculator using bc on Unix or PowerShell on Windows
+    // Validate that expression only contains safe characters
+    // Allowed: digits, operators, parentheses, decimal points, spaces, and basic math functions
+    let safe_chars_regex = regex::Regex::new(r"^[0-9+\-*/().\s]+$")
+        .map_err(|e| format!("Regex error: {}", e))?;
+    
+    if !safe_chars_regex.is_match(&expression) {
+        return Err(
+            "Invalid expression: only numbers and basic operators (+, -, *, /, parentheses) are allowed".to_string()
+        );
+    }
+    
+    // Additional check for dangerous patterns
+    if expression.contains("..") || expression.is_empty() {
+        return Err("Invalid expression format".to_string());
+    }
+    
+    // Execute using bc/PowerShell with validated input
     let output = if cfg!(target_os = "windows") {
         Command::new("powershell")
             .args(["-Command", &expression])
             .output()
     } else {
+        // Use echo with the expression piped to bc
+        // Note: expression is already validated to contain only safe chars
         Command::new("sh")
             .arg("-c")
             .arg(format!("echo '{}' | bc -l", expression))
@@ -449,7 +465,12 @@ pub async fn calculate_tool(expression: String) -> Result<String, String> {
     let result = output.map_err(|e| format!("Failed to calculate: {}", e))?;
 
     if result.status.success() {
-        Ok(String::from_utf8_lossy(&result.stdout).trim().to_string())
+        let output = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        if output.is_empty() {
+            Err("Calculation produced no output (invalid expression?)".to_string())
+        } else {
+            Ok(output)
+        }
     } else {
         Err(format!(
             "Invalid expression: {}",

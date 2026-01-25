@@ -8,6 +8,9 @@ import {
     copyRangeToClipboard,
 } from './ui/copyContext';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('TerminalActions');
 
 /**
  * Open AI panel window if not already open
@@ -35,7 +38,7 @@ async function ensureAIPanelOpen() {
             });
         }
     } catch (err) {
-        console.error('Failed to open AI panel:', err);
+        log.error('Failed to open AI panel', err);
     }
 }
 

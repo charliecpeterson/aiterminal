@@ -11,6 +11,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { isCommandSafe } from './commandSafety';
 import { executeInPty } from '../terminal/core/executeInPty';
 import type { PendingApproval } from '../context/AIContext';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('AITools');
 
 // Store pending approval promises
 const pendingApprovalPromises = new Map<string, {
@@ -48,7 +51,7 @@ async function getTerminalCwd(terminalId: number): Promise<string> {
     const cwd = await invoke<string>('get_pty_cwd', { id: terminalId });
     return cwd;
   } catch (error) {
-    console.error('Failed to get terminal CWD:', error);
+    log.error('Failed to get terminal CWD', error);
     // Fallback to home directory
     return '~';
   }

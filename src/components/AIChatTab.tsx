@@ -3,7 +3,7 @@ import type { ChatMessage, PendingApproval } from "../context/AIContext";
 import { formatChatTime, handlePromptKeyDown, roleLabel } from "../ai/panelUi";
 import { AIMarkdown } from "./AIMarkdown";
 import { ToolExecutionStatus, type ToolExecution } from "./ToolExecutionStatus";
-import { ContextUsageDisplay, QuickActionSuggestions } from "./ContextUsageDisplay";
+import { ContextUsageDisplay } from "./ContextUsageDisplay";
 
 export function AIChatTab(props: {
   messages: ChatMessage[];

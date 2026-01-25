@@ -7,6 +7,9 @@ import {
   computeOutputInfo,
   computeRangesForMarkers,
 } from '../../utils/markerRanges';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('Markers');
 
 export interface CopyMenuState {
   x: number;
@@ -203,6 +206,8 @@ export function createMarkerManager({
   }
 
   let currentOutputButton: HTMLDivElement | null = null;
+  let currentOutputButtonRemoveListener: ((e: MouseEvent) => void) | null = null;
+  let currentOutputButtonTimeoutId: ReturnType<typeof setTimeout> | null = null;
   const pythonMarkersById = new Map<string, IDecoration>();
 
   const notifyMarkersChanged = () => {
@@ -350,7 +355,7 @@ export function createMarkerManager({
               truncated: outputText.length >= maxBytes,
               byte_count: outputText.length,
             }).catch(err => {
-              console.error('Failed to scan file capture:', err);
+              log.error('Failed to scan file capture', err);
               addContextItem({
                 id: crypto.randomUUID(),
                 type: 'file',
@@ -582,6 +587,14 @@ export function createMarkerManager({
           currentOutputButton.remove();
           currentOutputButton = null;
         }
+        if (currentOutputButtonTimeoutId) {
+          clearTimeout(currentOutputButtonTimeoutId);
+          currentOutputButtonTimeoutId = null;
+        }
+        if (currentOutputButtonRemoveListener) {
+          document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+          currentOutputButtonRemoveListener = null;
+        }
         return;
       }
 
@@ -595,6 +608,14 @@ export function createMarkerManager({
           currentOutputButton.remove();
           currentOutputButton = null;
         }
+        if (currentOutputButtonTimeoutId) {
+          clearTimeout(currentOutputButtonTimeoutId);
+          currentOutputButtonTimeoutId = null;
+        }
+        if (currentOutputButtonRemoveListener) {
+          document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+          currentOutputButtonRemoveListener = null;
+        }
         return;
       }
 
@@ -604,6 +625,14 @@ export function createMarkerManager({
         if (currentOutputButton) {
           currentOutputButton.remove();
           currentOutputButton = null;
+        }
+        if (currentOutputButtonTimeoutId) {
+          clearTimeout(currentOutputButtonTimeoutId);
+          currentOutputButtonTimeoutId = null;
+        }
+        if (currentOutputButtonRemoveListener) {
+          document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+          currentOutputButtonRemoveListener = null;
         }
         return;
       }
@@ -645,14 +674,30 @@ export function createMarkerManager({
         currentOutputButton.remove();
         currentOutputButton = null;
       }
+      if (currentOutputButtonTimeoutId) {
+        clearTimeout(currentOutputButtonTimeoutId);
+        currentOutputButtonTimeoutId = null;
+      }
+      if (currentOutputButtonRemoveListener) {
+        document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+        currentOutputButtonRemoveListener = null;
+      }
     };
   };
 
   const showOutputButton = (_marker: IDecoration, startLine: number, endLine: number, lineCount: number) => {
-    // Remove existing button
+    // Remove existing button and cleanup
     if (currentOutputButton) {
       currentOutputButton.remove();
       currentOutputButton = null;
+    }
+    if (currentOutputButtonTimeoutId) {
+      clearTimeout(currentOutputButtonTimeoutId);
+      currentOutputButtonTimeoutId = null;
+    }
+    if (currentOutputButtonRemoveListener) {
+      document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+      currentOutputButtonRemoveListener = null;
     }
 
     // Create floating button
@@ -680,6 +725,14 @@ export function createMarkerManager({
       openOutputWindow(startLine, endLine, lineCount);
       button.remove();
       currentOutputButton = null;
+      if (currentOutputButtonTimeoutId) {
+        clearTimeout(currentOutputButtonTimeoutId);
+        currentOutputButtonTimeoutId = null;
+      }
+      if (currentOutputButtonRemoveListener) {
+        document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+        currentOutputButtonRemoveListener = null;
+      }
     });
 
     const copyBtn = button.querySelector('.output-copy-clipboard');
@@ -687,10 +740,18 @@ export function createMarkerManager({
       e.stopPropagation();
       const content = getRangeText([startLine, endLine]);
       navigator.clipboard.writeText(content).catch((err) => {
-        console.error('[Fold] Failed to copy:', err);
+        log.error('Failed to copy to clipboard', err);
       });
       button.remove();
       currentOutputButton = null;
+      if (currentOutputButtonTimeoutId) {
+        clearTimeout(currentOutputButtonTimeoutId);
+        currentOutputButtonTimeoutId = null;
+      }
+      if (currentOutputButtonRemoveListener) {
+        document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+        currentOutputButtonRemoveListener = null;
+      }
     });
 
     // Remove on outside click
@@ -699,9 +760,18 @@ export function createMarkerManager({
         button.remove();
         currentOutputButton = null;
         document.removeEventListener('mousedown', removeButton);
+        currentOutputButtonRemoveListener = null;
+        if (currentOutputButtonTimeoutId) {
+          clearTimeout(currentOutputButtonTimeoutId);
+          currentOutputButtonTimeoutId = null;
+        }
       }
     };
-    setTimeout(() => document.addEventListener('mousedown', removeButton), 100);
+    currentOutputButtonRemoveListener = removeButton;
+    currentOutputButtonTimeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', removeButton);
+      currentOutputButtonTimeoutId = null;
+    }, 100);
   };
 
   const openOutputWindow = async (startLine: number, endLine: number, lineCount: number) => {
@@ -712,7 +782,7 @@ export function createMarkerManager({
     // Copy to clipboard
     navigator.clipboard.writeText(content).then(() => {
     }).catch(err => {
-      console.error('[Fold] Failed to copy:', err);
+      log.error('Failed to copy', err);
     });
     
     // Open a new window with the content passed via URL
@@ -734,10 +804,10 @@ export function createMarkerManager({
       });
 
       outputWindow.once('tauri://error', (event) => {
-        console.error('[Fold] Failed to create output window:', event);
+        log.error('Failed to create output window', event);
       });
     } catch (err) {
-      console.error('[Fold] Error opening window:', err);
+      log.error('Error opening output window', err);
     }
   };
 
@@ -1091,7 +1161,7 @@ export function createMarkerManager({
     } catch (e) {
       // Keep behavior consistent: report and continue
       // eslint-disable-next-line no-console
-      console.error('Error handling OSC 133:', e);
+      log.error('Error handling OSC 133', e);
     }
 
     return true;
@@ -1140,7 +1210,7 @@ export function createMarkerManager({
 
       if (addContextItemWithScan) {
         addContextItemWithScan(content, type as any, metadata).catch(err => {
-          console.error('Failed to scan context in captureLast:', err);
+          log.error('Failed to scan context in captureLast', err);
           // Fallback to direct add
           if (outputText) {
             addContextItem({
@@ -1249,7 +1319,7 @@ export function createMarkerManager({
 
     if (addContextItemWithScan) {
       addContextItemWithScan(content, type as any, metadata).catch(err => {
-        console.error('Failed to scan context in addCommandToContext:', err);
+        log.error('Failed to scan context in addCommandToContext', err);
         // Fallback
         if (outputText) {
           addContextItem({

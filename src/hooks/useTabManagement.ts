@@ -2,6 +2,9 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { emitTo } from '@tauri-apps/api/event';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('TabManagement');
 
 export interface Pane {
   id: number; // PTY ID
@@ -59,7 +62,7 @@ export function useTabManagement(
       });
       setActiveTabId(id);
     } catch (error) {
-      console.error("Failed to spawn PTY:", error);
+      log.error("Failed to spawn PTY", error);
     }
   }, []);
 
@@ -105,7 +108,7 @@ export function useTabManagement(
     // Close all PTYs in all panes
     tab.panes.forEach(pane => {
       invoke("close_pty", { id: pane.id }).catch((error) => {
-        console.error("Failed to close PTY:", error);
+        log.error("Failed to close PTY", error);
       });
     });
 
@@ -125,7 +128,7 @@ export function useTabManagement(
       if (isInitialized && newTabs.length === 0) {
         const currentWindow = getCurrentWindow();
         currentWindow.close().catch((err) => {
-          console.error("Failed to close window", err);
+          log.error("Failed to close window", err);
         });
       }
 
@@ -166,7 +169,7 @@ export function useTabManagement(
         })
       );
     } catch (error) {
-      console.error("Failed to spawn PTY for split:", error);
+      log.error("Failed to spawn PTY for split", error);
     }
   }, []);
 
@@ -196,7 +199,7 @@ export function useTabManagement(
     }
 
     invoke("close_pty", { id: paneId }).catch((error) => {
-      console.error("Failed to close PTY:", error);
+      log.error('Failed to close PTY', error);
     });
 
     setTabs((prev) =>

@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings, AppSettings } from '../context/SettingsContext';
-import './SettingsModal.css';
+import {
+  settingsModalStyles,
+  getCloseButtonStyle,
+  getTabStyle,
+  getFormInputStyle,
+  getButtonStyle,
+  getAiConnectionStatusStyle,
+} from './SettingsModal.styles';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -18,6 +25,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [aiEmbeddingOptions, setAiEmbeddingOptions] = useState<string[]>([]);
     const [keychainStatus, setKeychainStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [keychainMessage, setKeychainMessage] = useState<string | null>(null);
+
+    // Hover and focus states for interactive elements
+    const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
+    const [focusStates, setFocusStates] = useState<Record<string, boolean>>({});
 
     // Load settings when modal opens
     useEffect(() => {
@@ -144,15 +155,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     // Show loading state if settings not loaded yet
     if (!settings) {
         return (
-            <div className="settings-overlay" onClick={onClose}>
-                <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-                    <div className="settings-header">
-                        <h2>Settings</h2>
-                        <button className="settings-close" onClick={onClose}>×</button>
+            <div style={settingsModalStyles.overlay} onClick={onClose}>
+                <div style={settingsModalStyles.modal} onClick={(e) => e.stopPropagation()}>
+                    <div style={settingsModalStyles.header}>
+                        <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
+                        <button 
+                            style={getCloseButtonStyle(hoverStates.closeBtn || false)}
+                            onClick={onClose}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn: false }))}
+                        >×</button>
                     </div>
-                    <div style={{ padding: '20px', textAlign: 'center' }}>
+                    <div style={settingsModalStyles.loadingContainer}>
                         <p>Loading settings...</p>
-                        <p style={{ fontSize: '12px', color: '#888', marginTop: '10px' }}>
+                        <p style={settingsModalStyles.loadingText}>
                             If this persists, try refreshing the page.
                         </p>
                     </div>
@@ -163,65 +179,85 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     
     if (!localSettings) {
         return (
-            <div className="settings-overlay" onClick={onClose}>
-                <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-                    <div className="settings-header">
-                        <h2>Settings</h2>
-                        <button className="settings-close" onClick={onClose}>×</button>
+            <div style={settingsModalStyles.overlay} onClick={onClose}>
+                <div style={settingsModalStyles.modal} onClick={(e) => e.stopPropagation()}>
+                    <div style={settingsModalStyles.header}>
+                        <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
+                        <button 
+                            style={getCloseButtonStyle(hoverStates.closeBtn2 || false)}
+                            onClick={onClose}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn2: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn2: false }))}
+                        >×</button>
                     </div>
-                    <div style={{ padding: '20px', textAlign: 'center' }}>Initializing...</div>
+                    <div style={settingsModalStyles.loadingContainer}>Initializing...</div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="settings-modal-overlay" onClick={onClose}>
-            <div className="settings-modal" onClick={e => e.stopPropagation()}>
-                <div className="settings-header">
-                    <h2>Settings</h2>
-                    <button className="close-button" onClick={onClose}>×</button>
+        <div style={settingsModalStyles.overlay} onClick={onClose}>
+            <div style={settingsModalStyles.modal} onClick={e => e.stopPropagation()}>
+                <div style={settingsModalStyles.header}>
+                    <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
+                    <button 
+                        style={getCloseButtonStyle(hoverStates.closeBtn3 || false)}
+                        onClick={onClose}
+                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn3: true }))}
+                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn3: false }))}
+                    >×</button>
                 </div>
                 
-                <div className="settings-content">
-                    <div className="settings-sidebar">
+                <div style={settingsModalStyles.content}>
+                    <div style={settingsModalStyles.sidebar}>
                         <div 
-                            className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
+                            style={getTabStyle(activeTab === 'appearance', hoverStates.tabAppearance || false)}
                             onClick={() => setActiveTab('appearance')}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabAppearance: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabAppearance: false }))}
                         >
                             Appearance
                         </div>
                         <div 
-                            className={`settings-tab ${activeTab === 'ai' ? 'active' : ''}`}
+                            style={getTabStyle(activeTab === 'ai', hoverStates.tabAi || false)}
                             onClick={() => setActiveTab('ai')}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabAi: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabAi: false }))}
                         >
                             AI
                         </div>
                         <div 
-                            className={`settings-tab ${activeTab === 'terminal' ? 'active' : ''}`}
+                            style={getTabStyle(activeTab === 'terminal', hoverStates.tabTerminal || false)}
                             onClick={() => setActiveTab('terminal')}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabTerminal: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabTerminal: false }))}
                         >
                             Terminal
                         </div>
                         <div 
-                            className={`settings-tab ${activeTab === 'autocomplete' ? 'active' : ''}`}
+                            style={getTabStyle(activeTab === 'autocomplete', hoverStates.tabAutocomplete || false)}
                             onClick={() => setActiveTab('autocomplete')}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabAutocomplete: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabAutocomplete: false }))}
                         >
                             Autocomplete
                         </div>
                         <div 
-                            className={`settings-tab ${activeTab === 'fold' ? 'active' : ''}`}
+                            style={getTabStyle(activeTab === 'fold', hoverStates.tabFold || false)}
                             onClick={() => setActiveTab('fold')}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabFold: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabFold: false }))}
                         >
                             Output Folding
                         </div>
                     </div>
 
-                    <div className="settings-panel">
+                    <div style={settingsModalStyles.panel}>
                         {activeTab === 'appearance' && (
                             <>
-                                <div className="form-group">
-                                    <label>Font Size</label>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>Font Size</label>
                                     <input 
                                         type="number"
                                         min={8}
@@ -234,10 +270,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 : 14;
                                             handleChange('appearance', 'font_size', size);
                                         }}
+                                        style={getFormInputStyle(focusStates.fontSize || false)}
+                                        onFocus={() => setFocusStates(prev => ({ ...prev, fontSize: true }))}
+                                        onBlur={() => setFocusStates(prev => ({ ...prev, fontSize: false }))}
                                     />
                                 </div>
-                                <div className="form-group">
-                                    <label>Font Family</label>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>Font Family</label>
                                     <input 
                                         type="text" 
                                         value={localSettings.appearance.font_family}
@@ -248,13 +287,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             }
                                         }}
                                         placeholder="Monaco, monospace"
+                                        style={getFormInputStyle(focusStates.fontFamily || false)}
+                                        onFocus={() => setFocusStates(prev => ({ ...prev, fontFamily: true }))}
+                                        onBlur={() => setFocusStates(prev => ({ ...prev, fontFamily: false }))}
                                     />
                                 </div>
-                                <div className="form-group">
-                                    <label>Theme</label>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>Theme</label>
                                     <select 
                                         value={localSettings.appearance.theme}
                                         onChange={(e) => handleChange('appearance', 'theme', e.target.value)}
+                                        style={getFormInputStyle(focusStates.theme || false)}
+                                        onFocus={() => setFocusStates(prev => ({ ...prev, theme: true }))}
+                                        onBlur={() => setFocusStates(prev => ({ ...prev, theme: false }))}
                                     >
                                         <option value="dark">Dark</option>
                                         <option value="light">Light</option>
@@ -265,8 +310,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
                         {activeTab === 'terminal' && (
                             <>
-                                <div className="form-group">
-                                    <label>Max Markers</label>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>Max Markers</label>
                                     <input 
                                         type="number" 
                                         min={20}
@@ -279,6 +324,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 : 200;
                                             handleChange('terminal', 'max_markers', clamped);
                                         }}
+                                        style={getFormInputStyle(focusStates.maxMarkers || false)}
+                                        onFocus={() => setFocusStates(prev => ({ ...prev, maxMarkers: true }))}
+                                        onBlur={() => setFocusStates(prev => ({ ...prev, maxMarkers: false }))}
                                     />
                                 </div>
                             </>
@@ -286,11 +334,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
                         {activeTab === 'ai' && (
                             <>
-                                <div className="form-group">
-                                    <label>Provider</label>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>Provider</label>
                                     <select 
                                         value={localSettings.ai.provider}
                                         onChange={(e) => handleChange('ai', 'provider', e.target.value)}
+                                        style={getFormInputStyle(focusStates.provider || false)}
+                                        onFocus={() => setFocusStates(prev => ({ ...prev, provider: true }))}
+                                        onBlur={() => setFocusStates(prev => ({ ...prev, provider: false }))}
                                     >
                                         <option value="openai">OpenAI</option>
                                         <option value="anthropic">Anthropic</option>
@@ -298,17 +349,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         <option value="ollama">Ollama</option>
                                     </select>
                                 </div>
-                                <div className="form-group">
-                                    <label>API Key</label>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>API Key</label>
                                     <input 
                                         type="password" 
                                         value={localSettings.ai.api_key || ''}
                                         onChange={(e) => handleChange('ai', 'api_key', e.target.value)}
                                         placeholder="sk-..."
+                                        style={getFormInputStyle(focusStates.apiKey || false)}
+                                        onFocus={() => setFocusStates(prev => ({ ...prev, apiKey: true }))}
+                                        onBlur={() => setFocusStates(prev => ({ ...prev, apiKey: false }))}
                                     />
                                 </div>
-                                <div className="form-group">
-                                    <label>URL (Optional)</label>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>URL (Optional)</label>
                                     <input 
                                         type="text" 
                                         value={localSettings.ai.url || ''}
@@ -322,19 +376,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             }
                                         }}
                                         placeholder="https://api.openai.com/v1"
+                                        style={getFormInputStyle(focusStates.url || false)}
+                                        onFocus={() => setFocusStates(prev => ({ ...prev, url: true }))}
+                                        onBlur={() => setFocusStates(prev => ({ ...prev, url: false }))}
                                     />
                                 </div>
-                                <div className="form-group">
-                                    <label>Connection</label>
-                                    <div className="ai-connection-row">
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>Connection</label>
+                                    <div style={settingsModalStyles.aiConnectionRow}>
                                         <button
-                                            className="btn btn-secondary"
+                                            style={getButtonStyle('secondary', hoverStates.testBtn || false, aiTestStatus === 'testing')}
                                             onClick={handleTestConnection}
                                             disabled={aiTestStatus === 'testing'}
+                                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, testBtn: true }))}
+                                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, testBtn: false }))}
                                         >
                                             {aiTestStatus === 'testing' ? 'Testing...' : 'Test Connection'}
                                         </button>
-                                        <span className={`ai-connection-status ${aiTestStatus}`}>
+                                        <span style={getAiConnectionStatusStyle(aiTestStatus)}>
                                             {aiTestStatus === 'success'
                                                 ? 'Connected'
                                                 : aiTestStatus === 'error'
@@ -343,20 +402,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </span>
                                     </div>
                                     {aiTestError && (
-                                        <div className="ai-connection-error">{aiTestError}</div>
+                                        <div style={settingsModalStyles.aiConnectionError}>{aiTestError}</div>
                                     )}
                                 </div>
-                                <div className="form-group">
-                                    <label>Secure Storage</label>
-                                    <div className="ai-connection-row">
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.formLabel}>Secure Storage</label>
+                                    <div style={settingsModalStyles.aiConnectionRow}>
                                         <button
-                                            className="btn btn-secondary"
+                                            style={getButtonStyle('secondary', hoverStates.keychainBtn || false, !localSettings.ai.api_key || keychainStatus === 'saving')}
                                             onClick={handleSaveToKeychain}
                                             disabled={!localSettings.ai.api_key || keychainStatus === 'saving'}
+                                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, keychainBtn: true }))}
+                                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, keychainBtn: false }))}
                                         >
                                             {keychainStatus === 'saving' ? 'Saving...' : 'Save to Keychain'}
                                         </button>
-                                        <span className={`ai-connection-status ${keychainStatus}`}>
+                                        <span style={getAiConnectionStatusStyle(keychainStatus)}>
                                             {keychainStatus === 'success'
                                                 ? keychainMessage || 'Saved'
                                                 : keychainStatus === 'error'
@@ -365,7 +426,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </span>
                                     </div>
                                 </div>
-                                <div className="form-group">
+                                <div style={settingsModalStyles.formGroup}>
                                     <label>Model</label>
                                     {aiModelOptions.length > 0 ? (
                                         <select
@@ -389,7 +450,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </datalist>
                                     )}
                                 </div>
-                                <div className="form-group">
+                                <div style={settingsModalStyles.formGroup}>
                                     <label>Embedding Model (Optional)</label>
                                     {aiEmbeddingOptions.length > 0 ? (
                                         <select
@@ -414,8 +475,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </datalist>
                                     )}
                                 </div>
-                                <div className="form-group">
-                                    <label className="checkbox-label">
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.checkboxLabel}>
                                         <input
                                             type="checkbox"
                                             checked={localSettings.ai.require_command_approval !== false}
@@ -423,7 +484,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         />
                                         <span>Require approval before executing commands</span>
                                     </label>
-                                    <div className="form-hint">
+                                    <div style={settingsModalStyles.formHint}>
                                         When enabled, the AI will ask for permission before running potentially destructive commands (rm, sudo, etc.). Safe read-only commands run automatically.
                                     </div>
                                 </div>
@@ -432,8 +493,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
                         {activeTab === 'autocomplete' && (
                             <>
-                                <div className="form-group">
-                                    <label className="checkbox-label">
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.checkboxLabel}>
                                         <input
                                             type="checkbox"
                                             checked={localSettings.autocomplete?.enable_inline ?? true}
@@ -441,13 +502,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         />
                                         <span>Enable inline suggestions (Fish-style)</span>
                                     </label>
-                                    <div className="form-hint">
+                                    <div style={settingsModalStyles.formHint}>
                                         Shows command suggestions as gray text after your cursor. Press → (right arrow) to accept.
                                     </div>
                                 </div>
 
                                 {localSettings.autocomplete?.enable_inline && (
-                                    <div className="form-group" style={{ marginLeft: '24px' }}>
+                                    <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
                                         <label>Inline Source</label>
                                         <select
                                             value={localSettings.autocomplete?.inline_source ?? 'history'}
@@ -457,7 +518,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             <option value="llm">AI/LLM (Smart, ~150ms)</option>
                                             <option value="hybrid">Hybrid (Best of both)</option>
                                         </select>
-                                        <div className="form-hint">
+                                        <div style={settingsModalStyles.formHint}>
                                             <strong>History:</strong> Matches from your shell history<br/>
                                             <strong>AI/LLM:</strong> Local Qwen3-0.6B model generates smart completions<br/>
                                             <strong>Hybrid:</strong> Shows history immediately, upgrades to AI if better
@@ -467,7 +528,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
                                 {localSettings.autocomplete?.inline_source === 'llm' && (
                                     <>
-                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                        <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
                                             <label>LLM Temperature (0.0 - 1.0)</label>
                                             <input
                                                 type="number"
@@ -477,11 +538,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 value={localSettings.autocomplete?.llm_temperature ?? 0.1}
                                                 onChange={(e) => handleChange('autocomplete', 'llm_temperature', parseFloat(e.target.value))}
                                             />
-                                            <div className="form-hint">
+                                            <div style={settingsModalStyles.formHint}>
                                                 Lower = more focused, Higher = more creative. Recommended: 0.1
                                             </div>
                                         </div>
-                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                        <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
                                             <label>Max Tokens</label>
                                             <input
                                                 type="number"
@@ -490,11 +551,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 value={localSettings.autocomplete?.llm_max_tokens ?? 15}
                                                 onChange={(e) => handleChange('autocomplete', 'llm_max_tokens', parseInt(e.target.value))}
                                             />
-                                            <div className="form-hint">
+                                            <div style={settingsModalStyles.formHint}>
                                                 Lower = faster, Higher = longer completions. Recommended: 15
                                             </div>
                                         </div>
-                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                        <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
                                             <label>Debounce (ms)</label>
                                             <input
                                                 type="number"
@@ -504,15 +565,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 value={localSettings.autocomplete?.llm_debounce_ms ?? 300}
                                                 onChange={(e) => handleChange('autocomplete', 'llm_debounce_ms', parseInt(e.target.value))}
                                             />
-                                            <div className="form-hint">
+                                            <div style={settingsModalStyles.formHint}>
                                                 Delay before querying LLM. Lower = more responsive but more queries. Recommended: 300ms
                                             </div>
                                         </div>
                                     </>
                                 )}
 
-                                <div className="form-group">
-                                    <label className="checkbox-label">
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.checkboxLabel}>
                                         <input
                                             type="checkbox"
                                             checked={localSettings.autocomplete?.enable_menu ?? true}
@@ -520,7 +581,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         />
                                         <span>Enable suggestion menu (Ctrl+Space)</span>
                                     </label>
-                                    <div className="form-hint">
+                                    <div style={settingsModalStyles.formHint}>
                                         Press Ctrl+Space to see all available commands, flags, and options in a dropdown menu.
                                     </div>
                                 </div>
@@ -529,8 +590,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
                         {activeTab === 'fold' && (
                             <>
-                                <div className="form-group">
-                                    <label className="checkbox-label">
+                                <div style={settingsModalStyles.formGroup}>
+                                    <label style={settingsModalStyles.checkboxLabel}>
                                         <input
                                             type="checkbox"
                                             checked={localSettings.fold?.enabled ?? true}
@@ -538,14 +599,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         />
                                         <span>Enable output folding</span>
                                     </label>
-                                    <div className="form-hint">
+                                    <div style={settingsModalStyles.formHint}>
                                         Show a notification bar when commands produce large outputs, with option to view in a separate window.
                                     </div>
                                 </div>
 
                                 {localSettings.fold?.enabled && (
                                     <>
-                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                        <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
                                             <label>Notification threshold (lines)</label>
                                             <input
                                                 type="number"
@@ -554,12 +615,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 value={localSettings.fold?.threshold ?? 30}
                                                 onChange={(e) => handleChange('fold', 'threshold', parseInt(e.target.value))}
                                             />
-                                            <div className="form-hint">
+                                            <div style={settingsModalStyles.formHint}>
                                                 Show notification bar when output exceeds this many lines. Default: 30
                                             </div>
                                         </div>
 
-                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                        <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
                                             <label>Preview lines</label>
                                             <input
                                                 type="number"
@@ -568,12 +629,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 value={localSettings.fold?.show_preview_lines ?? 3}
                                                 onChange={(e) => handleChange('fold', 'show_preview_lines', parseInt(e.target.value))}
                                             />
-                                            <div className="form-hint">
+                                            <div style={settingsModalStyles.formHint}>
                                                 Number of output lines to show in notification preview. Default: 3
                                             </div>
                                         </div>
 
-                                        <div className="form-group" style={{ marginLeft: '24px' }}>
+                                        <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
                                             <label>Large output threshold (lines)</label>
                                             <input
                                                 type="number"
@@ -582,13 +643,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 value={localSettings.fold?.large_threshold ?? 500}
                                                 onChange={(e) => handleChange('fold', 'large_threshold', parseInt(e.target.value))}
                                             />
-                                            <div className="form-hint">
+                                            <div style={settingsModalStyles.formHint}>
                                                 Outputs larger than this are considered "very large". Default: 500
                                             </div>
                                         </div>
 
-                                        <div className="form-group" style={{ marginLeft: '24px' }}>
-                                            <label className="checkbox-label">
+                                        <div style={{ ...settingsModalStyles.formGroup, marginLeft: '24px' }}>
+                                            <label style={settingsModalStyles.checkboxLabel}>
                                                 <input
                                                     type="checkbox"
                                                     checked={localSettings.fold?.auto_open_window ?? false}
@@ -596,7 +657,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 />
                                                 <span>Auto-open window for large outputs</span>
                                             </label>
-                                            <div className="form-hint">
+                                            <div style={settingsModalStyles.formHint}>
                                                 Automatically open viewer window when output exceeds large threshold.
                                             </div>
                                         </div>
@@ -607,9 +668,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                     </div>
                 </div>
 
-                <div className="settings-footer">
-                    <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-                    <button className="btn btn-primary" onClick={handleSave}>Save</button>
+                <div style={settingsModalStyles.footer}>
+                    <button 
+                        style={getButtonStyle('secondary', hoverStates.cancelBtn || false, false)}
+                        onClick={onClose}
+                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
+                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
+                    >Cancel</button>
+                    <button 
+                        style={getButtonStyle('primary', hoverStates.saveBtn || false, false)}
+                        onClick={handleSave}
+                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, saveBtn: true }))}
+                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, saveBtn: false }))}
+                    >Save</button>
                 </div>
             </div>
         </div>

@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
-import "./CommandHistoryMenu.css";
+import {
+  commandHistoryStyles,
+  getSearchStyle,
+  getItemStyle,
+  getExitStyle,
+  getActionsStyle,
+  getActionStyle,
+} from "./CommandHistoryMenu.styles";
 
 interface CommandHistoryItem {
   command: string;
@@ -39,6 +46,7 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
   const [filteredCommands, setFilteredCommands] = useState<CommandHistoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -144,73 +152,89 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="command-history-overlay" onClick={onClose}>
-      <div className="command-history-menu" onClick={(e) => e.stopPropagation()}>
-        <div className="command-history-header">
+    <div style={commandHistoryStyles.overlay} onClick={onClose}>
+      <div style={commandHistoryStyles.menu} onClick={(e) => e.stopPropagation()}>
+        <div style={commandHistoryStyles.header}>
           <input
             ref={inputRef}
             type="text"
-            className="command-history-search"
+            style={getSearchStyle(hoverStates.searchFocus || false)}
             placeholder="Search command history..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => setHoverStates(prev => ({ ...prev, searchFocus: true }))}
+            onBlur={() => setHoverStates(prev => ({ ...prev, searchFocus: false }))}
           />
-          <div className="command-history-hint">
-            <kbd>↑↓</kbd> Navigate • <kbd>↵</kbd> Jump • <kbd>⌘C</kbd> Copy • <kbd>⌘A</kbd> Add to AI • <kbd>Esc</kbd> Close
+          <div style={commandHistoryStyles.hint}>
+            <kbd style={commandHistoryStyles.kbd}>↑↓</kbd> Navigate • <kbd style={commandHistoryStyles.kbd}>↵</kbd> Jump • <kbd style={commandHistoryStyles.kbd}>⌘C</kbd> Copy • <kbd style={commandHistoryStyles.kbd}>⌘A</kbd> Add to AI • <kbd style={commandHistoryStyles.kbd}>Esc</kbd> Close
           </div>
         </div>
         
-        <div className="command-history-list" ref={listRef}>
+        <div style={commandHistoryStyles.list} ref={listRef}>
           {filteredCommands.length === 0 ? (
-            <div className="command-history-empty">
+            <div style={commandHistoryStyles.empty}>
               {searchQuery ? 'No matching commands' : 'No command history'}
             </div>
           ) : (
-            filteredCommands.map((item, index) => (
-              <div
-                key={`${item.line}-${index}`}
-                className={`command-history-item ${index === selectedIndex ? 'selected' : ''}`}
-                onClick={() => handleJump(item)}
-              >
-                <div className="command-history-item-header">
-                  <span className="command-history-text">{item.command}</span>
-                  <span className="command-history-time">{formatTime(item.timestamp)}</span>
-                </div>
-                <div className="command-history-item-footer">
-                  {item.exitCode !== undefined && (
-                    <span className={`command-history-exit ${item.exitCode === 0 ? 'success' : 'error'}`}>
-                      {item.exitCode === 0 ? '✓' : '✗'} {item.exitCode}
-                    </span>
-                  )}
-                  {item.hasOutput && (
-                    <span className="command-history-has-output">has output</span>
-                  )}
-                  <div className="command-history-actions">
-                    <button
-                      className="command-history-action"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopy(item);
-                      }}
-                      title="Copy to clipboard (⌘C)"
-                    >
-                      Copy
-                    </button>
-                    <button
-                      className="command-history-action"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAddToContext(item);
-                      }}
-                      title="Add to AI context (⌘A)"
-                    >
-                      + AI
-                    </button>
+            filteredCommands.map((item, index) => {
+              const itemHoverKey = `item-${index}`;
+              const copyBtnKey = `copy-${index}`;
+              const aiBtnKey = `ai-${index}`;
+              const isSelected = index === selectedIndex;
+              const isItemHover = hoverStates[itemHoverKey] || false;
+              
+              return (
+                <div
+                  key={`${item.line}-${index}`}
+                  style={getItemStyle(isSelected, isItemHover)}
+                  onClick={() => handleJump(item)}
+                  onMouseEnter={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: true }))}
+                  onMouseLeave={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: false }))}
+                >
+                  <div style={commandHistoryStyles.itemHeader}>
+                    <span style={commandHistoryStyles.text}>{item.command}</span>
+                    <span style={commandHistoryStyles.time}>{formatTime(item.timestamp)}</span>
+                  </div>
+                  <div style={commandHistoryStyles.itemFooter}>
+                    {item.exitCode !== undefined && (
+                      <span style={getExitStyle(item.exitCode === 0)}>
+                        {item.exitCode === 0 ? '✓' : '✗'} {item.exitCode}
+                      </span>
+                    )}
+                    {item.hasOutput && (
+                      <span style={commandHistoryStyles.hasOutput}>has output</span>
+                    )}
+                    <div style={getActionsStyle(isSelected || isItemHover)}>
+                      <button
+                        style={getActionStyle(hoverStates[copyBtnKey] || false)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopy(item);
+                        }}
+                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, [copyBtnKey]: true }))}
+                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, [copyBtnKey]: false }))}
+                        title="Copy to clipboard (⌘C)"
+                      >
+                        Copy
+                      </button>
+                      <button
+                        style={getActionStyle(hoverStates[aiBtnKey] || false)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddToContext(item);
+                        }}
+                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, [aiBtnKey]: true }))}
+                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, [aiBtnKey]: false }))}
+                        title="Add to AI context (⌘A)"
+                      >
+                        + AI
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

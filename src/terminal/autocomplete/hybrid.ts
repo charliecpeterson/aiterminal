@@ -4,6 +4,9 @@
 
 import { SimpleAutocomplete } from './simple';
 import { LLMAutocomplete, type Suggestion, type CompletionContext } from './llm';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('HybridAutocomplete');
 
 export class HybridAutocomplete {
   private history: SimpleAutocomplete;
@@ -81,7 +84,7 @@ export class HybridAutocomplete {
         
         llmSuggestions = await Promise.race([llmPromise, timeoutPromise]);
       } catch (error) {
-        console.warn('LLM suggestions failed:', error);
+        log.warn('LLM suggestions failed', error);
       }
     }
     

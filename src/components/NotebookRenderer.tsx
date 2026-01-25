@@ -1,6 +1,7 @@
 import React from 'react';
 import { AIMarkdown } from './AIMarkdown';
-import './NotebookRenderer.css';
+import { sanitizeSVG, sanitizeNotebookHTML } from '../utils/sanitize';
+import { notebookStyles } from './NotebookRenderer.styles';
 
 interface NotebookCell {
   cell_type: 'markdown' | 'code' | 'raw';
@@ -57,8 +58,8 @@ export const NotebookRenderer: React.FC<NotebookRendererProps> = ({ content }) =
   const renderOutput = (output: NotebookOutput, index: number) => {
     if (output.output_type === 'stream') {
       return (
-        <div key={index} className="notebook-output notebook-output-stream">
-          <pre>{arrayToString(output.text || '')}</pre>
+        <div key={index} style={{ ...notebookStyles.output }}>
+          <pre style={notebookStyles.outputPre}>{arrayToString(output.text || '')}</pre>
         </div>
       );
     }
@@ -68,40 +69,50 @@ export const NotebookRenderer: React.FC<NotebookRendererProps> = ({ content }) =
         // Handle images
         if (output.data['image/png']) {
           return (
-            <div key={index} className="notebook-output notebook-output-image">
-              <img src={`data:image/png;base64,${output.data['image/png']}`} alt="Output" />
+            <div key={index} style={{ ...notebookStyles.output, ...notebookStyles.outputImage }}>
+              <img 
+                src={`data:image/png;base64,${output.data['image/png']}`} 
+                alt="Output"
+                style={notebookStyles.outputImageImg}
+              />
             </div>
           );
         }
         if (output.data['image/jpeg']) {
           return (
-            <div key={index} className="notebook-output notebook-output-image">
-              <img src={`data:image/jpeg;base64,${output.data['image/jpeg']}`} alt="Output" />
+            <div key={index} style={{ ...notebookStyles.output, ...notebookStyles.outputImage }}>
+              <img 
+                src={`data:image/jpeg;base64,${output.data['image/jpeg']}`} 
+                alt="Output"
+                style={notebookStyles.outputImageImg}
+              />
             </div>
           );
         }
         if (output.data['image/svg+xml']) {
           const svg = arrayToString(output.data['image/svg+xml']);
+          const sanitizedSvg = sanitizeSVG(svg);
           return (
-            <div key={index} className="notebook-output notebook-output-image">
-              <div dangerouslySetInnerHTML={{ __html: svg }} />
+            <div key={index} style={{ ...notebookStyles.output, ...notebookStyles.outputImage }}>
+              <div dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
             </div>
           );
         }
         // Handle HTML
         if (output.data['text/html']) {
           const html = arrayToString(output.data['text/html']);
+          const sanitizedHtml = sanitizeNotebookHTML(html);
           return (
-            <div key={index} className="notebook-output notebook-output-html">
-              <div dangerouslySetInnerHTML={{ __html: html }} />
+            <div key={index} style={{ ...notebookStyles.output, ...notebookStyles.outputHtml }}>
+              <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />
             </div>
           );
         }
         // Handle plain text
         if (output.data['text/plain']) {
           return (
-            <div key={index} className="notebook-output notebook-output-text">
-              <pre>{arrayToString(output.data['text/plain'])}</pre>
+            <div key={index} style={{ ...notebookStyles.output }}>
+              <pre style={notebookStyles.outputPre}>{arrayToString(output.data['text/plain'])}</pre>
             </div>
           );
         }
@@ -110,10 +121,10 @@ export const NotebookRenderer: React.FC<NotebookRendererProps> = ({ content }) =
 
     if (output.output_type === 'error') {
       return (
-        <div key={index} className="notebook-output notebook-output-error">
-          <div className="notebook-error-name">{output.ename}: {output.evalue}</div>
+        <div key={index} style={{ ...notebookStyles.output, ...notebookStyles.outputError }}>
+          <div style={notebookStyles.errorName}>{output.ename}: {output.evalue}</div>
           {output.traceback && (
-            <pre>{output.traceback.join('\n')}</pre>
+            <pre style={notebookStyles.outputErrorPre}>{output.traceback.join('\n')}</pre>
           )}
         </div>
       );
@@ -127,7 +138,7 @@ export const NotebookRenderer: React.FC<NotebookRendererProps> = ({ content }) =
 
     if (cell.cell_type === 'markdown') {
       return (
-        <div key={index} className="notebook-cell notebook-cell-markdown">
+        <div key={index} style={{ ...notebookStyles.cell, ...notebookStyles.cellMarkdown }}>
           <AIMarkdown content={source} />
         </div>
       );
@@ -135,19 +146,21 @@ export const NotebookRenderer: React.FC<NotebookRendererProps> = ({ content }) =
 
     if (cell.cell_type === 'code') {
       return (
-        <div key={index} className="notebook-cell notebook-cell-code">
-          <div className="notebook-cell-input">
-            <div className="notebook-cell-prompt">
+        <div key={index} style={{ ...notebookStyles.cell, ...notebookStyles.cellCode }}>
+          <div style={notebookStyles.cellInput}>
+            <div style={notebookStyles.cellPrompt}>
               {cell.execution_count !== null && cell.execution_count !== undefined 
                 ? `[${cell.execution_count}]` 
                 : '[ ]'}
             </div>
-            <div className="notebook-cell-source">
-              <pre><code>{source}</code></pre>
+            <div style={notebookStyles.cellSource}>
+              <pre style={notebookStyles.cellSourcePre}>
+                <code style={notebookStyles.cellSourceCode}>{source}</code>
+              </pre>
             </div>
           </div>
           {cell.outputs && cell.outputs.length > 0 && (
-            <div className="notebook-cell-outputs">
+            <div style={notebookStyles.cellOutputs}>
               {cell.outputs.map((output, i) => renderOutput(output, i))}
             </div>
           )}
@@ -157,8 +170,8 @@ export const NotebookRenderer: React.FC<NotebookRendererProps> = ({ content }) =
 
     if (cell.cell_type === 'raw') {
       return (
-        <div key={index} className="notebook-cell notebook-cell-raw">
-          <pre>{source}</pre>
+        <div key={index} style={{ ...notebookStyles.cell, ...notebookStyles.cellRaw }}>
+          <pre style={notebookStyles.cellRawPre}>{source}</pre>
         </div>
       );
     }
@@ -167,16 +180,16 @@ export const NotebookRenderer: React.FC<NotebookRendererProps> = ({ content }) =
   };
 
   if (error) {
-    return <div className="notebook-error">{error}</div>;
+    return <div style={notebookStyles.error}>{error}</div>;
   }
 
   if (!notebook) {
-    return <div className="notebook-loading">Loading notebook...</div>;
+    return <div style={notebookStyles.loading}>Loading notebook...</div>;
   }
 
   return (
-    <div className="notebook-renderer">
-      <div className="notebook-cells">
+    <div style={notebookStyles.renderer}>
+      <div style={notebookStyles.cells}>
         {notebook.cells.map((cell, index) => renderCell(cell, index))}
       </div>
     </div>

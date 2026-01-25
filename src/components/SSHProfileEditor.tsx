@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { SSHProfile } from '../types/ssh';
 import { useSSHProfiles } from '../context/SSHProfilesContext';
-import './SSHProfileEditor.css';
+import {
+  sshProfileEditorStyles,
+  getCloseButtonStyle,
+  getFormInputStyle,
+  getRemoveButtonStyle,
+  getAddItemButtonStyle,
+  getCancelButtonStyle,
+  getSaveButtonStyle,
+} from './SSHProfileEditor.styles';
 
 interface SSHProfileEditorProps {
   profile?: SSHProfile;  // undefined = create new, defined = edit existing
@@ -51,6 +59,10 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
   const [autoConnect, setAutoConnect] = useState(false);
   const [healthCheckInterval, setHealthCheckInterval] = useState('30');
   const [alertOnDisconnect, setAlertOnDisconnect] = useState(false);
+
+  // Hover and focus states for interactive elements
+  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
+  const [focusStates, setFocusStates] = useState<Record<string, boolean>>({});
 
   // Load profile data when editing
   useEffect(() => {
@@ -143,37 +155,50 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
   );
 
   return (
-    <div className="ssh-editor-overlay" onClick={onClose}>
-      <div className="ssh-editor-modal" onClick={e => e.stopPropagation()}>
-        <div className="ssh-editor-header">
-          <h2>{isEdit ? 'Edit' : 'New'} SSH Profile</h2>
-          <button className="ssh-editor-close" onClick={onClose}>×</button>
+    <div style={sshProfileEditorStyles.overlay} onClick={onClose}>
+      <div style={sshProfileEditorStyles.modal} onClick={e => e.stopPropagation()}>
+        <div style={sshProfileEditorStyles.header}>
+          <h2 style={sshProfileEditorStyles.headerTitle}>{isEdit ? 'Edit' : 'New'} SSH Profile</h2>
+          <button 
+            style={getCloseButtonStyle(hoverStates.closeBtn || false)}
+            onClick={onClose}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn: false }))}
+          >×</button>
         </div>
 
-        <div className="ssh-editor-content">
+        <div style={sshProfileEditorStyles.content}>
           {/* Basic Info */}
-          <section className="ssh-editor-section">
-            <h3>Basic</h3>
-            <div className="ssh-form-row">
-              <label>
+          <section style={sshProfileEditorStyles.section}>
+            <h3 style={sshProfileEditorStyles.sectionTitle}>Basic</h3>
+            <div style={sshProfileEditorStyles.formRow}>
+              <label style={sshProfileEditorStyles.formLabel}>
                 Name *
                 <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="e.g., Prod Cluster"
+                  style={getFormInputStyle(focusStates.nameInput || false)}
+                  onFocus={() => setFocusStates(prev => ({ ...prev, nameInput: true }))}
+                  onBlur={() => setFocusStates(prev => ({ ...prev, nameInput: false }))}
                   {...textInputProps}
                 />
               </label>
             </div>
-            <div className="ssh-form-row">
-              <label>
+            <div style={sshProfileEditorStyles.formRow}>
+              <label style={sshProfileEditorStyles.formLabel}>
                 Group
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <select
                     value={group}
                     onChange={e => setGroup(e.target.value)}
-                    style={{ flex: 1 }}
+                    style={{ 
+                      ...getFormInputStyle(focusStates.groupSelect || false),
+                      flex: 1 
+                    }}
+                    onFocus={() => setFocusStates(prev => ({ ...prev, groupSelect: true }))}
+                    onBlur={() => setFocusStates(prev => ({ ...prev, groupSelect: false }))}
                   >
                     <option value="">Ungrouped</option>
                     {existingGroups.map(g => (
@@ -185,7 +210,12 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                     value={group}
                     onChange={e => setGroup(e.target.value)}
                     placeholder="Or create new group"
-                    style={{ flex: 1 }}
+                    style={{ 
+                      ...getFormInputStyle(focusStates.groupInput || false),
+                      flex: 1 
+                    }}
+                    onFocus={() => setFocusStates(prev => ({ ...prev, groupInput: true }))}
+                    onBlur={() => setFocusStates(prev => ({ ...prev, groupInput: false }))}
                     {...textInputProps}
                   />
                 </div>
@@ -194,34 +224,39 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
           </section>
 
           {/* Connection */}
-          <section className="ssh-editor-section">
-            <h3>Connection</h3>
-            <div className="ssh-connection-type">
-              <label className="ssh-radio-label">
+          <section style={sshProfileEditorStyles.section}>
+            <h3 style={sshProfileEditorStyles.sectionTitle}>Connection</h3>
+            <div style={sshProfileEditorStyles.connectionType}>
+              <label style={sshProfileEditorStyles.radioLabel}>
                 <input
                   type="radio"
                   checked={connectionType === 'ssh-config'}
                   onChange={() => setConnectionType('ssh-config')}
+                  style={sshProfileEditorStyles.radioInput}
                 />
                 Use SSH Config Entry
               </label>
-              <label className="ssh-radio-label">
+              <label style={sshProfileEditorStyles.radioLabel}>
                 <input
                   type="radio"
                   checked={connectionType === 'manual'}
                   onChange={() => setConnectionType('manual')}
+                  style={sshProfileEditorStyles.radioInput}
                 />
                 Manual Configuration
               </label>
             </div>
 
             {connectionType === 'ssh-config' ? (
-              <div className="ssh-form-row">
-                <label>
+              <div style={sshProfileEditorStyles.formRow}>
+                <label style={sshProfileEditorStyles.formLabel}>
                   Host from ~/.ssh/config *
                   <select
                     value={sshConfigHost}
                     onChange={e => setSSHConfigHost(e.target.value)}
+                    style={getFormInputStyle(focusStates.sshConfigHost || false)}
+                    onFocus={() => setFocusStates(prev => ({ ...prev, sshConfigHost: true }))}
+                    onBlur={() => setFocusStates(prev => ({ ...prev, sshConfigHost: false }))}
                   >
                     <option value="">-- Select Host --</option>
                     {sshConfigHosts.map(host => (
@@ -234,30 +269,36 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
               </div>
             ) : (
               <>
-                <div className="ssh-form-row">
-                  <label>
+                <div style={sshProfileEditorStyles.formRow}>
+                  <label style={sshProfileEditorStyles.formLabel}>
                     Hostname *
                     <input
                       type="text"
                       value={hostname}
                       onChange={e => setHostname(e.target.value)}
                       placeholder="example.com"
+                      style={getFormInputStyle(focusStates.hostname || false)}
+                      onFocus={() => setFocusStates(prev => ({ ...prev, hostname: true }))}
+                      onBlur={() => setFocusStates(prev => ({ ...prev, hostname: false }))}
                       {...textInputProps}
                     />
                   </label>
                 </div>
-                <div className="ssh-form-row ssh-form-row-split">
-                  <label>
+                <div style={sshProfileEditorStyles.formRowSplit}>
+                  <label style={sshProfileEditorStyles.formLabel}>
                     Username *
                     <input
                       type="text"
                       value={username}
                       onChange={e => setUsername(e.target.value)}
                       placeholder="user"
+                      style={getFormInputStyle(focusStates.username || false)}
+                      onFocus={() => setFocusStates(prev => ({ ...prev, username: true }))}
+                      onBlur={() => setFocusStates(prev => ({ ...prev, username: false }))}
                       {...textInputProps}
                     />
                   </label>
-                  <label>
+                  <label style={sshProfileEditorStyles.formLabel}>
                     Port
                     <input
                       type="number"
@@ -265,29 +306,38 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       onChange={e => setPort(e.target.value)}
                       min="1"
                       max="65535"
+                      style={getFormInputStyle(focusStates.port || false)}
+                      onFocus={() => setFocusStates(prev => ({ ...prev, port: true }))}
+                      onBlur={() => setFocusStates(prev => ({ ...prev, port: false }))}
                     />
                   </label>
                 </div>
-                <div className="ssh-form-row">
-                  <label>
+                <div style={sshProfileEditorStyles.formRow}>
+                  <label style={sshProfileEditorStyles.formLabel}>
                     Identity File (optional)
                     <input
                       type="text"
                       value={identityFile}
                       onChange={e => setIdentityFile(e.target.value)}
                       placeholder="~/.ssh/id_rsa"
+                      style={getFormInputStyle(focusStates.identityFile || false)}
+                      onFocus={() => setFocusStates(prev => ({ ...prev, identityFile: true }))}
+                      onBlur={() => setFocusStates(prev => ({ ...prev, identityFile: false }))}
                       {...textInputProps}
                     />
                   </label>
                 </div>
-                <div className="ssh-form-row">
-                  <label>
+                <div style={sshProfileEditorStyles.formRow}>
+                  <label style={sshProfileEditorStyles.formLabel}>
                     Proxy Jump (optional)
                     <input
                       type="text"
                       value={proxyJump}
                       onChange={e => setProxyJump(e.target.value)}
                       placeholder="jump-host"
+                      style={getFormInputStyle(focusStates.proxyJump || false)}
+                      onFocus={() => setFocusStates(prev => ({ ...prev, proxyJump: true }))}
+                      onBlur={() => setFocusStates(prev => ({ ...prev, proxyJump: false }))}
                       {...textInputProps}
                     />
                   </label>
@@ -297,88 +347,109 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
           </section>
 
           {/* Post-Connection Setup */}
-          <section className="ssh-editor-section">
-            <h3>Post-Connection Setup</h3>
-            <label>Startup Commands</label>
-            <div className="ssh-command-list">
+          <section style={sshProfileEditorStyles.section}>
+            <h3 style={sshProfileEditorStyles.sectionTitle}>Post-Connection Setup</h3>
+            <label style={sshProfileEditorStyles.formLabel}>Startup Commands</label>
+            <div style={sshProfileEditorStyles.commandList}>
               {startupCommands.map((cmd, index) => (
-                <div key={index} className="ssh-command-item">
+                <div key={index} style={sshProfileEditorStyles.commandItem}>
                   <input
                     type="text"
                     value={cmd}
                     onChange={e => updateStartupCommand(index, e.target.value)}
                     placeholder="e.g., cd /scratch/project"
+                    style={sshProfileEditorStyles.listItemInput}
                     {...textInputProps}
                   />
                   <button
                     onClick={() => removeStartupCommand(index)}
-                    className="ssh-remove-btn"
+                    style={getRemoveButtonStyle(hoverStates[`removeCmd-${index}`] || false)}
+                    onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removeCmd-${index}`]: true }))}
+                    onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removeCmd-${index}`]: false }))}
                   >
                     ×
                   </button>
                 </div>
               ))}
-              <button onClick={addStartupCommand} className="ssh-add-item-btn">
+              <button 
+                onClick={addStartupCommand}
+                style={getAddItemButtonStyle(hoverStates.addCmd || false)}
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, addCmd: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, addCmd: false }))}
+              >
                 + Add Command
               </button>
             </div>
 
-            <label>Environment Variables</label>
-            <div className="ssh-env-list">
+            <label style={sshProfileEditorStyles.formLabel}>Environment Variables</label>
+            <div style={sshProfileEditorStyles.envList}>
               {Object.entries(envVars).map(([key, value]) => (
-                <div key={key} className="ssh-env-item">
-                  <span className="ssh-env-key">{key}=</span>
+                <div key={key} style={sshProfileEditorStyles.envItem}>
+                  <span style={sshProfileEditorStyles.envKey}>{key}=</span>
                   <input
                     type="text"
                     value={value}
                     onChange={e => updateEnvVar(key, e.target.value)}
                     placeholder="value"
+                    style={sshProfileEditorStyles.listItemInput}
                     {...textInputProps}
                   />
                   <button
                     onClick={() => removeEnvVar(key)}
-                    className="ssh-remove-btn"
+                    style={getRemoveButtonStyle(hoverStates[`removeEnv-${key}`] || false)}
+                    onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removeEnv-${key}`]: true }))}
+                    onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removeEnv-${key}`]: false }))}
                   >
                     ×
                   </button>
                 </div>
               ))}
-              <button onClick={addEnvVar} className="ssh-add-item-btn">
+              <button 
+                onClick={addEnvVar}
+                style={getAddItemButtonStyle(hoverStates.addEnv || false)}
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, addEnv: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, addEnv: false }))}
+              >
                 + Add Variable
               </button>
             </div>
           </section>
 
           {/* Advanced Options */}
-          <section className="ssh-editor-section">
-            <h3>Advanced</h3>
-            <div className="ssh-checkbox-row">
-              <label>
+          <section style={sshProfileEditorStyles.section}>
+            <h3 style={sshProfileEditorStyles.sectionTitle}>Advanced</h3>
+            <div style={sshProfileEditorStyles.checkboxRow}>
+              <label style={sshProfileEditorStyles.checkboxLabel}>
                 <input
                   type="checkbox"
                   checked={autoConnect}
                   onChange={e => setAutoConnect(e.target.checked)}
+                  style={sshProfileEditorStyles.checkboxInput}
                 />
                 Auto-connect on startup
               </label>
             </div>
-            <div className="ssh-form-row">
-              <label>
+            <div style={sshProfileEditorStyles.formRow}>
+              <label style={sshProfileEditorStyles.formLabel}>
                 Health Check Interval (seconds)
                 <input
                   type="number"
                   value={healthCheckInterval}
                   onChange={e => setHealthCheckInterval(e.target.value)}
                   min="0"
+                  style={getFormInputStyle(focusStates.healthCheck || false)}
+                  onFocus={() => setFocusStates(prev => ({ ...prev, healthCheck: true }))}
+                  onBlur={() => setFocusStates(prev => ({ ...prev, healthCheck: false }))}
                 />
               </label>
             </div>
-            <div className="ssh-checkbox-row">
-              <label>
+            <div style={sshProfileEditorStyles.checkboxRow}>
+              <label style={sshProfileEditorStyles.checkboxLabel}>
                 <input
                   type="checkbox"
                   checked={alertOnDisconnect}
                   onChange={e => setAlertOnDisconnect(e.target.checked)}
+                  style={sshProfileEditorStyles.checkboxInput}
                 />
                 Alert on disconnect
               </label>
@@ -386,14 +457,21 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
           </section>
         </div>
 
-        <div className="ssh-editor-footer">
-          <button className="ssh-editor-btn ssh-editor-btn-cancel" onClick={onClose}>
+        <div style={sshProfileEditorStyles.footer}>
+          <button 
+            style={getCancelButtonStyle(hoverStates.cancelBtn || false)}
+            onClick={onClose}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
+          >
             Cancel
           </button>
           <button
-            className="ssh-editor-btn ssh-editor-btn-save"
+            style={getSaveButtonStyle(hoverStates.saveBtn || false, !canSave)}
             onClick={handleSave}
             disabled={!canSave}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, saveBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, saveBtn: false }))}
           >
             Save Profile
           </button>

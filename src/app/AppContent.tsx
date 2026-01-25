@@ -8,6 +8,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitTo, listen } from "@tauri-apps/api/event";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger('AppContent');
 
 const LazyAIPanel = React.lazy(() => import('../components/AIPanel'));
 const LazySettingsModal = React.lazy(() => import('../components/SettingsModal'));
@@ -174,7 +177,7 @@ export default function AppContent() {
         connectionCount: (profile.connectionCount || 0) + 1,
       });
     } catch (error) {
-      console.error('Failed to connect SSH profile:', error);
+      log.error('Failed to connect SSH profile', error);
     }
   }, [addSSHTab, updateConnection, updateProfile]);
 
@@ -192,7 +195,7 @@ export default function AppContent() {
         });
       })
       .catch((err) => {
-        console.warn('Failed to load SSH health monitor:', err);
+        log.warn('Failed to load SSH health monitor', err);
       });
 
     return () => {
@@ -305,7 +308,7 @@ export default function AppContent() {
         });
       })
       .catch((err) => {
-        console.warn('Failed to load SSH main window listeners:', err);
+        log.warn('Failed to load SSH main window listeners', err);
       });
 
     return () => {
@@ -371,7 +374,7 @@ export default function AppContent() {
     }
 
     if (activePty === null || activePty === undefined) {
-      console.error('No active terminal - mainActiveTabId:', mainActiveTabId, 'activeTabId:', activeTabId);
+      log.error('No active terminal', { mainActiveTabId, activeTabId });
       alert('No active terminal found. Please make sure a terminal is active in the main window and try again.');
       return;
     }
@@ -387,7 +390,7 @@ export default function AppContent() {
 
         await waitForCommandComplete(activePty);
       } catch (error) {
-        console.error(`[Quick Action: ${action.name}] Failed to execute command: ${command}`, error);
+        log.error(`Quick action '${action.name}' failed to execute command: ${command}`, error);
       }
     }
   };
@@ -419,7 +422,7 @@ export default function AppContent() {
     });
 
     aiWindow.once('tauri://error', (event) => {
-      console.error('AI panel window error:', event);
+      log.error('AI panel window error', event);
     });
   };
 
@@ -450,7 +453,7 @@ export default function AppContent() {
     });
 
     qaWindow.once('tauri://error', (event) => {
-      console.error('Quick Actions window error:', event);
+      log.error('Quick Actions window error', event);
     });
   };
 
@@ -474,7 +477,7 @@ export default function AppContent() {
     });
 
     sshWindow.once('tauri://error', (event) => {
-      console.error('SSH panel window error:', event);
+      log.error('SSH panel window error', event);
     });
   };
 

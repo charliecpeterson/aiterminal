@@ -8,6 +8,9 @@ import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { invoke } from '@tauri-apps/api/core';
 import { SimpleAutocomplete, type DirEntry } from '../autocomplete/simple';
 import { LLMInlineAutocomplete } from '../autocomplete/llm-inline';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('Autocomplete');
 
 export function useAutocompleteSimple(
   terminalRef: React.RefObject<XTermTerminal | null>,
@@ -23,6 +26,8 @@ export function useAutocompleteSimple(
   const pathCommandsRef = useRef<string[]>([]);
   const homeDirRef = useRef<string>('');
   const dirRequestRef = useRef<{ path: string; input: string } | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cwdRef = useRef<string>('/');
 
 
   // Initialize engines based on source
@@ -38,7 +43,7 @@ export function useAutocompleteSimple(
     if ((source === 'llm' || source === 'hybrid') && !llmEngineRef.current) {
       llmEngineRef.current = new LLMInlineAutocomplete();
       const modelPath = '~/.config/aiterminal/models/qwen3-1.7b-q4_k_m.gguf';
-      llmEngineRef.current.initialize(modelPath).catch(console.error);
+      llmEngineRef.current.initialize(modelPath).catch((err) => log.error('Failed to initialize LLM engine', err));
     }
   }, [enabled, source]);
 
@@ -51,7 +56,7 @@ export function useAutocompleteSimple(
         const history = await invoke<string[]>('get_shell_history');
         historyEngineRef.current?.updateHistory(history);
       } catch (error) {
-        console.error('Failed to load shell history:', error);
+        log.error('Failed to load shell history', error);
       }
     };
 
@@ -70,7 +75,7 @@ export function useAutocompleteSimple(
         pathCommandsRef.current = commands;
         historyEngineRef.current?.setPathCommands(commands);
       } catch (error) {
-        console.error('Failed to load PATH commands:', error);
+        log.error('Failed to load PATH commands', error);
       }
     };
 
@@ -82,7 +87,7 @@ export function useAutocompleteSimple(
           historyEngineRef.current?.setHomeDir(home);
         }
       } catch (error) {
-        console.error('Failed to load HOME:', error);
+        log.error('Failed to load HOME directory', error);
       }
     };
 
@@ -131,8 +136,18 @@ export function useAutocompleteSimple(
         engine.render(terminal);
       })
       .catch((error) => {
-        console.error('Failed to list directory entries:', error);
+        log.error('Failed to list directory entries', error);
       });
+  }, []);
+
+  // Cleanup debounce timer on unmount (for LLM mode)
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    };
   }, []);
 
   // Get CWD for LLM context
@@ -183,7 +198,7 @@ export function useAutocompleteSimple(
         const lastToken = tokens[tokens.length - 1] ?? '';
         const allowLLM = tokens.length >= 2 && lastToken.length >= 2;
         if (allowLLM) {
-          handleLLMKey(event, key, terminal, llmEngine, ptyId, debounceMs);
+          handleLLMKey(event, key, terminal, llmEngine, ptyId, debounceMs, debounceTimerRef, cwdRef);
         }
       } else if (source === 'hybrid') {
         if (historyEngine) {
@@ -238,7 +253,7 @@ function handleHistoryKey(
     const toInsert = engine.acceptSuggestion();
     if (toInsert) {
       engine.clearRender(terminal);
-      invoke('write_to_pty', { id: ptyId, data: toInsert }).catch(console.error);
+      invoke('write_to_pty', { id: ptyId, data: toInsert }).catch((err) => log.error('Failed to write to PTY', err));
       event.domEvent.preventDefault();
       event.domEvent.stopPropagation();
       return;
@@ -276,13 +291,15 @@ function handleLLMKey(
   terminal: XTermTerminal,
   engine: LLMInlineAutocomplete,
   ptyId: number,
-  debounceMs: number
+  debounceMs: number,
+  debounceTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  cwdRef: React.MutableRefObject<string>
 ) {
   if (key === 'ArrowRight') {
     const toInsert = engine.acceptSuggestion();
     if (toInsert) {
       engine.clearRender(terminal);
-      invoke('write_to_pty', { id: ptyId, data: toInsert }).catch(console.error);
+      invoke('write_to_pty', { id: ptyId, data: toInsert }).catch((err) => log.error('Failed to write to PTY', err));
       event.domEvent.preventDefault();
       event.domEvent.stopPropagation();
       return;
@@ -321,7 +338,7 @@ function handleLLMKey(
             engine.render(terminal, suggestion);
           }
         } catch (error) {
-          console.error('[LLM inline] Query failed:', error);
+          log.error('LLM query failed', error);
         }
       }, debounceMs);
     }
@@ -363,12 +380,8 @@ function handleLLMKey(
           engine.render(terminal, suggestion);
         }
       } catch (error) {
-        console.error('[LLM inline] Query failed:', error);
+        log.error('LLM inline query failed', error);
       }
     }, debounceMs);
   }
 }
-
-// Refs for LLM mode state (module-level to persist across renders)
-let debounceTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
-let cwdRef: { current: string } = { current: '/' };

@@ -3,6 +3,9 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('LLMAutocomplete');
 
 export interface CompletionContext {
   shell: string;
@@ -27,7 +30,7 @@ export class LLMAutocomplete {
       this.initialized = true;
       this.enabled = true;
     } catch (error) {
-      console.error('❌ Failed to initialize LLM:', error);
+      log.error('Failed to initialize LLM', error);
       this.enabled = false;
       throw error;
     }
@@ -35,7 +38,7 @@ export class LLMAutocomplete {
   
   async getSuggestions(context: CompletionContext): Promise<Suggestion[]> {
     if (!this.enabled || !this.initialized) {
-      console.warn('LLM not initialized, returning empty suggestions');
+      log.warn('LLM not initialized, returning empty suggestions');
       return [];
     }
     
@@ -46,7 +49,7 @@ export class LLMAutocomplete {
         source: 'llm' as const,
       }));
     } catch (error) {
-      console.error('LLM completion failed:', error);
+      log.error('LLM completion failed', error);
       return [];
     }
   }
@@ -57,7 +60,7 @@ export class LLMAutocomplete {
     try {
       return await invoke<boolean>('llm_health_check');
     } catch (error) {
-      console.error('Health check failed:', error);
+      log.error('Health check failed', error);
       return false;
     }
   }
@@ -69,7 +72,7 @@ export class LLMAutocomplete {
       await invoke('stop_llm');
       this.enabled = false;
     } catch (error) {
-      console.error('Failed to stop LLM:', error);
+      log.error('Failed to stop LLM', error);
     }
   }
   

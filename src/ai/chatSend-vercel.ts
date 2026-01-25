@@ -14,6 +14,9 @@ import { createTools } from './tools-vercel';
 import { buildEnhancedSystemPrompt, summarizeContext, addChainOfThought } from './prompts';
 import { rankContextByRelevance, deduplicateContext, formatRankedContext } from './contextRanker';
 import { extractRecentTopics } from './contextTracking';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('ChatSend');
 
 export interface ChatSendDeps {
   prompt: string;
@@ -65,7 +68,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     prompt,
     settingsAi,
     messages,
-    formattedContextItems,
+    formattedContextItems: _formattedContextItems, // Available but not currently used
     terminalId,
     usedContextForNextAssistantMessage,
     addMessage,
@@ -92,8 +95,8 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     return;
   }
 
-  // Use pre-formatted context (already handles redaction)
-  const formattedContext = formattedContextItems.join('\n\n---\n\n');
+  // Pre-formatted context is available in formattedContextItems (already handles redaction)
+  // Note: Not used directly here, but passed through via contextItems for ranking/deduplication
 
   // Add user message
   addMessage({
@@ -182,7 +185,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       abortSignal: abortController?.signal, // Enable cancellation
       system: finalSystemPrompt,
       temperature: 0.7, // Balanced creativity
-      maxTokens: 2000, // Reasonable response length
+      // Note: maxTokens not specified - uses model default
     });
 
     // Create assistant message
@@ -230,7 +233,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     setIsSending(false);
 
   } catch (error) {
-    console.error('❌ AI request failed:', error);
+    log.error('AI request failed', error);
     
     // Check if it was aborted
     if (error instanceof Error && error.name === 'AbortError') {

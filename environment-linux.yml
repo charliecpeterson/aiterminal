@@ -1,0 +1,85 @@
+name: aiterminal-linux
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Node.js (closest available to 20.19.0 from .nvmrc)
+  # npm is included with nodejs package
+  - nodejs=20.19.*
+  
+  # Rust toolchain (latest stable)
+  - rust>=1.82
+  
+  # Build tools
+  - pkg-config
+  - openssl>=3.0
+  
+  # Linux system libraries for Tauri
+  - cairo
+  - pango
+  - gdk-pixbuf
+  - gtk3
+  - librsvg
+  
+  # Development utilities
+  - git
+  - make
+  - gcc_linux-64
+  - gxx_linux-64
+  
+  # Optional Python tools
+  - python>=3.11
+  - pip
+  
+  # Additional utilities
+  - curl
+  - wget
+
+# Linux-specific setup instructions:
+# -----------------------------------
+#
+# Prerequisites (one-time setup):
+# 1. Install system dependencies first:
+#
+#    Ubuntu/Debian:
+#    sudo apt-get update
+#    sudo apt-get install -y \
+#      libwebkit2gtk-4.1-dev \
+#      build-essential \
+#      curl \
+#      wget \
+#      file \
+#      libxdo-dev \
+#      libssl-dev \
+#      libayatana-appindicator3-dev \
+#      librsvg2-dev
+#
+#    Fedora/RHEL:
+#    sudo dnf install \
+#      webkit2gtk4.1-devel \
+#      openssl-devel \
+#      curl \
+#      wget \
+#      file \
+#      libappindicator-gtk3-devel \
+#      librsvg2-devel
+#
+# 2. Create and activate this environment:
+#    conda env create -f environment-linux.yml
+#    conda activate aiterminal-linux
+#
+# 3. Verify installations:
+#    node --version     # Should be v20.19.x
+#    npm --version      # Should be 10.x.x or higher
+#    rustc --version    # Should be 1.82.0+
+#    cargo --version    # Should be 1.82.0+
+#
+# 4. Install JavaScript dependencies:
+#    npm ci
+#
+# 5. Verify Rust compilation:
+#    cd src-tauri && cargo check
+#
+# 6. Run development server:
+#    npm run tauri dev

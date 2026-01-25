@@ -25,6 +25,9 @@ import { useAutocompleteMenu } from '../terminal/hooks/useAutocompleteMenu';
 import { AutocompleteMenu } from './AutocompleteMenu';
 import CommandHistoryMenu from './CommandHistoryMenu';
 import type { MarkerManager } from '../terminal/ui/markers';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('Terminal');
 
 // Format duration in ms to human-readable string
 function formatDuration(ms: number): string {
@@ -102,7 +105,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                 output: outputText,
                 exitCode,
             }).catch(err => {
-                console.error('Failed to scan and add context for quick action:', err);
+                log.error('Failed to scan and add context for quick action', err);
             });
 
             // Close the menu
@@ -118,7 +121,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                     terminalId: id,
                 },
             }).catch((err) => {
-                console.warn('Failed to emit quick action event:', err);
+                log.warn('Failed to emit quick action event', err);
             });
         },
         [addContextItem, addContextItemWithScan, hideCopyMenu, id]
@@ -189,7 +192,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
             setHostLabelAndRemoteState('Local');
           }
         })
-        .catch((err) => console.error('Failed to get PTY info:', err));
+        .catch((err) => log.error('Failed to get PTY info', err));
     };
     
     // Initial fetch
@@ -206,7 +209,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
       return () => {
           // Close PTY before cleaning up terminal
           invoke('close_pty', { id }).catch((e: unknown) => {
-              console.error(`Failed to close PTY ${id}:`, e);
+              log.error(`Failed to close PTY ${id}`, e);
           });
           
           // Cleanup terminal instance

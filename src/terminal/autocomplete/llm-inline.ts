@@ -4,6 +4,9 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('LLMInlineAutocomplete');
 
 interface CompletionContext {
   shell: string;
@@ -30,7 +33,7 @@ export class LLMInlineAutocomplete {
       await invoke('init_llm', { modelPath });
       this.enabled = true;
     } catch (error) {
-      console.error('❌ LLM Inline init failed:', error);
+      log.error('LLM Inline init failed', error);
       this.enabled = false;
     }
   }
@@ -114,7 +117,7 @@ export class LLMInlineAutocomplete {
       
       return this.currentSuggestion;
     } catch (error) {
-      console.error('LLM inline query failed:', error);
+      log.error('LLM inline query failed', error);
       this.currentSuggestion = '';
       return '';
     } finally {
@@ -172,7 +175,7 @@ export class LLMInlineAutocomplete {
       this.commandAllowedCache.set(primary, allowed);
       return allowed;
     } catch (error) {
-      console.error('[LLM inline] Failed to validate command:', error);
+      log.error('Failed to validate command', error);
       return false;
     }
   }

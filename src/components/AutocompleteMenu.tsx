@@ -1,6 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Suggestion } from '../terminal/autocomplete/llm';
-import './AutocompleteMenu.css';
+import {
+  autocompleteMenuStyles,
+  getMenuItemStyle,
+  getBadgeStyle,
+} from './AutocompleteMenu.styles';
 
 interface Props {
   suggestions: Suggestion[];
@@ -20,6 +24,7 @@ export function AutocompleteMenu({
   loading = false,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
   
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -35,41 +40,46 @@ export function AutocompleteMenu({
   return (
     <div
       ref={menuRef}
-      className="autocomplete-menu"
       style={{
+        ...autocompleteMenuStyles.menu,
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
     >
       {loading && suggestions.length === 0 && (
-        <div className="menu-item loading">
-          <span className="spinner">⟳</span> Loading suggestions...
+        <div style={getMenuItemStyle(false, false, true)}>
+          <span style={autocompleteMenuStyles.spinner}>⟳</span> Loading suggestions...
         </div>
       )}
       
       {!loading && suggestions.length === 0 && (
-        <div className="menu-item empty">No suggestions</div>
+        <div style={getMenuItemStyle(false, false, true)}>No suggestions</div>
       )}
       
-      {suggestions.map((suggestion, index) => (
-        <div
-          key={index}
-          className={`menu-item ${index === selectedIndex ? 'selected' : ''}`}
-          onClick={() => onSelect(suggestion.text)}
-          onMouseEnter={() => {
-            // Could add hover logic here if needed
-          }}
-        >
-          <span className="command">{suggestion.text}</span>
-          <span className={`badge badge-${suggestion.source}`}>
-            {suggestion.source === 'llm' ? '✨' : '📚'}
-          </span>
-        </div>
-      ))}
+      {suggestions.map((suggestion, index) => {
+        const itemKey = `item-${index}`;
+        const isSelected = index === selectedIndex;
+        const isHover = hoverStates[itemKey] || false;
+        
+        return (
+          <div
+            key={index}
+            style={getMenuItemStyle(isSelected, isHover, false)}
+            onClick={() => onSelect(suggestion.text)}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, [itemKey]: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, [itemKey]: false }))}
+          >
+            <span style={autocompleteMenuStyles.command}>{suggestion.text}</span>
+            <span style={getBadgeStyle(suggestion.source)}>
+              {suggestion.source === 'llm' ? '✨' : '📚'}
+            </span>
+          </div>
+        );
+      })}
       
       {loading && suggestions.length > 0 && (
-        <div className="menu-item loading-more">
-          <span className="spinner">⟳</span> Loading more...
+        <div style={getMenuItemStyle(false, false, true)}>
+          <span style={autocompleteMenuStyles.spinner}>⟳</span> Loading more...
         </div>
       )}
     </div>

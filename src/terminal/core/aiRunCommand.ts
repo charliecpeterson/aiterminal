@@ -1,5 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('AIRunCommand');
 
 type RunMode = 'run' | 'insert';
 
@@ -89,7 +92,7 @@ export function attachAiRunCommandListener(params: {
       );
       invoke('write_to_pty', { id: params.id, data: ` ${normalized}` });
       if (reason && reason !== 'empty') {
-        console.warn(`[ai-run-command] Inserted instead of running (${reason}).`);
+        log.warn(`Inserted instead of running (${reason})`);
       }
     }
     params.focusTerminal();

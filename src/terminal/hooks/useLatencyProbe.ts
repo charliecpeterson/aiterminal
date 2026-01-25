@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('LatencyProbe');
 
 export function useLatencyProbe(terminalId: number, intervalMs: number = 10000): {
   latencyMs: number | null;
@@ -19,7 +22,7 @@ export function useLatencyProbe(terminalId: number, intervalMs: number = 10000):
         setLatencyAt(Date.now());
       } catch (err) {
         if (cancelled) return;
-        console.warn('Latency probe failed:', err);
+        log.warn('Latency probe failed', err);
         setLatencyMs(null);
         setLatencyAt(Date.now());
       }
