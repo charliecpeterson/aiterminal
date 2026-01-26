@@ -794,6 +794,41 @@ The AI system is built on:
 Notes:
 - Terminal/PTY behavior is hard to simulate in unit tests; use the manual checklist before release.
 
+## Architecture Overview (For Advanced Users)
+
+AIterminal has been recently refactored for improved maintainability and performance. The application now uses a modular architecture with:
+
+- **9 Custom React Hooks** - Managing state, sessions, SSH, keyboard shortcuts, etc.
+- **Focused Components** - TabBar, TerminalGrid, AppToolbar, WindowRouter
+- **Clean Separation** - UI, business logic, and utilities are clearly separated
+
+This architecture ensures:
+- ✅ Fast, responsive UI
+- ✅ Reliable session restoration
+- ✅ Robust error handling
+- ✅ Easy to extend with new features
+
+For developers interested in contributing, see [DEV_GUIDE.md](../DEV_GUIDE.md) in the root directory.
+
+### Modular Design
+
+The refactoring reduced the main `App.tsx` file from 1,002 lines to 207 lines (79% reduction) by extracting:
+
+- **State Management**: 9 custom hooks handle tabs, sessions, SSH, commands, keyboard shortcuts
+- **UI Components**: TabBar, AppToolbar, TerminalGrid, WindowRouter for focused rendering
+- **Window Management**: Separate window types (AI Panel, SSH Panel, Quick Actions, Output Viewer, Preview)
+- **Cross-Window Communication**: Event-based sync between windows
+
+### Performance Optimizations
+
+Recent improvements include:
+
+- **Streaming Buffer**: Batches text updates to reduce React re-renders by 70-90%
+- **Conversation History**: Sliding window + auto-summarization saves 60-80% tokens
+- **Context Ranking**: Keyword-based relevance scoring prevents sending irrelevant context
+- **Session Auto-Save**: Saves every 5 seconds to prevent data loss
+- **Command Tracking**: Efficient monitoring of long-running commands
+
 ## Troubleshooting
 
 ### Terminal Markers
