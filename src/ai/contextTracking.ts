@@ -3,7 +3,7 @@
  * Tracks when context items are used in messages to improve relevance scoring
  */
 
-import type { ContextItem } from '../context/AIContext';
+import type { ContextItem, ChatMessage } from '../context/AIContext';
 
 /**
  * Mark context items as used in a message
@@ -30,7 +30,7 @@ export function markContextAsUsed(
 /**
  * Extract topics from recent messages for conversation relevance
  */
-export function extractRecentTopics(messages: any[], limit: number = 3): string[] {
+export function extractRecentTopics(messages: ChatMessage[], limit: number = 3): string[] {
   const topics = new Set<string>();
   
   // Look at last N messages

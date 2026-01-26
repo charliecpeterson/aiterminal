@@ -1,5 +1,5 @@
 import type { IDecoration, IDisposable, IMarker, Terminal as XTermTerminal } from '@xterm/xterm';
-import type { ContextItem } from '../../context/AIContext';
+import type { ContextItem, ContextType } from '../../context/AIContext';
 import type { PendingFileCaptureRef } from '../core/fileCapture';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import {
@@ -25,7 +25,7 @@ export interface CopyMenuState {
 }
 
 export type AddContextItem = (item: ContextItem) => void;
-export type AddContextItemWithScan = (content: string, type: import('../../context/AIContext').ContextType, metadata?: ContextItem['metadata']) => Promise<void>;
+export type AddContextItemWithScan = (content: string, type: ContextType, metadata?: ContextItem['metadata']) => Promise<void>;
 
 export interface MarkerManagerParams {
   term: XTermTerminal;
@@ -60,9 +60,9 @@ interface MarkerMeta {
 }
 
 
-function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration): number {
+function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDecoration, markerMeta: WeakMap<IDecoration, MarkerMeta>): number {
   const startLine = marker.marker.line;
-  const meta = (marker as any)?._aiterm_meta as MarkerMeta | undefined;
+  const meta = markerMeta.get(marker);
   let doneLine = meta?.doneMarker?.line ?? undefined;
 
   // Python REPL nuance: our OSC 133;D often arrives *before* Python prints the next ">>>" prompt.
@@ -101,7 +101,7 @@ function computeRanges(
   marker: IDecoration
 ): { commandRange: [number, number]; outputRange: [number, number] | null; disabled: boolean; outputDisabled: boolean } {
   const startLine = marker.marker.line;
-  const endLine = computeEndLine(term, markers, marker);
+  const endLine = computeEndLine(term, markers, marker, markerMeta);
 
   const meta = markerMeta.get(marker);
   const outputStartLine = meta?.outputStartMarker?.line ?? null;
@@ -293,7 +293,7 @@ export function createMarkerManager({
     if (meta.isPythonREPL && (meta.exitCode === undefined || meta.exitCode === 0) && meta.outputStartMarker) {
       try {
         const startLine = marker.marker.line;
-        const endLine = computeEndLine(term, markers, marker);
+        const endLine = computeEndLine(term, markers, marker, markerMeta);
         const outputStartLine = meta.outputStartMarker.line;
         const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
         if (outputInfo.hasOutput) {
@@ -308,7 +308,6 @@ export function createMarkerManager({
     }
 
     markerMeta.set(marker, meta);
-    (marker as any)._aiterm_meta = meta;
 
     // Immediately sync DOM classes.
     // NOTE: In some xterm/WebKit paths, `marker.element` can be null or stale even when a
@@ -343,7 +342,7 @@ export function createMarkerManager({
     if (pendingFileCaptureRef.current) {
       const { path, maxBytes } = pendingFileCaptureRef.current;
       const startLine = marker.marker.line;
-      const endLine = computeEndLine(term, markers, marker);
+      const endLine = computeEndLine(term, markers, marker, markerMeta);
       const outputStartLine = meta?.outputStartMarker?.line ?? null;
       const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
       if (outputInfo.hasOutput) {
@@ -439,7 +438,7 @@ export function createMarkerManager({
   const findMarkerAtLine = (lineNumber: number): IDecoration | null => {
     for (const marker of markers) {
       const startLine = marker.marker.line;
-      const endLine = computeEndLine(term, markers, marker);
+      const endLine = computeEndLine(term, markers, marker, markerMeta);
       if (lineNumber >= startLine && lineNumber <= endLine) {
         return marker;
       }
@@ -462,7 +461,7 @@ export function createMarkerManager({
 
   const computeVisibleHighlight = (marker: IDecoration) => {
     const startLine = marker.marker.line;
-    const endLine = computeEndLine(term, markers, marker);
+    const endLine = computeEndLine(term, markers, marker, markerMeta);
 
     const viewportStart = term.buffer.active.viewportY;
     const viewportEnd = viewportStart + term.rows - 1;
@@ -642,7 +641,7 @@ export function createMarkerManager({
 
       // Show output button if there's output
       const startLine = marker.marker.line;
-      const endLine = computeEndLine(term, markers, marker);
+      const endLine = computeEndLine(term, markers, marker, markerMeta);
       const outputStartLine = meta?.outputStartMarker?.line ?? null;
       const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
 
@@ -827,11 +826,6 @@ export function createMarkerManager({
     }
 
     markerMeta.delete(marker);
-    try {
-      delete (marker as any)._aiterm_meta;
-    } catch {
-      // ignore
-    }
 
     notifyMarkersChanged();
   };
@@ -923,8 +917,7 @@ export function createMarkerManager({
             }
 
             markerMeta.set(existing, meta);
-            (existing as any)._aiterm_meta = meta;
-            const existingEl = (existing as any).element ?? markerElement.get(existing);
+            const existingEl = existing.element ?? markerElement.get(existing);
             if (existingEl) renderMarkerElement(existingEl, meta);
             currentMarker = existing;
             return true;
@@ -1034,7 +1027,6 @@ export function createMarkerManager({
           }
 
           markerMeta.set(marker, meta);
-          (marker as any)._aiterm_meta = meta;
           
           if (isBootstrap) {
           }
@@ -1090,8 +1082,7 @@ export function createMarkerManager({
               pythonMarkersById.set(pythonCommandId, marker);
             }
             markerMeta.set(marker, meta);
-            (marker as any)._aiterm_meta = meta;
-            const markerEl = (marker as any).element ?? markerElement.get(marker);
+            const markerEl = marker.element ?? markerElement.get(marker);
             if (markerEl) renderMarkerElement(markerEl, meta);
             
             if (isBootstrap) {
@@ -1124,8 +1115,7 @@ export function createMarkerManager({
               pendingStartTime = null;
             }
             markerMeta.set(currentMarker, meta);
-            (currentMarker as any)._aiterm_meta = meta;
-            const cmEl = (currentMarker as any).element ?? markerElement.get(currentMarker);
+            const cmEl = currentMarker.element ?? markerElement.get(currentMarker);
             if (cmEl) renderMarkerElement(cmEl, meta);
           }
         }
@@ -1202,14 +1192,14 @@ export function createMarkerManager({
       if (!commandText && !outputText) return;
 
       const content = outputText || commandText;
-      const type = outputText ? 'command_output' : 'command';
+      const type: ContextType = outputText ? 'command_output' : 'command';
       const metadata = outputText ? {
         command: commandText || undefined,
         output: outputText,
       } : undefined;
 
       if (addContextItemWithScan) {
-        addContextItemWithScan(content, type as any, metadata).catch(err => {
+        addContextItemWithScan(content, type, metadata).catch(err => {
           log.error('Failed to scan context in captureLast', err);
           // Fallback to direct add
           if (outputText) {
@@ -1311,14 +1301,14 @@ export function createMarkerManager({
     if (!commandText && !outputText) return;
     
     const content = outputText || commandText;
-    const type = outputText ? 'command_output' : 'command';
+    const type: ContextType = outputText ? 'command_output' : 'command';
     const metadata = outputText ? {
       command: commandText || undefined,
       output: outputText,
     } : undefined;
 
     if (addContextItemWithScan) {
-      addContextItemWithScan(content, type as any, metadata).catch(err => {
+      addContextItemWithScan(content, type, metadata).catch(err => {
         log.error('Failed to scan context in addCommandToContext', err);
         // Fallback
         if (outputText) {

@@ -11,31 +11,37 @@ pub struct PathValidator {
 impl PathValidator {
     /// Create a new PathValidator with the specified base directory.
     /// All validated paths must be within this base directory.
+    /// The base directory itself is canonicalized to ensure consistent checks.
     pub fn new(allowed_base: PathBuf) -> Self {
-        PathValidator { allowed_base }
+        // Canonicalize the allowed base to ensure consistent boundary checks
+        let canonical_base = fs::canonicalize(&allowed_base)
+            .unwrap_or_else(|_| allowed_base.clone());
+        
+        PathValidator { 
+            allowed_base: canonical_base 
+        }
     }
 
     /// Validate a path and return its canonicalized form if safe.
     /// 
     /// # Security Checks
-    /// 1. Rejects paths containing suspicious patterns (.. in raw form)
-    /// 2. Expands ~ to home directory
-    /// 3. Canonicalizes to resolve symlinks and relative components
-    /// 4. Verifies the final path is within allowed_base
+    /// 1. Expands ~ to home directory
+    /// 2. Converts to absolute path
+    /// 3. Canonicalizes to resolve symlinks and relative components (including ..)
+    /// 4. Verifies the canonical path is within allowed_base
+    /// 
+    /// # Important Security Note
+    /// This function canonicalizes BEFORE checking for path traversal.
+    /// This prevents bypasses via symlinks or encoded path separators.
+    /// The final canonical path must be within allowed_base.
     /// 
     /// # Errors
     /// Returns an error if:
-    /// - Path contains suspicious patterns
-    /// - Path cannot be canonicalized
-    /// - Path escapes the allowed base directory
+    /// - Path cannot be canonicalized (including non-existent paths)
+    /// - Path escapes the allowed base directory after canonicalization
     pub fn validate(&self, path: &Path) -> Result<PathBuf, String> {
         let path_str = path.to_str()
             .ok_or_else(|| "Invalid UTF-8 in path".to_string())?;
-
-        // Reject obvious traversal attempts in raw path
-        if path_str.contains("..") {
-            return Err(format!("Path traversal detected: path contains '..' ({})", path_str));
-        }
 
         // Expand ~ to home directory
         let expanded_path = if path_str.starts_with("~/") {
@@ -173,11 +179,13 @@ mod tests {
     #[test]
     fn test_reject_parent_traversal() {
         let test_dir = setup_test_dir();
-        let validator = PathValidator::new(test_dir);
+        let validator = PathValidator::new(test_dir.clone());
         
         let result = validator.validate(Path::new("../../../etc/passwd"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Path traversal detected"));
+        // After canonicalization, this should fail because it's outside allowed base
+        let err_msg = result.unwrap_err();
+        assert!(err_msg.contains("Access denied") || err_msg.contains("Could not canonicalize"));
     }
 
     #[test]
@@ -193,11 +201,20 @@ mod tests {
     #[test]
     fn test_reject_hidden_traversal() {
         let test_dir = setup_test_dir();
-        let validator = PathValidator::new(test_dir);
+        let validator = PathValidator::new(test_dir.clone());
         
-        let result = validator.validate(Path::new("test/../../../etc/passwd"));
+        // Create test.txt so the path can be canonicalized
+        let test_file = test_dir.join("test.txt");
+        File::create(&test_file).unwrap();
+        
+        // This path contains .. which will be resolved during canonicalization
+        // If it resolves outside allowed base, it should be rejected
+        let traversal_path = test_dir.join("test/../../../etc/passwd");
+        let result = validator.validate(&traversal_path);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Path traversal detected"));
+        // Should fail during canonicalization or boundary check
+        let err_msg = result.unwrap_err();
+        assert!(err_msg.contains("Access denied") || err_msg.contains("Could not canonicalize"));
     }
 
     #[test]
@@ -262,5 +279,95 @@ mod tests {
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("Access denied"));
         }
+    }
+
+    #[test]
+    fn test_canonicalize_before_validate() {
+        let test_dir = setup_test_dir();
+        let validator = PathValidator::new(test_dir.clone());
+        
+        // Create a test file
+        let test_file = test_dir.join("safe.txt");
+        File::create(&test_file).unwrap();
+        
+        // Create a path with .. that stays within bounds after canonicalization
+        let subdir = test_dir.join("subdir");
+        fs::create_dir(&subdir).unwrap();
+        
+        let safe_link = subdir.join("safe.txt");
+        File::create(&safe_link).unwrap();
+        
+        // Path: test_dir/subdir/../safe.txt -> should resolve to test_dir/safe.txt
+        let path_with_dotdot = subdir.join("../safe.txt");
+        let result = validator.validate(&path_with_dotdot);
+        
+        // Should succeed because after canonicalization, it's still within test_dir
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), test_file);
+    }
+
+    #[test]
+    fn test_symlink_chain_attack() {
+        let test_dir = setup_test_dir();
+        let validator = PathValidator::new(test_dir.clone());
+        
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            
+            // Create a chain: link1 -> link2 -> /etc/passwd
+            let link1 = test_dir.join("link1");
+            let link2 = test_dir.join("link2");
+            let target = PathBuf::from("/etc/passwd");
+            
+            let _ = symlink(&target, &link2);
+            let _ = symlink(&link2, &link1);
+            
+            let result = validator.validate(&link1);
+            
+            // Should reject because chain ultimately resolves outside allowed base
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("Access denied"));
+        }
+    }
+
+    #[test]
+    fn test_symlink_within_bounds() {
+        let test_dir = setup_test_dir();
+        let validator = PathValidator::new(test_dir.clone());
+        
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            
+            // Create a file and a symlink both within test_dir
+            let target_file = test_dir.join("target.txt");
+            File::create(&target_file).unwrap();
+            
+            let symlink_path = test_dir.join("link_to_target");
+            let _ = symlink(&target_file, &symlink_path);
+            
+            let result = validator.validate(&symlink_path);
+            
+            // Should succeed because symlink resolves within allowed base
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), target_file);
+        }
+    }
+
+    #[test]
+    fn test_relative_path_with_dotdot_outside_base() {
+        let test_dir = setup_test_dir();
+        let validator = PathValidator::new(test_dir.clone());
+        
+        // Try to escape using relative path
+        // From test_dir, go up three levels then to /etc/passwd
+        let evil_path = test_dir.join("../../../etc/passwd");
+        let result = validator.validate(&evil_path);
+        
+        // Should reject because canonicalized path is outside allowed base
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err();
+        assert!(err_msg.contains("Access denied") || err_msg.contains("Could not canonicalize"));
     }
 }

@@ -400,6 +400,21 @@ impl SafeCommand {
     }
     
     fn parse_node(args: &[&str]) -> Result<Self, String> {
+        // Block dangerous flags that allow arbitrary code execution
+        let dangerous_flags = ["-e", "--eval", "-p", "--print", "-c", "--check"];
+        
+        for arg in args {
+            for flag in &dangerous_flags {
+                if arg == flag || arg.starts_with(&format!("{}=", flag)) {
+                    return Err(format!(
+                        "node flag '{}' is not allowed: can execute arbitrary code. \
+                        Use node with script files only.",
+                        arg
+                    ));
+                }
+            }
+        }
+        
         let args = args.iter().map(|s| s.to_string()).collect();
         Ok(SafeCommand::Node { args })
     }
@@ -408,6 +423,31 @@ impl SafeCommand {
         if args.is_empty() {
             return Err("npm requires a subcommand".to_string());
         }
+        
+        // Block dangerous npm subcommands that can execute arbitrary code
+        let dangerous_subcommands = ["exec", "x", "run-script"];
+        let subcommand = args[0];
+        
+        for dangerous in &dangerous_subcommands {
+            if subcommand == *dangerous {
+                return Err(format!(
+                    "npm subcommand '{}' is not allowed: can execute arbitrary code. \
+                    Use npm with read-only commands like 'list', 'view', 'outdated'.",
+                    subcommand
+                ));
+            }
+        }
+        
+        // Also block -c/--call flags that can execute code
+        for arg in &args[1..] {
+            if arg == &"-c" || arg == &"--call" || arg.starts_with("--call=") {
+                return Err(format!(
+                    "npm flag '{}' is not allowed: can execute arbitrary code.",
+                    arg
+                ));
+            }
+        }
+        
         let subcommand = args[0].to_string();
         let args = args[1..].iter().map(|s| s.to_string()).collect();
         Ok(SafeCommand::Npm { subcommand, args })
@@ -417,12 +457,42 @@ impl SafeCommand {
         if args.is_empty() {
             return Err("cargo requires a subcommand".to_string());
         }
+        
+        // Block cargo subcommands that can execute arbitrary code via build scripts
+        let dangerous_subcommands = ["build", "run", "test", "bench", "install"];
+        let subcommand = args[0];
+        
+        for dangerous in &dangerous_subcommands {
+            if subcommand == *dangerous {
+                return Err(format!(
+                    "cargo subcommand '{}' is not allowed: can execute build.rs scripts with arbitrary code. \
+                    Use cargo with read-only commands like 'check', 'search', 'tree'.",
+                    subcommand
+                ));
+            }
+        }
+        
         let subcommand = args[0].to_string();
         let args = args[1..].iter().map(|s| s.to_string()).collect();
         Ok(SafeCommand::Cargo { subcommand, args })
     }
     
     fn parse_python(args: &[&str]) -> Result<Self, String> {
+        // Block dangerous flags that allow arbitrary code execution
+        let dangerous_flags = ["-c", "-m"];
+        
+        for arg in args {
+            for flag in &dangerous_flags {
+                if arg == flag || arg.starts_with(&format!("{}=", flag)) {
+                    return Err(format!(
+                        "python flag '{}' is not allowed: can execute arbitrary code. \
+                        Use python with script files only.",
+                        arg
+                    ));
+                }
+            }
+        }
+        
         let args = args.iter().map(|s| s.to_string()).collect();
         Ok(SafeCommand::Python { args })
     }
@@ -519,4 +589,94 @@ mod tests {
             _ => panic!("Wrong variant"),
         }
     }
+    
+    // Security tests for command injection prevention
+    
+    #[test]
+    fn test_blocks_node_code_execution_flags() {
+        // Block -e flag
+        assert!(SafeCommand::from_string("node -e 'console.log(1)'").is_err());
+        assert!(SafeCommand::from_string("node --eval 'console.log(1)'").is_err());
+        
+        // Block -p flag
+        assert!(SafeCommand::from_string("node -p '1+1'").is_err());
+        assert!(SafeCommand::from_string("node --print '1+1'").is_err());
+        
+        // Block -c flag
+        assert!(SafeCommand::from_string("node -c script.js").is_err());
+        assert!(SafeCommand::from_string("node --check script.js").is_err());
+        
+        // Allow safe node usage
+        assert!(SafeCommand::from_string("node script.js").is_ok());
+        assert!(SafeCommand::from_string("node --version").is_ok());
+    }
+    
+    #[test]
+    fn test_blocks_npm_code_execution() {
+        // Block exec subcommand
+        assert!(SafeCommand::from_string("npm exec malicious").is_err());
+        assert!(SafeCommand::from_string("npm x malicious").is_err());
+        assert!(SafeCommand::from_string("npm run-script build").is_err());
+        
+        // Block -c/--call flags
+        assert!(SafeCommand::from_string("npm install -c 'evil code'").is_err());
+        assert!(SafeCommand::from_string("npm install --call 'evil code'").is_err());
+        
+        // Allow safe npm usage
+        assert!(SafeCommand::from_string("npm list").is_ok());
+        assert!(SafeCommand::from_string("npm view package").is_ok());
+        assert!(SafeCommand::from_string("npm outdated").is_ok());
+    }
+    
+    #[test]
+    fn test_blocks_cargo_build_scripts() {
+        // Block build/run/test (can execute build.rs)
+        assert!(SafeCommand::from_string("cargo build").is_err());
+        assert!(SafeCommand::from_string("cargo run").is_err());
+        assert!(SafeCommand::from_string("cargo test").is_err());
+        assert!(SafeCommand::from_string("cargo bench").is_err());
+        assert!(SafeCommand::from_string("cargo install package").is_err());
+        
+        // Allow safe cargo usage
+        assert!(SafeCommand::from_string("cargo check").is_ok());
+        assert!(SafeCommand::from_string("cargo search query").is_ok());
+        assert!(SafeCommand::from_string("cargo tree").is_ok());
+    }
+    
+    #[test]
+    fn test_blocks_python_code_execution_flags() {
+        // Block -c flag
+        assert!(SafeCommand::from_string("python -c 'print(1)'").is_err());
+        assert!(SafeCommand::from_string("python3 -c 'import os; os.system(\"ls\")'").is_err());
+        
+        // Block -m flag
+        assert!(SafeCommand::from_string("python -m http.server").is_err());
+        assert!(SafeCommand::from_string("python3 -m pip install malicious").is_err());
+        
+        // Allow safe python usage
+        assert!(SafeCommand::from_string("python script.py").is_ok());
+        assert!(SafeCommand::from_string("python --version").is_ok());
+        assert!(SafeCommand::from_string("python3 test.py").is_ok());
+    }
+    
+    #[test]
+    fn test_command_injection_attack_scenarios() {
+        // These are real-world attack patterns that should be blocked
+        
+        // Node attacks
+        assert!(SafeCommand::from_string("node -e \"require('child_process').exec('rm -rf /')\"").is_err());
+        assert!(SafeCommand::from_string("node -p \"process.exit(0)\"").is_err());
+        
+        // Python attacks
+        assert!(SafeCommand::from_string("python -c \"import os; os.system('whoami')\"").is_err());
+        assert!(SafeCommand::from_string("python3 -c \"__import__('os').system('ls')\"").is_err());
+        
+        // NPM attacks
+        assert!(SafeCommand::from_string("npm exec -- rm -rf /").is_err());
+        assert!(SafeCommand::from_string("npm x cowsay hello").is_err());
+        
+        // Cargo attacks  
+        assert!(SafeCommand::from_string("cargo build").is_err()); // build.rs can run anything
+    }
 }
+

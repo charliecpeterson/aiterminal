@@ -1,12 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createLogger } from '../utils/logger';
-import {
-  outputViewerStyles,
-  getSearchStyle,
-  getButtonStyle,
-  getTickStyle,
-  getHighlightStyle,
-} from './OutputViewer.styles';
+import { outputViewerStyles } from './OutputViewer.styles';
 
 const log = createLogger('OutputViewer');
 
@@ -92,7 +86,7 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
     return offsets;
   }, [content]);
 
-  const findLineIndexForOffset = (offset: number) => {
+  const findLineIndexForOffset = useCallback((offset: number) => {
     // Returns the line index such that lineStartOffsets[i] <= offset < lineStartOffsets[i+1]
     const arr = lineStartOffsets;
     let lo = 0;
@@ -103,7 +97,7 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
       else hi = mid - 1;
     }
     return Math.max(0, lo - 1);
-  };
+  }, [lineStartOffsets]);
 
   const matchLineIndices = useMemo(() => {
     if (matches.length === 0) return [] as number[];
@@ -117,23 +111,21 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
       }
     }
     return indices;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matches, lineStartOffsets]);
+  }, [matches, lineStartOffsets, findLineIndexForOffset]);
 
   const activeMatchLineIndex = useMemo(() => {
     if (activeMatchIndex < 0 || activeMatchIndex >= matches.length) return null;
     return findLineIndexForOffset(matches[activeMatchIndex].start);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMatchIndex, matches, lineStartOffsets]);
+  }, [activeMatchIndex, matches, lineStartOffsets, findLineIndexForOffset]);
 
-  const scrollToMatch = (index: number) => {
+  const scrollToMatch = useCallback((index: number) => {
     if (index < 0) return;
     requestAnimationFrame(() => {
       const el = matchElementsRef.current.get(index);
       if (!el) return;
       el.scrollIntoView({ block: 'center', inline: 'nearest' });
     });
-  };
+  }, []);
 
   useEffect(() => {
     matchElementsRef.current.clear();
@@ -144,8 +136,7 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
     }
     setActiveMatchIndex(0);
     scrollToMatch(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, matches.length]);
+  }, [searchQuery, matches.length, scrollToMatch]);
 
   const goToNextMatch = () => {
     if (matches.length === 0) return;
@@ -183,7 +174,11 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
           ref={(el) => {
             if (el) matchElementsRef.current.set(i, el);
           }}
-          style={getHighlightStyle(i === activeMatchIndex)}
+          style={
+            i === activeMatchIndex
+              ? { ...outputViewerStyles.highlight, ...outputViewerStyles.highlightActive }
+              : outputViewerStyles.highlight
+          }
         >
           {text}
         </span>
@@ -207,7 +202,11 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
         <div style={outputViewerStyles.actions}>
           <input
             type="text"
-            style={getSearchStyle(hoverStates.searchFocus)}
+            style={
+              hoverStates.searchFocus
+                ? { ...outputViewerStyles.search, ...outputViewerStyles.searchFocus }
+                : outputViewerStyles.search
+            }
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -229,7 +228,11 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
             </div>
           ) : null}
           <button
-            style={getButtonStyle(hoverStates.prevBtn)}
+            style={
+              hoverStates.prevBtn
+                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
+                : outputViewerStyles.btn
+            }
             onClick={goToPrevMatch}
             disabled={matches.length === 0}
             title="Previous match (Shift+Enter)"
@@ -239,7 +242,11 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
             Prev
           </button>
           <button
-            style={getButtonStyle(hoverStates.nextBtn)}
+            style={
+              hoverStates.nextBtn
+                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
+                : outputViewerStyles.btn
+            }
             onClick={goToNextMatch}
             disabled={matches.length === 0}
             title="Next match (Enter)"
@@ -249,7 +256,11 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
             Next
           </button>
           <button 
-            style={getButtonStyle(hoverStates.copyBtn)}
+            style={
+              hoverStates.copyBtn
+                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
+                : outputViewerStyles.btn
+            }
             onClick={handleCopy}
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, copyBtn: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, copyBtn: false }))}
@@ -257,7 +268,11 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
             Copy
           </button>
           <button 
-            style={getButtonStyle(hoverStates.exportBtn)}
+            style={
+              hoverStates.exportBtn
+                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
+                : outputViewerStyles.btn
+            }
             onClick={handleExport}
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, exportBtn: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, exportBtn: false }))}
@@ -280,7 +295,9 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
                 <div
                   key={`tick-${lineIndex}`}
                   style={{
-                    ...getTickStyle(isActive),
+                    ...(isActive
+                      ? { ...outputViewerStyles.tick, ...outputViewerStyles.tickActive }
+                      : outputViewerStyles.tick),
                     top: `${Math.min(100, Math.max(0, topPct))}%`,
                   }}
                 />

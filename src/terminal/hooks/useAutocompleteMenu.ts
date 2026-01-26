@@ -11,6 +11,9 @@ import { createLogger } from '../../utils/logger';
 
 const log = createLogger('AutocompleteMenu');
 
+// Autocomplete timing constant
+const HISTORY_REFRESH_INTERVAL_MS = 10000;
+
 export function useAutocompleteMenu(
   terminalRef: React.RefObject<XTermTerminal | null>,
   enabled: boolean,
@@ -60,7 +63,7 @@ export function useAutocompleteMenu(
     };
     
     loadHistory();
-    const interval = setInterval(loadHistory, 10000);
+    const interval = setInterval(loadHistory, HISTORY_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [enabled]);
   

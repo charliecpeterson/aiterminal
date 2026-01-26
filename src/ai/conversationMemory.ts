@@ -2,6 +2,8 @@
  * Conversation memory to track chat history and build context over time
  */
 
+import type { ChatMessage } from '../context/AIContext';
+
 export interface ConversationTurn {
   timestamp: number;
   userQuery: string;
@@ -25,7 +27,7 @@ export interface ConversationMemory {
 /**
  * Build conversation memory from chat history
  */
-export function buildConversationMemory(messages: any[]): ConversationMemory {
+export function buildConversationMemory(messages: ChatMessage[]): ConversationMemory {
   const memory: ConversationMemory = {
     turns: [],
     userPreferences: {},
@@ -52,7 +54,7 @@ export function buildConversationMemory(messages: any[]): ConversationMemory {
         timestamp: msg.timestamp,
         userQuery: currentUserQuery,
         assistantResponse: msg.content,
-        contextUsed: msg.usedContext?.chunks?.map((c: any) => c.sourceType) || [],
+        contextUsed: msg.usedContext?.chunks?.map((c) => c.sourceType) || [],
         toolsUsed: extractToolsUsed(msg.content),
         wasSuccessful: !msg.content.toLowerCase().includes('error'),
       });

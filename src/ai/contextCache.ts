@@ -7,6 +7,9 @@
 
 import type { ContextItem } from '../context/AIContext';
 import type { RankedContext } from './contextRanker';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('ContextCache');
 
 interface CacheEntry {
   contextFingerprint: string;
@@ -60,7 +63,7 @@ export function getCachedContext(
     return null;
   }
   
-  console.log('[Context Cache] Hit', {
+  log.debug('Cache hit', {
     fingerprint,
     itemCount: contextItems.length,
     age: Date.now() - entry.timestamp,
@@ -108,7 +111,7 @@ export function setCachedContext(
     cache.pop();
   }
   
-  console.log('[Context Cache] Set', {
+  log.debug('Cache set', {
     fingerprint,
     itemCount: contextItems.length,
     formattedCount: formatted.length,
@@ -121,7 +124,7 @@ export function setCachedContext(
  */
 export function invalidateContextCache(): void {
   cache.length = 0;
-  console.log('[Context Cache] Invalidated');
+  log.debug('Cache invalidated');
 }
 
 /**

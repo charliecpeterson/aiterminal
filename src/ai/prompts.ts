@@ -2,6 +2,8 @@
  * Enhanced prompting system with few-shot examples and better context management
  */
 
+import type { ContextItem } from '../context/AIContext';
+
 export interface PromptConfig {
   userLevel?: 'beginner' | 'intermediate' | 'expert';
   terminalType?: 'local' | 'ssh' | 'docker';
@@ -199,7 +201,7 @@ function getShellHints(shell?: 'bash' | 'zsh' | 'fish'): string {
  * Generate context summary for system prompt
  * Reduces token usage by summarizing large context
  */
-export function summarizeContext(contextItems: any[]): string {
+export function summarizeContext(contextItems: ContextItem[]): string {
   if (contextItems.length === 0) return '';
 
   const summary: string[] = [];

@@ -15,6 +15,11 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('AITools');
 
+// Tool timeout and size limit constants
+const COMMAND_TIMEOUT_MS = 10000;
+const FILE_SIZE_WARNING_THRESHOLD_BYTES = 100 * 1024; // 100 KB
+const FILE_SIZE_LARGE_THRESHOLD_BYTES = 1024 * 1024; // 1 MB
+
 // Store pending approval promises
 const pendingApprovalPromises = new Map<string, {
   resolve: (result: string) => void;
@@ -66,7 +71,7 @@ async function executeCommand(command: string, terminalId: number): Promise<stri
     const result = await executeInPty({
       terminalId,
       command,
-      timeoutMs: 10000,
+      timeoutMs: COMMAND_TIMEOUT_MS,
     });
     return result.output || '(no output)';
   } catch (error) {
@@ -241,9 +246,9 @@ Examples:
           // Add helpful suggestions
           if (result.is_binary) {
             lines.push('\n⚠️  This is a binary file - cannot read with read_file');
-          } else if (result.size_bytes > 1024 * 1024) {
+          } else if (result.size_bytes > FILE_SIZE_LARGE_THRESHOLD_BYTES) {
             lines.push(`\n⚠️  Large file (${result.size_human}) - consider using max_bytes parameter with read_file`);
-          } else if (result.size_bytes > 100 * 1024) {
+          } else if (result.size_bytes > FILE_SIZE_WARNING_THRESHOLD_BYTES) {
             lines.push(`\n💡 File is ${result.size_human} - safe to read but consider if full content is needed`);
           }
           

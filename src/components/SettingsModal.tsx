@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings, AppSettings } from '../context/SettingsContext';
-import {
-  settingsModalStyles,
-  getCloseButtonStyle,
-  getTabStyle,
-  getFormInputStyle,
-  getButtonStyle,
-  getAiConnectionStatusStyle,
-} from './SettingsModal.styles';
+import { settingsModalStyles } from './SettingsModal.styles';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -160,7 +153,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                     <div style={settingsModalStyles.header}>
                         <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
                         <button 
-                            style={getCloseButtonStyle(hoverStates.closeBtn || false)}
+                            style={
+                                hoverStates.closeBtn
+                                    ? { ...settingsModalStyles.closeButton, ...settingsModalStyles.closeButtonHover }
+                                    : settingsModalStyles.closeButton
+                            }
                             onClick={onClose}
                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn: true }))}
                             onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn: false }))}
@@ -184,7 +181,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                     <div style={settingsModalStyles.header}>
                         <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
                         <button 
-                            style={getCloseButtonStyle(hoverStates.closeBtn2 || false)}
+                            style={
+                                hoverStates.closeBtn2
+                                    ? { ...settingsModalStyles.closeButton, ...settingsModalStyles.closeButtonHover }
+                                    : settingsModalStyles.closeButton
+                            }
                             onClick={onClose}
                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn2: true }))}
                             onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn2: false }))}
@@ -201,18 +202,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             <div style={settingsModalStyles.modal} onClick={e => e.stopPropagation()}>
                 <div style={settingsModalStyles.header}>
                     <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
-                    <button 
-                        style={getCloseButtonStyle(hoverStates.closeBtn3 || false)}
-                        onClick={onClose}
-                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn3: true }))}
-                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn3: false }))}
-                    >×</button>
+                        <button 
+                            style={
+                                hoverStates.closeBtn3
+                                    ? { ...settingsModalStyles.closeButton, ...settingsModalStyles.closeButtonHover }
+                                    : settingsModalStyles.closeButton
+                            }
+                            onClick={onClose}
+                            onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn3: true }))}
+                            onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn3: false }))}
+                        >×</button>
                 </div>
                 
                 <div style={settingsModalStyles.content}>
                     <div style={settingsModalStyles.sidebar}>
                         <div 
-                            style={getTabStyle(activeTab === 'appearance', hoverStates.tabAppearance || false)}
+                            style={
+                                activeTab === 'appearance'
+                                    ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabActive }
+                                    : hoverStates.tabAppearance
+                                        ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabHover }
+                                        : settingsModalStyles.tab
+                            }
                             onClick={() => setActiveTab('appearance')}
                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabAppearance: true }))}
                             onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabAppearance: false }))}
@@ -220,7 +231,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                             Appearance
                         </div>
                         <div 
-                            style={getTabStyle(activeTab === 'ai', hoverStates.tabAi || false)}
+                            style={
+                                activeTab === 'ai'
+                                    ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabActive }
+                                    : hoverStates.tabAi
+                                        ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabHover }
+                                        : settingsModalStyles.tab
+                            }
                             onClick={() => setActiveTab('ai')}
                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabAi: true }))}
                             onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabAi: false }))}
@@ -228,7 +245,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                             AI
                         </div>
                         <div 
-                            style={getTabStyle(activeTab === 'terminal', hoverStates.tabTerminal || false)}
+                            style={
+                                activeTab === 'terminal'
+                                    ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabActive }
+                                    : hoverStates.tabTerminal
+                                        ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabHover }
+                                        : settingsModalStyles.tab
+                            }
                             onClick={() => setActiveTab('terminal')}
                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabTerminal: true }))}
                             onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabTerminal: false }))}
@@ -236,7 +259,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                             Terminal
                         </div>
                         <div 
-                            style={getTabStyle(activeTab === 'autocomplete', hoverStates.tabAutocomplete || false)}
+                            style={
+                                activeTab === 'autocomplete'
+                                    ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabActive }
+                                    : hoverStates.tabAutocomplete
+                                        ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabHover }
+                                        : settingsModalStyles.tab
+                            }
                             onClick={() => setActiveTab('autocomplete')}
                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabAutocomplete: true }))}
                             onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabAutocomplete: false }))}
@@ -244,7 +273,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                             Autocomplete
                         </div>
                         <div 
-                            style={getTabStyle(activeTab === 'fold', hoverStates.tabFold || false)}
+                            style={
+                                activeTab === 'fold'
+                                    ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabActive }
+                                    : hoverStates.tabFold
+                                        ? { ...settingsModalStyles.tab, ...settingsModalStyles.tabHover }
+                                        : settingsModalStyles.tab
+                            }
                             onClick={() => setActiveTab('fold')}
                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, tabFold: true }))}
                             onMouseLeave={() => setHoverStates(prev => ({ ...prev, tabFold: false }))}
@@ -270,7 +305,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 : 14;
                                             handleChange('appearance', 'font_size', size);
                                         }}
-                                        style={getFormInputStyle(focusStates.fontSize || false)}
+                                        style={
+                                            focusStates.fontSize
+                                                ? { ...settingsModalStyles.formInput, ...settingsModalStyles.formInputFocus }
+                                                : settingsModalStyles.formInput
+                                        }
                                         onFocus={() => setFocusStates(prev => ({ ...prev, fontSize: true }))}
                                         onBlur={() => setFocusStates(prev => ({ ...prev, fontSize: false }))}
                                     />
@@ -287,7 +326,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             }
                                         }}
                                         placeholder="Monaco, monospace"
-                                        style={getFormInputStyle(focusStates.fontFamily || false)}
+                                        style={
+                                            focusStates.fontFamily
+                                                ? { ...settingsModalStyles.formInput, ...settingsModalStyles.formInputFocus }
+                                                : settingsModalStyles.formInput
+                                        }
                                         onFocus={() => setFocusStates(prev => ({ ...prev, fontFamily: true }))}
                                         onBlur={() => setFocusStates(prev => ({ ...prev, fontFamily: false }))}
                                     />
@@ -297,7 +340,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <select 
                                         value={localSettings.appearance.theme}
                                         onChange={(e) => handleChange('appearance', 'theme', e.target.value)}
-                                        style={getFormInputStyle(focusStates.theme || false)}
+                                        style={
+                                            focusStates.theme
+                                                ? { ...settingsModalStyles.formInput, ...settingsModalStyles.formInputFocus }
+                                                : settingsModalStyles.formInput
+                                        }
                                         onFocus={() => setFocusStates(prev => ({ ...prev, theme: true }))}
                                         onBlur={() => setFocusStates(prev => ({ ...prev, theme: false }))}
                                     >
@@ -324,7 +371,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 : 200;
                                             handleChange('terminal', 'max_markers', clamped);
                                         }}
-                                        style={getFormInputStyle(focusStates.maxMarkers || false)}
+                                        style={
+                                            focusStates.maxMarkers
+                                                ? { ...settingsModalStyles.formInput, ...settingsModalStyles.formInputFocus }
+                                                : settingsModalStyles.formInput
+                                        }
                                         onFocus={() => setFocusStates(prev => ({ ...prev, maxMarkers: true }))}
                                         onBlur={() => setFocusStates(prev => ({ ...prev, maxMarkers: false }))}
                                     />
@@ -339,7 +390,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <select 
                                         value={localSettings.ai.provider}
                                         onChange={(e) => handleChange('ai', 'provider', e.target.value)}
-                                        style={getFormInputStyle(focusStates.provider || false)}
+                                        style={
+                                            focusStates.provider
+                                                ? { ...settingsModalStyles.formInput, ...settingsModalStyles.formInputFocus }
+                                                : settingsModalStyles.formInput
+                                        }
                                         onFocus={() => setFocusStates(prev => ({ ...prev, provider: true }))}
                                         onBlur={() => setFocusStates(prev => ({ ...prev, provider: false }))}
                                     >
@@ -356,7 +411,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         value={localSettings.ai.api_key || ''}
                                         onChange={(e) => handleChange('ai', 'api_key', e.target.value)}
                                         placeholder="sk-..."
-                                        style={getFormInputStyle(focusStates.apiKey || false)}
+                                        style={
+                                            focusStates.apiKey
+                                                ? { ...settingsModalStyles.formInput, ...settingsModalStyles.formInputFocus }
+                                                : settingsModalStyles.formInput
+                                        }
                                         onFocus={() => setFocusStates(prev => ({ ...prev, apiKey: true }))}
                                         onBlur={() => setFocusStates(prev => ({ ...prev, apiKey: false }))}
                                     />
@@ -376,7 +435,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             }
                                         }}
                                         placeholder="https://api.openai.com/v1"
-                                        style={getFormInputStyle(focusStates.url || false)}
+                                        style={
+                                            focusStates.url
+                                                ? { ...settingsModalStyles.formInput, ...settingsModalStyles.formInputFocus }
+                                                : settingsModalStyles.formInput
+                                        }
                                         onFocus={() => setFocusStates(prev => ({ ...prev, url: true }))}
                                         onBlur={() => setFocusStates(prev => ({ ...prev, url: false }))}
                                     />
@@ -385,7 +448,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <label style={settingsModalStyles.formLabel}>Connection</label>
                                     <div style={settingsModalStyles.aiConnectionRow}>
                                         <button
-                                            style={getButtonStyle('secondary', hoverStates.testBtn || false, aiTestStatus === 'testing')}
+                                            style={
+                                                aiTestStatus === 'testing'
+                                                    ? { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary, ...settingsModalStyles.buttonDisabled }
+                                                    : hoverStates.testBtn
+                                                        ? { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary, ...settingsModalStyles.buttonHover }
+                                                        : { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary }
+                                            }
                                             onClick={handleTestConnection}
                                             disabled={aiTestStatus === 'testing'}
                                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, testBtn: true }))}
@@ -393,7 +462,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         >
                                             {aiTestStatus === 'testing' ? 'Testing...' : 'Test Connection'}
                                         </button>
-                                        <span style={getAiConnectionStatusStyle(aiTestStatus)}>
+                                        <span style={
+                                            aiTestStatus === 'success'
+                                                ? { ...settingsModalStyles.aiConnectionStatus, ...settingsModalStyles.aiConnectionStatusSuccess }
+                                                : aiTestStatus === 'error'
+                                                    ? { ...settingsModalStyles.aiConnectionStatus, ...settingsModalStyles.aiConnectionStatusError }
+                                                    : settingsModalStyles.aiConnectionStatus
+                                        }>
                                             {aiTestStatus === 'success'
                                                 ? 'Connected'
                                                 : aiTestStatus === 'error'
@@ -409,7 +484,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <label style={settingsModalStyles.formLabel}>Secure Storage</label>
                                     <div style={settingsModalStyles.aiConnectionRow}>
                                         <button
-                                            style={getButtonStyle('secondary', hoverStates.keychainBtn || false, !localSettings.ai.api_key || keychainStatus === 'saving')}
+                                            style={
+                                                (!localSettings.ai.api_key || keychainStatus === 'saving')
+                                                    ? { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary, ...settingsModalStyles.buttonDisabled }
+                                                    : hoverStates.keychainBtn
+                                                        ? { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary, ...settingsModalStyles.buttonHover }
+                                                        : { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary }
+                                            }
                                             onClick={handleSaveToKeychain}
                                             disabled={!localSettings.ai.api_key || keychainStatus === 'saving'}
                                             onMouseEnter={() => setHoverStates(prev => ({ ...prev, keychainBtn: true }))}
@@ -417,7 +498,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         >
                                             {keychainStatus === 'saving' ? 'Saving...' : 'Save to Keychain'}
                                         </button>
-                                        <span style={getAiConnectionStatusStyle(keychainStatus)}>
+                                        <span style={
+                                            keychainStatus === 'success'
+                                                ? { ...settingsModalStyles.aiConnectionStatus, ...settingsModalStyles.aiConnectionStatusSuccess }
+                                                : keychainStatus === 'error'
+                                                    ? { ...settingsModalStyles.aiConnectionStatus, ...settingsModalStyles.aiConnectionStatusError }
+                                                    : settingsModalStyles.aiConnectionStatus
+                                        }>
                                             {keychainStatus === 'success'
                                                 ? keychainMessage || 'Saved'
                                                 : keychainStatus === 'error'
@@ -670,13 +757,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
                 <div style={settingsModalStyles.footer}>
                     <button 
-                        style={getButtonStyle('secondary', hoverStates.cancelBtn || false, false)}
+                        style={
+                            hoverStates.cancelBtn
+                                ? { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary, ...settingsModalStyles.buttonHover }
+                                : { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary }
+                        }
                         onClick={onClose}
                         onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
                         onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
                     >Cancel</button>
                     <button 
-                        style={getButtonStyle('primary', hoverStates.saveBtn || false, false)}
+                        style={
+                            hoverStates.saveBtn
+                                ? { ...settingsModalStyles.button, ...settingsModalStyles.buttonPrimary, ...settingsModalStyles.buttonHover }
+                                : { ...settingsModalStyles.button, ...settingsModalStyles.buttonPrimary }
+                        }
                         onClick={handleSave}
                         onMouseEnter={() => setHoverStates(prev => ({ ...prev, saveBtn: true }))}
                         onMouseLeave={() => setHoverStates(prev => ({ ...prev, saveBtn: false }))}

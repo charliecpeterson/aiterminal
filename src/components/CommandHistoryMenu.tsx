@@ -1,13 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
-import {
-  commandHistoryStyles,
-  getSearchStyle,
-  getItemStyle,
-  getExitStyle,
-  getActionsStyle,
-  getActionStyle,
-} from "./CommandHistoryMenu.styles";
+import { commandHistoryStyles } from "./CommandHistoryMenu.styles";
 
 interface CommandHistoryItem {
   command: string;
@@ -158,7 +151,11 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
           <input
             ref={inputRef}
             type="text"
-            style={getSearchStyle(hoverStates.searchFocus || false)}
+            style={
+              hoverStates.searchFocus
+                ? { ...commandHistoryStyles.search, ...commandHistoryStyles.searchFocus }
+                : commandHistoryStyles.search
+            }
             placeholder="Search command history..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -187,7 +184,13 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
               return (
                 <div
                   key={`${item.line}-${index}`}
-                  style={getItemStyle(isSelected, isItemHover)}
+                  style={
+                    isSelected
+                      ? { ...commandHistoryStyles.item, ...commandHistoryStyles.itemSelected }
+                      : isItemHover
+                        ? { ...commandHistoryStyles.item, ...commandHistoryStyles.itemHover }
+                        : commandHistoryStyles.item
+                  }
                   onClick={() => handleJump(item)}
                   onMouseEnter={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: true }))}
                   onMouseLeave={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: false }))}
@@ -198,16 +201,28 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
                   </div>
                   <div style={commandHistoryStyles.itemFooter}>
                     {item.exitCode !== undefined && (
-                      <span style={getExitStyle(item.exitCode === 0)}>
+                      <span style={
+                        item.exitCode === 0
+                          ? { ...commandHistoryStyles.exit, ...commandHistoryStyles.exitSuccess }
+                          : { ...commandHistoryStyles.exit, ...commandHistoryStyles.exitError }
+                      }>
                         {item.exitCode === 0 ? '✓' : '✗'} {item.exitCode}
                       </span>
                     )}
                     {item.hasOutput && (
                       <span style={commandHistoryStyles.hasOutput}>has output</span>
                     )}
-                    <div style={getActionsStyle(isSelected || isItemHover)}>
+                    <div style={
+                      (isSelected || isItemHover)
+                        ? { ...commandHistoryStyles.actions, ...commandHistoryStyles.actionsVisible }
+                        : commandHistoryStyles.actions
+                    }>
                       <button
-                        style={getActionStyle(hoverStates[copyBtnKey] || false)}
+                        style={
+                          hoverStates[copyBtnKey]
+                            ? { ...commandHistoryStyles.action, ...commandHistoryStyles.actionHover }
+                            : commandHistoryStyles.action
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           handleCopy(item);
@@ -219,7 +234,11 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
                         Copy
                       </button>
                       <button
-                        style={getActionStyle(hoverStates[aiBtnKey] || false)}
+                        style={
+                          hoverStates[aiBtnKey]
+                            ? { ...commandHistoryStyles.action, ...commandHistoryStyles.actionHover }
+                            : commandHistoryStyles.action
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           handleAddToContext(item);

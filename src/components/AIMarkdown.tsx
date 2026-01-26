@@ -6,7 +6,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import 'katex/dist/katex.min.css';
 import { createLogger } from '../utils/logger';
-import { aiPanelStyles, getCodeButtonStyle } from './AIPanel.styles';
+import { aiPanelStyles } from './AIPanel.styles';
 import { useState } from 'react';
 
 const log = createLogger('AIMarkdown');
@@ -27,7 +27,11 @@ function CodeBlock(props: {
         <span style={aiPanelStyles.codeLang}>{language}</span>
         <div style={aiPanelStyles.codeActions}>
           <button
-            style={getCodeButtonStyle(copyHover)}
+            style={
+              copyHover
+                ? { ...aiPanelStyles.codeButton, ...aiPanelStyles.codeButtonHover }
+                : aiPanelStyles.codeButton
+            }
             onMouseEnter={() => setCopyHover(true)}
             onMouseLeave={() => setCopyHover(false)}
             onClick={onCopy}
@@ -36,7 +40,11 @@ function CodeBlock(props: {
           </button>
           {onRun && (
             <button
-              style={getCodeButtonStyle(runHover)}
+              style={
+                runHover
+                  ? { ...aiPanelStyles.codeButton, ...aiPanelStyles.codeButtonHover }
+                  : aiPanelStyles.codeButton
+              }
               onMouseEnter={() => setRunHover(true)}
               onMouseLeave={() => setRunHover(false)}
               onClick={onRun}

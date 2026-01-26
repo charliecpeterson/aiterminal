@@ -6,13 +6,7 @@
  */
 
 import { useState } from 'react';
-import {
-  toolExecutionStyles,
-  getItemStyle,
-  getIconStyle,
-  getApproveButtonStyle,
-  getDenyButtonStyle,
-} from './ToolExecutionStatus.styles';
+import { toolExecutionStyles } from './ToolExecutionStatus.styles';
 
 export interface ToolExecution {
   id: string;
@@ -45,9 +39,24 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
       {activeExecutions.map((execution) => {
         const status = execution.status as 'pending' | 'running';
         return (
-          <div key={execution.id} style={getItemStyle(status)}>
+          <div 
+            key={execution.id} 
+            style={
+              status === 'pending'
+                ? { ...toolExecutionStyles.item, ...toolExecutionStyles.itemPending }
+                : status === 'running'
+                  ? { ...toolExecutionStyles.item, ...toolExecutionStyles.itemRunning }
+                  : toolExecutionStyles.item
+            }
+          >
             <div style={toolExecutionStyles.header}>
-              <span style={getIconStyle(status)}>
+              <span style={
+                status === 'running'
+                  ? { ...toolExecutionStyles.icon, ...toolExecutionStyles.iconRunning }
+                  : status === 'pending'
+                    ? { ...toolExecutionStyles.icon, ...toolExecutionStyles.iconPending }
+                    : toolExecutionStyles.icon
+              }>
                 {execution.status === 'running' && '⚙️'}
                 {execution.status === 'pending' && '⏳'}
               </span>
@@ -77,7 +86,11 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
             {execution.status === 'pending' && onApprove && onDeny && (
               <div style={toolExecutionStyles.actions}>
                 <button 
-                  style={getApproveButtonStyle(hoverStates[`approve-${execution.id}`] || false)}
+                  style={
+                    hoverStates[`approve-${execution.id}`]
+                      ? { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.approve, ...toolExecutionStyles.approveHover }
+                      : { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.approve }
+                  }
                   onClick={() => onApprove(execution.id)}
                   onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`approve-${execution.id}`]: true }))}
                   onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`approve-${execution.id}`]: false }))}
@@ -85,7 +98,11 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
                   ✓ Run
                 </button>
                 <button 
-                  style={getDenyButtonStyle(hoverStates[`deny-${execution.id}`] || false)}
+                  style={
+                    hoverStates[`deny-${execution.id}`]
+                      ? { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.deny, ...toolExecutionStyles.denyHover }
+                      : { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.deny }
+                  }
                   onClick={() => onDeny(execution.id)}
                   onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`deny-${execution.id}`]: true }))}
                   onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`deny-${execution.id}`]: false }))}

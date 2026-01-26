@@ -19,7 +19,7 @@ interface NotebookOutput {
     'image/png'?: string;
     'image/jpeg'?: string;
     'image/svg+xml'?: string | string[];
-    'application/json'?: any;
+    'application/json'?: unknown;
   };
   name?: string;
   ename?: string;
@@ -29,7 +29,7 @@ interface NotebookOutput {
 
 interface NotebookData {
   cells: NotebookCell[];
-  metadata?: any;
+  metadata?: Record<string, unknown>;
   nbformat?: number;
   nbformat_minor?: number;
 }

@@ -6,14 +6,7 @@ import { AIMarkdown } from "./AIMarkdown";
 import { ToolExecutionStatus, type ToolExecution } from "./ToolExecutionStatus";
 import { MessageMetrics } from "./ContextUsageDisplay";
 import { ToolProgressDisplay } from "./ToolProgressDisplay";
-import {
-  chatStyles,
-  getChipStyle,
-  getInputStyle,
-  getSendButtonStyle,
-  getCancelButtonStyle,
-  getMessageStyle,
-} from "./AIChatTab.styles";
+import { chatStyles } from "./AIChatTab.styles";
 
 export function AIChatTab(props: {
   messages: ChatMessage[];
@@ -90,7 +83,11 @@ export function AIChatTab(props: {
             </div>
             <div style={chatStyles.chipRow}>
               <button
-                style={getChipStyle(hoverStates.chip1)}
+                style={
+                  hoverStates.chip1
+                    ? { ...chatStyles.chip, ...chatStyles.chipHover }
+                    : chatStyles.chip
+                }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip1: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip1: false }))}
                 onClick={() => setPrompt("Summarize the last command and output.")}
@@ -98,7 +95,11 @@ export function AIChatTab(props: {
                 Summarize last command
               </button>
               <button
-                style={getChipStyle(hoverStates.chip2)}
+                style={
+                  hoverStates.chip2
+                    ? { ...chatStyles.chip, ...chatStyles.chipHover }
+                    : chatStyles.chip
+                }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip2: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip2: false }))}
                 onClick={() => setPrompt("Explain this error and suggest a fix.")}
@@ -106,7 +107,11 @@ export function AIChatTab(props: {
                 Explain error
               </button>
               <button
-                style={getChipStyle(hoverStates.chip3)}
+                style={
+                  hoverStates.chip3
+                    ? { ...chatStyles.chip, ...chatStyles.chipHover }
+                    : chatStyles.chip
+                }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip3: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip3: false }))}
                 onClick={() => setPrompt("Draft a fix for the issue above.")}
@@ -117,7 +122,14 @@ export function AIChatTab(props: {
           </div>
         ) : (
           messages.map((message) => (
-            <div key={message.id} style={getMessageStyle(message.role)}>
+            <div 
+              key={message.id} 
+              style={
+                message.role === 'user'
+                  ? { ...chatStyles.message, ...chatStyles.messageUser }
+                  : { ...chatStyles.message, ...chatStyles.messageAssistant }
+              }
+            >
               <div style={chatStyles.messageMeta}>
                 <span style={chatStyles.messageRole}>{roleLabel(message.role)}</span>
                 <span style={chatStyles.messageTime}>{formatChatTime(message.timestamp)}</span>
@@ -141,7 +153,13 @@ export function AIChatTab(props: {
 
       <div style={chatStyles.inputRow}>
         <textarea
-          style={getInputStyle(inputFocus, isSending)}
+          style={
+            isSending
+              ? { ...chatStyles.input, ...chatStyles.inputDisabled }
+              : inputFocus
+                ? { ...chatStyles.input, ...chatStyles.inputFocus }
+                : chatStyles.input
+          }
           placeholder="Ask about the terminal output..."
           rows={3}
           value={prompt}
@@ -153,7 +171,11 @@ export function AIChatTab(props: {
         />
         {isSending ? (
           <button
-            style={getCancelButtonStyle(hoverStates.cancelBtn)}
+            style={
+              hoverStates.cancelBtn
+                ? { ...chatStyles.cancelButton, ...chatStyles.cancelButtonHover }
+                : chatStyles.cancelButton
+            }
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
             onClick={onCancel}
@@ -162,7 +184,11 @@ export function AIChatTab(props: {
           </button>
         ) : (
           <button
-            style={getSendButtonStyle(hoverStates.sendBtn)}
+            style={
+              hoverStates.sendBtn
+                ? { ...chatStyles.sendButton, ...chatStyles.sendButtonHover }
+                : chatStyles.sendButton
+            }
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, sendBtn: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, sendBtn: false }))}
             onClick={onSend}

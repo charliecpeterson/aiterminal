@@ -30,7 +30,9 @@ async function ensureAIPanelOpen() {
             // Wait for window to be created and ready
             await new Promise((resolve, reject) => {
                 aiWindow.once('tauri://created', () => {
-                    aiWindow.setFocus().catch(() => {});
+                    aiWindow.setFocus().catch((err) => {
+                        log.debug('Failed to focus AI panel window', err);
+                    });
                     // Give the window a moment to initialize before resolving
                     setTimeout(resolve, 300);
                 });

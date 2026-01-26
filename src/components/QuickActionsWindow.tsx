@@ -3,20 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { normalizeQuotes } from "../utils/text";
 import { parseQuickActionCommands } from "../utils/quickActions";
 import { createLogger } from "../utils/logger";
-import {
-  quickActionsStyles,
-  getCloseButtonStyle,
-  getAddActionButtonStyle,
-  getItemStyle,
-  getExpandStyle,
-  getExecuteButtonStyle,
-  getEditButtonStyle,
-  getDeleteButtonStyle,
-  getFormInputStyle,
-  getFormTextareaStyle,
-  getSaveButtonStyle,
-  getCancelButtonStyle,
-} from "./QuickActionsWindow.styles";
+import { quickActionsStyles } from "./QuickActionsWindow.styles";
 
 const log = createLogger('QuickActionsWindow');
 
@@ -138,7 +125,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
       <div style={quickActionsStyles.header}>
         <h2 style={quickActionsStyles.headerTitle}>⚡ Quick Actions</h2>
         <button 
-          style={getCloseButtonStyle(hoverStates.closeButton)}
+          style={
+            hoverStates.closeButton
+              ? { ...quickActionsStyles.closeButton, ...quickActionsStyles.closeButtonHover }
+              : quickActionsStyles.closeButton
+          }
           onClick={onClose}
           onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeButton: true }))}
           onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeButton: false }))}
@@ -151,7 +142,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
         <div style={quickActionsStyles.content}>
           <div style={quickActionsStyles.toolbar}>
             <button 
-              style={getAddActionButtonStyle(hoverStates.addButton)}
+              style={
+                hoverStates.addButton
+                  ? { ...quickActionsStyles.addActionButton, ...quickActionsStyles.addActionButtonHover }
+                  : quickActionsStyles.addActionButton
+              }
               onClick={handleAdd}
               onMouseEnter={() => setHoverStates(prev => ({ ...prev, addButton: true }))}
               onMouseLeave={() => setHoverStates(prev => ({ ...prev, addButton: false }))}
@@ -177,7 +172,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
                 return (
                   <div 
                     key={action.id} 
-                    style={getItemStyle(hoverStates[itemHoverKey])}
+                    style={
+                      hoverStates[itemHoverKey]
+                        ? { ...quickActionsStyles.item, ...quickActionsStyles.itemHover }
+                        : quickActionsStyles.item
+                    }
                     onMouseEnter={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: true }))}
                     onMouseLeave={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: false }))}
                   >
@@ -191,7 +190,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
                         ))}
                         {action.commands.length > 5 && (
                           <div 
-                            style={getExpandStyle(hoverStates[expandHoverKey])}
+                            style={
+                              hoverStates[expandHoverKey]
+                                ? { ...quickActionsStyles.expand, ...quickActionsStyles.expandHover }
+                                : quickActionsStyles.expand
+                            }
                             onClick={() => {
                               const newExpanded = new Set(expandedActions);
                               if (expandedActions.has(action.id)) {
@@ -214,7 +217,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
                     </div>
                     <div style={quickActionsStyles.buttons}>
                       <button
-                        style={getExecuteButtonStyle(hoverStates[executeHoverKey])}
+                        style={
+                          hoverStates[executeHoverKey]
+                            ? { ...quickActionsStyles.executeButton, ...quickActionsStyles.executeButtonHover }
+                            : quickActionsStyles.executeButton
+                        }
                         onClick={() => onExecute(action)}
                         title="Execute commands in active terminal"
                         onMouseEnter={() => setHoverStates(prev => ({ ...prev, [executeHoverKey]: true }))}
@@ -223,7 +230,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
                         ▶ Execute
                       </button>
                       <button
-                        style={getEditButtonStyle(hoverStates[editHoverKey])}
+                        style={
+                          hoverStates[editHoverKey]
+                            ? { ...quickActionsStyles.editButton, ...quickActionsStyles.editButtonHover }
+                            : quickActionsStyles.editButton
+                        }
                         onClick={() => handleEdit(action)}
                         title="Edit action"
                         onMouseEnter={() => setHoverStates(prev => ({ ...prev, [editHoverKey]: true }))}
@@ -232,7 +243,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
                         Edit
                       </button>
                       <button
-                        style={getDeleteButtonStyle(hoverStates[deleteHoverKey])}
+                        style={
+                          hoverStates[deleteHoverKey]
+                            ? { ...quickActionsStyles.deleteButton, ...quickActionsStyles.deleteButtonHover }
+                            : quickActionsStyles.deleteButton
+                        }
                         onClick={() => handleDelete(action.id)}
                         title="Delete action"
                         onMouseEnter={() => setHoverStates(prev => ({ ...prev, [deleteHoverKey]: true }))}
@@ -253,7 +268,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
             <label style={quickActionsStyles.formLabel}>Action Name</label>
             <input
               type="text"
-              style={getFormInputStyle(hoverStates.nameInput)}
+              style={
+                hoverStates.nameInput
+                  ? { ...quickActionsStyles.formInput, ...quickActionsStyles.formInputFocus }
+                  : quickActionsStyles.formInput
+              }
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
               placeholder="e.g., Build & Test"
@@ -269,7 +288,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
           <div style={quickActionsStyles.formGroup}>
             <label style={quickActionsStyles.formLabel}>Commands (one per line)</label>
             <textarea
-              style={getFormTextareaStyle(hoverStates.commandsTextarea)}
+              style={
+                hoverStates.commandsTextarea
+                  ? { ...quickActionsStyles.formTextarea, ...quickActionsStyles.formTextareaFocus }
+                  : quickActionsStyles.formTextarea
+              }
               value={formCommands}
               onChange={(e) => setFormCommands(e.target.value)}
               placeholder="npm install&#10;npm run build&#10;npm test"
@@ -284,7 +307,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
 
           <div style={quickActionsStyles.formButtons}>
             <button 
-              style={getSaveButtonStyle(hoverStates.saveButton)}
+              style={
+                hoverStates.saveButton
+                  ? { ...quickActionsStyles.saveButton, ...quickActionsStyles.saveButtonHover }
+                  : quickActionsStyles.saveButton
+              }
               onClick={handleSave}
               onMouseEnter={() => setHoverStates(prev => ({ ...prev, saveButton: true }))}
               onMouseLeave={() => setHoverStates(prev => ({ ...prev, saveButton: false }))}
@@ -292,7 +319,11 @@ const QuickActionsWindow: React.FC<QuickActionsWindowProps> = ({ onClose, onExec
               Save
             </button>
             <button 
-              style={getCancelButtonStyle(hoverStates.cancelButton)}
+              style={
+                hoverStates.cancelButton
+                  ? { ...quickActionsStyles.cancelButton, ...quickActionsStyles.cancelButtonHover }
+                  : quickActionsStyles.cancelButton
+              }
               onClick={handleCancel}
               onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelButton: true }))}
               onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelButton: false }))}

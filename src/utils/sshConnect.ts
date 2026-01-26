@@ -1,6 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { SSHProfile } from '../types/ssh';
 
+// SSH connection timing constants
+const SSH_CONNECTION_DELAY_MS = 2000;
+const STARTUP_COMMAND_DELAY_MS = 300;
+
 /**
  * Build SSH command string from profile
  */
@@ -76,14 +80,14 @@ export async function connectSSHProfile(
   // (allowing time for SSH connection to establish)
   if (profile.startupCommands && profile.startupCommands.length > 0) {
     // Wait for SSH to connect (simple delay - could be improved with prompt detection)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, SSH_CONNECTION_DELAY_MS));
 
     // Send each startup command
     for (const cmd of profile.startupCommands) {
       if (cmd.trim()) {
         await invoke('write_to_pty', { id: ptyId, data: cmd + '\n' });
         // Small delay between commands
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, STARTUP_COMMAND_DELAY_MS));
       }
     }
   }

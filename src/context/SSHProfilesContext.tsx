@@ -8,6 +8,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { invoke } from '@tauri-apps/api/core';
 import { SSHProfile, SSHConfigHost, ConnectionHealth } from '../types/ssh';
 import { createLogger } from '../utils/logger';
+import { ContextErrorBoundary } from '../components/ContextErrorBoundary';
 
 const log = createLogger('SSHProfilesContext');
 
@@ -51,7 +52,7 @@ interface SSHProfilesProviderProps {
   children: React.ReactNode;
 }
 
-export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ children }) => {
+const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children }) => {
   const [profiles, setProfiles] = useState<SSHProfile[]>([]);
   const [sshConfigHosts, setSSHConfigHosts] = useState<SSHConfigHost[]>([]);
   const [connections, setConnections] = useState<Map<string, ConnectionHealth>>(new Map());
@@ -210,5 +211,15 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     <SSHProfilesContext.Provider value={value}>
       {children}
     </SSHProfilesContext.Provider>
+  );
+};
+
+export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ children }) => {
+  return (
+    <ContextErrorBoundary contextName="SSH Profiles">
+      <SSHProfilesProviderInner>
+        {children}
+      </SSHProfilesProviderInner>
+    </ContextErrorBoundary>
   );
 };

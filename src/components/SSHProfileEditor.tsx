@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SSHProfile, PortForward } from '../types/ssh';
 import { useSSHProfiles } from '../context/SSHProfilesContext';
-import {
-  sshProfileEditorStyles,
-  getCloseButtonStyle,
-  getFormInputStyle,
-  getRemoveButtonStyle,
-  getAddItemButtonStyle,
-  getCancelButtonStyle,
-  getSaveButtonStyle,
-} from './SSHProfileEditor.styles';
+import { sshProfileEditorStyles } from './SSHProfileEditor.styles';
 
 interface SSHProfileEditorProps {
   profile?: SSHProfile;  // undefined = create new, defined = edit existing
@@ -201,7 +193,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
         <div style={sshProfileEditorStyles.header}>
           <h2 style={sshProfileEditorStyles.headerTitle}>{isEdit ? 'Edit' : 'New'} SSH Profile</h2>
           <button 
-            style={getCloseButtonStyle(hoverStates.closeBtn || false)}
+            style={
+              hoverStates.closeBtn
+                ? { ...sshProfileEditorStyles.closeButton, ...sshProfileEditorStyles.closeButtonHover }
+                : sshProfileEditorStyles.closeButton
+            }
             onClick={onClose}
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, closeBtn: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, closeBtn: false }))}
@@ -220,7 +216,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="e.g., Prod Cluster"
-                  style={getFormInputStyle(focusStates.nameInput || false)}
+                  style={
+                    focusStates.nameInput
+                      ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                      : sshProfileEditorStyles.formInput
+                  }
                   onFocus={() => setFocusStates(prev => ({ ...prev, nameInput: true }))}
                   onBlur={() => setFocusStates(prev => ({ ...prev, nameInput: false }))}
                   {...textInputProps}
@@ -235,7 +235,9 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                     value={group}
                     onChange={e => setGroup(e.target.value)}
                     style={{ 
-                      ...getFormInputStyle(focusStates.groupSelect || false),
+                      ...(focusStates.groupSelect
+                        ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                        : sshProfileEditorStyles.formInput),
                       flex: 1 
                     }}
                     onFocus={() => setFocusStates(prev => ({ ...prev, groupSelect: true }))}
@@ -252,7 +254,9 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                     onChange={e => setGroup(e.target.value)}
                     placeholder="Or create new group"
                     style={{ 
-                      ...getFormInputStyle(focusStates.groupInput || false),
+                      ...(focusStates.groupInput
+                        ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                        : sshProfileEditorStyles.formInput),
                       flex: 1 
                     }}
                     onFocus={() => setFocusStates(prev => ({ ...prev, groupInput: true }))}
@@ -295,7 +299,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                   <select
                     value={sshConfigHost}
                     onChange={e => setSSHConfigHost(e.target.value)}
-                    style={getFormInputStyle(focusStates.sshConfigHost || false)}
+                    style={
+                      focusStates.sshConfigHost
+                        ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                        : sshProfileEditorStyles.formInput
+                    }
                     onFocus={() => setFocusStates(prev => ({ ...prev, sshConfigHost: true }))}
                     onBlur={() => setFocusStates(prev => ({ ...prev, sshConfigHost: false }))}
                   >
@@ -318,7 +326,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={hostname}
                       onChange={e => setHostname(e.target.value)}
                       placeholder="example.com"
-                      style={getFormInputStyle(focusStates.hostname || false)}
+                      style={
+                        focusStates.hostname
+                          ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                          : sshProfileEditorStyles.formInput
+                      }
                       onFocus={() => setFocusStates(prev => ({ ...prev, hostname: true }))}
                       onBlur={() => setFocusStates(prev => ({ ...prev, hostname: false }))}
                       {...textInputProps}
@@ -333,7 +345,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={username}
                       onChange={e => setUsername(e.target.value)}
                       placeholder="user"
-                      style={getFormInputStyle(focusStates.username || false)}
+                      style={
+                        focusStates.username
+                          ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                          : sshProfileEditorStyles.formInput
+                      }
                       onFocus={() => setFocusStates(prev => ({ ...prev, username: true }))}
                       onBlur={() => setFocusStates(prev => ({ ...prev, username: false }))}
                       {...textInputProps}
@@ -347,7 +363,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       onChange={e => setPort(e.target.value)}
                       min="1"
                       max="65535"
-                      style={getFormInputStyle(focusStates.port || false)}
+                      style={
+                        focusStates.port
+                          ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                          : sshProfileEditorStyles.formInput
+                      }
                       onFocus={() => setFocusStates(prev => ({ ...prev, port: true }))}
                       onBlur={() => setFocusStates(prev => ({ ...prev, port: false }))}
                     />
@@ -361,7 +381,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={identityFile}
                       onChange={e => setIdentityFile(e.target.value)}
                       placeholder="~/.ssh/id_rsa"
-                      style={getFormInputStyle(focusStates.identityFile || false)}
+                      style={
+                        focusStates.identityFile
+                          ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                          : sshProfileEditorStyles.formInput
+                      }
                       onFocus={() => setFocusStates(prev => ({ ...prev, identityFile: true }))}
                       onBlur={() => setFocusStates(prev => ({ ...prev, identityFile: false }))}
                       {...textInputProps}
@@ -376,7 +400,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                       value={proxyJump}
                       onChange={e => setProxyJump(e.target.value)}
                       placeholder="jump-host"
-                      style={getFormInputStyle(focusStates.proxyJump || false)}
+                      style={
+                        focusStates.proxyJump
+                          ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                          : sshProfileEditorStyles.formInput
+                      }
                       onFocus={() => setFocusStates(prev => ({ ...prev, proxyJump: true }))}
                       onBlur={() => setFocusStates(prev => ({ ...prev, proxyJump: false }))}
                       {...textInputProps}
@@ -404,7 +432,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                   />
                   <button
                     onClick={() => removeStartupCommand(index)}
-                    style={getRemoveButtonStyle(hoverStates[`removeCmd-${index}`] || false)}
+                    style={
+                      hoverStates[`removeCmd-${index}`]
+                        ? { ...sshProfileEditorStyles.removeButton, ...sshProfileEditorStyles.removeButtonHover }
+                        : sshProfileEditorStyles.removeButton
+                    }
                     onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removeCmd-${index}`]: true }))}
                     onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removeCmd-${index}`]: false }))}
                   >
@@ -414,7 +446,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
               ))}
               <button 
                 onClick={addStartupCommand}
-                style={getAddItemButtonStyle(hoverStates.addCmd || false)}
+                style={
+                  hoverStates.addCmd
+                    ? { ...sshProfileEditorStyles.addItemButton, ...sshProfileEditorStyles.addItemButtonHover }
+                    : sshProfileEditorStyles.addItemButton
+                }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, addCmd: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, addCmd: false }))}
               >
@@ -437,7 +473,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                   />
                   <button
                     onClick={() => removeEnvVar(key)}
-                    style={getRemoveButtonStyle(hoverStates[`removeEnv-${key}`] || false)}
+                    style={
+                      hoverStates[`removeEnv-${key}`]
+                        ? { ...sshProfileEditorStyles.removeButton, ...sshProfileEditorStyles.removeButtonHover }
+                        : sshProfileEditorStyles.removeButton
+                    }
                     onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removeEnv-${key}`]: true }))}
                     onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removeEnv-${key}`]: false }))}
                   >
@@ -447,7 +487,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
               ))}
               <button 
                 onClick={addEnvVar}
-                style={getAddItemButtonStyle(hoverStates.addEnv || false)}
+                style={
+                  hoverStates.addEnv
+                    ? { ...sshProfileEditorStyles.addItemButton, ...sshProfileEditorStyles.addItemButtonHover }
+                    : sshProfileEditorStyles.addItemButton
+                }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, addEnv: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, addEnv: false }))}
               >
@@ -488,7 +532,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                     </select>
                     <button
                       onClick={() => removePortForward(forward.id)}
-                      style={getRemoveButtonStyle(hoverStates[`removePf-${forward.id}`] || false)}
+                      style={
+                        hoverStates[`removePf-${forward.id}`]
+                          ? { ...sshProfileEditorStyles.removeButton, ...sshProfileEditorStyles.removeButtonHover }
+                          : sshProfileEditorStyles.removeButton
+                      }
                       onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removePf-${forward.id}`]: true }))}
                       onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removePf-${forward.id}`]: false }))}
                     >
@@ -565,7 +613,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
               ))}
               <button 
                 onClick={addPortForward}
-                style={getAddItemButtonStyle(hoverStates.addPortForward || false)}
+                style={
+                  hoverStates.addPortForward
+                    ? { ...sshProfileEditorStyles.addItemButton, ...sshProfileEditorStyles.addItemButtonHover }
+                    : sshProfileEditorStyles.addItemButton
+                }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, addPortForward: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, addPortForward: false }))}
               >
@@ -598,7 +650,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                   />
                   <button
                     onClick={() => removeSshOption(index)}
-                    style={getRemoveButtonStyle(hoverStates[`removeSshOpt-${index}`] || false)}
+                    style={
+                      hoverStates[`removeSshOpt-${index}`]
+                        ? { ...sshProfileEditorStyles.removeButton, ...sshProfileEditorStyles.removeButtonHover }
+                        : sshProfileEditorStyles.removeButton
+                    }
                     onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removeSshOpt-${index}`]: true }))}
                     onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removeSshOpt-${index}`]: false }))}
                   >
@@ -608,7 +664,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
               ))}
               <button 
                 onClick={addSshOption}
-                style={getAddItemButtonStyle(hoverStates.addSshOption || false)}
+                style={
+                  hoverStates.addSshOption
+                    ? { ...sshProfileEditorStyles.addItemButton, ...sshProfileEditorStyles.addItemButtonHover }
+                    : sshProfileEditorStyles.addItemButton
+                }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, addSshOption: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, addSshOption: false }))}
               >
@@ -639,7 +699,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                   value={healthCheckInterval}
                   onChange={e => setHealthCheckInterval(e.target.value)}
                   min="0"
-                  style={getFormInputStyle(focusStates.healthCheck || false)}
+                  style={
+                    focusStates.healthCheck
+                      ? { ...sshProfileEditorStyles.formInput, ...sshProfileEditorStyles.formInputFocus }
+                      : sshProfileEditorStyles.formInput
+                  }
                   onFocus={() => setFocusStates(prev => ({ ...prev, healthCheck: true }))}
                   onBlur={() => setFocusStates(prev => ({ ...prev, healthCheck: false }))}
                 />
@@ -661,7 +725,11 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
 
         <div style={sshProfileEditorStyles.footer}>
           <button 
-            style={getCancelButtonStyle(hoverStates.cancelBtn || false)}
+            style={
+              hoverStates.cancelBtn
+                ? { ...sshProfileEditorStyles.button, ...sshProfileEditorStyles.buttonCancel, ...sshProfileEditorStyles.buttonCancelHover }
+                : { ...sshProfileEditorStyles.button, ...sshProfileEditorStyles.buttonCancel }
+            }
             onClick={onClose}
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
@@ -669,7 +737,13 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
             Cancel
           </button>
           <button
-            style={getSaveButtonStyle(hoverStates.saveBtn || false, !canSave)}
+            style={
+              !canSave
+                ? { ...sshProfileEditorStyles.button, ...sshProfileEditorStyles.buttonSave, ...sshProfileEditorStyles.buttonSaveDisabled }
+                : hoverStates.saveBtn
+                  ? { ...sshProfileEditorStyles.button, ...sshProfileEditorStyles.buttonSave, ...sshProfileEditorStyles.buttonSaveHover }
+                  : { ...sshProfileEditorStyles.button, ...sshProfileEditorStyles.buttonSave }
+            }
             onClick={handleSave}
             disabled={!canSave}
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, saveBtn: true }))}

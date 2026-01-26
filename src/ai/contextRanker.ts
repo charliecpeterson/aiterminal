@@ -24,6 +24,15 @@ interface ScoringContext {
   currentMessageId?: string;
 }
 
+interface RelevanceBreakdown {
+  recency: number;
+  queryMatch: number;
+  typeRelevance: number;
+  usagePenalty: number;
+  timeDecay: number;
+  conversationRelevance: number;
+}
+
 /**
  * Rank context items by relevance to the user's query
  */
@@ -240,7 +249,7 @@ function extractKeyTerms(query: string): string[] {
 /**
  * Explain why a context item is relevant
  */
-function explainRelevance(_item: ContextItem, score: number, breakdown?: any): string {
+function explainRelevance(_item: ContextItem, score: number, breakdown?: RelevanceBreakdown): string {
   const parts: string[] = [];
   
   if (score >= 70) parts.push('Highly relevant');

@@ -89,6 +89,23 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
     const hideCopyMenu = useCallback(() => setCopyMenu(null), []);
     const hideSelectionMenu = useCallback(() => setSelectionMenu(null), []);
 
+    // Use refs to avoid recreating terminal wiring when callbacks change
+    const onCommandRunningRef = useRef(onCommandRunning);
+    const addContextItemRef = useRef(addContextItem);
+    const addContextItemWithScanRef = useRef(addContextItemWithScan);
+    const hideCopyMenuRef = useRef(hideCopyMenu);
+    const hideSelectionMenuRef = useRef(hideSelectionMenu);
+    const setHostLabelAndRemoteStateRef = useRef(setHostLabelAndRemoteState);
+    
+    useEffect(() => {
+        onCommandRunningRef.current = onCommandRunning;
+        addContextItemRef.current = addContextItem;
+        addContextItemWithScanRef.current = addContextItemWithScan;
+        hideCopyMenuRef.current = hideCopyMenu;
+        hideSelectionMenuRef.current = hideSelectionMenu;
+        setHostLabelAndRemoteStateRef.current = setHostLabelAndRemoteState;
+    });
+
     const handleQuickAction = useCallback(
         (actionType: QuickActionType, commandText: string, outputText?: string, exitCode?: number) => {
             const { systemPrompt, userPrompt } = buildQuickActionPrompt({
@@ -259,22 +276,22 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         setCopyMenu,
         setSelectionMenu,
         setShowSearch,
-        setHostLabel: setHostLabelAndRemoteState,
-        addContextItem,
-        addContextItemWithScan,
-        hideCopyMenu,
-        hideSelectionMenu,
+        setHostLabel: (label: string) => setHostLabelAndRemoteStateRef.current(label),
+        addContextItem: (item) => addContextItemRef.current(item),
+        addContextItemWithScan: (content, type, metadata) => addContextItemWithScanRef.current(content, type, metadata),
+        hideCopyMenu: () => hideCopyMenuRef.current(),
+        hideSelectionMenu: () => hideSelectionMenuRef.current(),
                 termRef: xtermRef,
                 fitAddonRef,
                 searchAddonRef,
         onCommandStart: () => {
           const startTime = Date.now();
           commandStartTimeRef.current = startTime;
-          onCommandRunning?.(true, startTime);
+          onCommandRunningRef.current?.(true, startTime);
         },
         onCommandEnd: (exitCode?: number) => {
           commandStartTimeRef.current = null;
-          onCommandRunning?.(false, undefined, exitCode);
+          onCommandRunningRef.current?.(false, undefined, exitCode);
         },
     });
 
@@ -289,8 +306,9 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
       setTerminalReady(false);
       markerManagerRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, loading]); // Only re-run if ID changes or loading finishes. onClose is handled via ref.
+    // Only re-run when id or loading changes - all callbacks are handled via refs
+    // to avoid unnecessary terminal recreation
+  }, [id, loading, settings]);
 
   usePtyAutoClose({ id, onClose });
 

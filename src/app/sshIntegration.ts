@@ -1,6 +1,18 @@
 import type { SSHProfile } from '../types/ssh';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('SSHIntegration');
+
+export interface ConnectionStatus {
+  profileId: string;
+  tabId: string;
+  tabName?: string;
+  status: 'connected' | 'disconnected' | 'error';
+  latency?: number;
+  lastActivity?: Date;
+}
 
 export function setupSshMainWindowListeners(params: {
   connectSSHProfile: (profile: SSHProfile) => Promise<void>;
@@ -38,7 +50,9 @@ export function setupSshMainWindowListeners(params: {
           status,
           latency: latency > 0 ? latency : undefined,
           tabId: String(ptyId),
-        }).catch(() => {});
+        }).catch((err) => {
+          log.debug('Failed to emit connection status to SSH panel', err);
+        });
       } catch {
         // PTY closed or info unavailable
       }
@@ -56,7 +70,7 @@ export function setupSshMainWindowListeners(params: {
 export function setupSshHealthMonitor(params: {
   getPtyToProfileEntries: () => Array<[number, string]>;
   getTabs: () => Array<{ id: number; title: string; customName?: string; panes: Array<{ id: number }> }>;
-  updateConnection: (ptyId: string, data: any) => void;
+  updateConnection: (ptyId: string, data: ConnectionStatus) => void;
   intervalMs?: number;
 }): () => void {
   const { getPtyToProfileEntries, getTabs, updateConnection, intervalMs = 5000 } = params;
@@ -94,7 +108,9 @@ export function setupSshHealthMonitor(params: {
           status,
           latency: latency > 0 ? latency : undefined,
           tabId: String(ptyId),
-        }).catch(() => {});
+        }).catch((err) => {
+          log.debug('Failed to emit connection status to SSH panel', err);
+        });
       } catch {
         updateConnection(String(ptyId), {
           profileId,
@@ -107,7 +123,9 @@ export function setupSshHealthMonitor(params: {
           profileId,
           status: 'disconnected',
           tabId: String(ptyId),
-        }).catch(() => {});
+        }).catch((err) => {
+          log.debug('Failed to emit disconnection status to SSH panel', err);
+        });
       }
 
       if (cancelled) return;

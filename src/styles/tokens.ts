@@ -392,18 +392,18 @@ export function getCssVar(category: string, ...keys: string[]): string {
 }
 
 /**
- * Convert design tokens to CSS custom properties
+ * Convert tokens to CSS variables
  * This can be used to inject tokens into :root
  */
 export function tokensToCssVars(): Record<string, string> {
   const cssVars: Record<string, string> = {};
   
   // Helper to flatten nested objects
-  const flatten = (obj: any, prefix: string = '') => {
+  const flatten = (obj: Record<string, unknown>, prefix: string = '') => {
     for (const [key, value] of Object.entries(obj)) {
       const varName = prefix ? `${prefix}-${key}` : key;
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        flatten(value, varName);
+        flatten(value as Record<string, unknown>, varName);
       } else {
         cssVars[`--${varName}`] = String(value);
       }

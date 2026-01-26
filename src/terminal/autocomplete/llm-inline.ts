@@ -5,6 +5,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '../../utils/logger';
+import type { Terminal as XTermTerminal } from '@xterm/xterm';
 
 const log = createLogger('LLMInlineAutocomplete');
 
@@ -271,7 +272,7 @@ export class LLMInlineAutocomplete {
   /**
    * Render suggestion as gray text in terminal (Fish-style)
    */
-  render(terminal: any, suggestion?: string): void {
+  render(terminal: XTermTerminal, suggestion?: string): void {
     const text = suggestion !== undefined ? suggestion : this.currentSuggestion;
     if (!text) {
       return;
@@ -320,7 +321,7 @@ export class LLMInlineAutocomplete {
   /**
    * Clear rendered suggestion (clear to end of line)
    */
-  clearRender(terminal: any): void {
+  clearRender(terminal: XTermTerminal): void {
     if (!this.currentSuggestion) return;
 
     // Clear from cursor to end of line

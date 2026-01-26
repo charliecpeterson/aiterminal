@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createLogger } from "../utils/logger";
 import { clearSummaryCache } from "../ai/conversationHistory";
+import { ContextErrorBoundary } from "../components/ContextErrorBoundary";
 
 const log = createLogger('AIContext');
 
@@ -102,6 +103,7 @@ export interface PendingApproval {
 interface AIState {
   contextItems: ContextItem[];
   messages: ChatMessage[];
+  archivedMessageCount: number; // Track how many messages were archived
   pendingApprovals: PendingApproval[];
   contextSmartMode: boolean;
 }
@@ -119,22 +121,43 @@ type AIAction =
   | { type: "chat:append"; id: string; content: string }
   | { type: "chat:update-metrics"; id: string; metrics: ChatMessage['metrics'] }
   | { type: "chat:update-tool-progress"; id: string; toolProgress: ToolProgress[] }
+  | { type: "chat:archive-old"; maxMessages: number }
   | { type: "approval:add"; approval: PendingApproval }
   | { type: "approval:remove"; id: string };
 
 const initialState: AIState = {
   contextItems: [],
   messages: [],
+  archivedMessageCount: 0,
   pendingApprovals: [],
   contextSmartMode: true,
 };
 
+// Configuration for message and context management
+const MAX_MESSAGES_IN_MEMORY = 100; // Keep last 100 messages
+const MAX_CONTEXT_ITEMS = 50; // Keep last 50 context items
+
 const aiReducer = (state: AIState, action: AIAction): AIState => {
   switch (action.type) {
     case "context:add":
+      const newContextItems = [action.item, ...state.contextItems];
+      
+      // Automatically remove oldest context items if we exceed the limit
+      if (newContextItems.length > MAX_CONTEXT_ITEMS) {
+        const trimmedItems = newContextItems.slice(0, MAX_CONTEXT_ITEMS);
+        const removedCount = newContextItems.length - MAX_CONTEXT_ITEMS;
+        
+        log.debug(`Auto-removing ${removedCount} old context items (keeping ${MAX_CONTEXT_ITEMS})`);
+        
+        return {
+          ...state,
+          contextItems: trimmedItems,
+        };
+      }
+      
       return {
         ...state,
-        contextItems: [action.item, ...state.contextItems],
+        contextItems: newContextItems,
       };
     case "context:remove":
       return {
@@ -190,9 +213,25 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
         ),
       };
     case "chat:add":
+      const newMessages = [...state.messages, action.message];
+      
+      // Automatically archive old messages if we exceed the limit
+      if (newMessages.length > MAX_MESSAGES_IN_MEMORY) {
+        const messagesToArchive = newMessages.length - MAX_MESSAGES_IN_MEMORY;
+        const keptMessages = newMessages.slice(messagesToArchive);
+        
+        log.debug(`Auto-archiving ${messagesToArchive} old messages (keeping ${MAX_MESSAGES_IN_MEMORY})`);
+        
+        return {
+          ...state,
+          messages: keptMessages,
+          archivedMessageCount: state.archivedMessageCount + messagesToArchive,
+        };
+      }
+      
       return {
         ...state,
-        messages: [...state.messages, action.message],
+        messages: newMessages,
       };
     case "chat:append":
       return {
@@ -225,6 +264,22 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
       return {
         ...state,
         messages: [],
+        archivedMessageCount: 0, // Reset archived count when clearing
+      };
+    case "chat:archive-old":
+      // Keep only the most recent messages, archive the rest
+      if (state.messages.length <= action.maxMessages) {
+        return state; // No need to archive
+      }
+      const messagesToArchive = state.messages.length - action.maxMessages;
+      const keptMessages = state.messages.slice(messagesToArchive);
+      
+      log.debug(`Archiving ${messagesToArchive} old messages (keeping ${action.maxMessages})`);
+      
+      return {
+        ...state,
+        messages: keptMessages,
+        archivedMessageCount: state.archivedMessageCount + messagesToArchive,
       };
     case "approval:add":
       return {
@@ -256,6 +311,7 @@ interface AIContextValue extends AIState {
   appendMessage: (id: string, content: string) => void;
   updateMessageMetrics: (id: string, metrics: ChatMessage['metrics']) => void;
   updateToolProgress: (id: string, toolProgress: ToolProgress[]) => void;
+  archiveOldMessages: (maxMessages?: number) => void; // NEW: Manual archive function
   addPendingApproval: (approval: PendingApproval) => void;
   removePendingApproval: (id: string) => void;
   toggleSecretRedaction: (id: string) => void;
@@ -263,7 +319,7 @@ interface AIContextValue extends AIState {
 
 const AIContext = createContext<AIContextValue | undefined>(undefined);
 
-export const AIProvider = ({ children }: { children: React.ReactNode }) => {
+const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
   const [state, dispatch] = useReducer(aiReducer, initialState);
 
   // Set up cross-window event synchronization
@@ -344,6 +400,10 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
 
   const updateToolProgress = useCallback((id: string, toolProgress: ToolProgress[]) => {
     dispatch({ type: "chat:update-tool-progress", id, toolProgress });
+  }, []);
+
+  const archiveOldMessages = useCallback((maxMessages: number = MAX_MESSAGES_IN_MEMORY) => {
+    dispatch({ type: "chat:archive-old", maxMessages });
   }, []);
 
   const addPendingApproval = useCallback((approval: PendingApproval) => {
@@ -497,6 +557,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       appendMessage,
       updateMessageMetrics,
       updateToolProgress,
+      archiveOldMessages,
       buildPrompt,
       addPendingApproval,
       removePendingApproval,
@@ -517,6 +578,7 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       appendMessage,
       updateMessageMetrics,
       updateToolProgress,
+      archiveOldMessages,
       buildPrompt,
       addPendingApproval,
       removePendingApproval,
@@ -526,6 +588,16 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   return <AIContext.Provider value={value}>{children}</AIContext.Provider>;
+};
+
+export const AIProvider = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <ContextErrorBoundary contextName="AI">
+      <AIProviderInner>
+        {children}
+      </AIProviderInner>
+    </ContextErrorBoundary>
+  );
 };
 
 export const useAIContext = () => {

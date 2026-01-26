@@ -35,7 +35,9 @@ const SSHSessionWindow: React.FC = () => {
     });
 
     // Request initial connection status from main window
-    emitTo("main", "ssh:request-status", {}).catch(() => {});
+    emitTo("main", "ssh:request-status", {}).catch((err) => {
+      log.debug('Failed to request SSH status from main window', err);
+    });
 
     return () => {
       unlistenPromise.then((unlisten) => unlisten());

@@ -157,34 +157,3 @@ export const outputViewerStyles = {
     height: '12px',
   } as CSSProperties,
 };
-
-/**
- * Helper functions for dynamic styles
- */
-
-export function getSearchStyle(isFocused: boolean): CSSProperties {
-  return isFocused
-    ? { ...outputViewerStyles.search, ...outputViewerStyles.searchFocus }
-    : outputViewerStyles.search;
-}
-
-export function getButtonStyle(isHover: boolean, isActive: boolean = false): CSSProperties {
-  if (isActive) {
-    return { ...outputViewerStyles.btn, ...outputViewerStyles.btnActive };
-  }
-  return isHover
-    ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
-    : outputViewerStyles.btn;
-}
-
-export function getTickStyle(isActive: boolean): CSSProperties {
-  return isActive
-    ? { ...outputViewerStyles.tick, ...outputViewerStyles.tickActive }
-    : outputViewerStyles.tick;
-}
-
-export function getHighlightStyle(isActive: boolean): CSSProperties {
-  return isActive
-    ? { ...outputViewerStyles.highlight, ...outputViewerStyles.highlightActive }
-    : outputViewerStyles.highlight;
-}

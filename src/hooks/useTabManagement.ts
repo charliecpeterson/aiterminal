@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { emitTo } from '@tauri-apps/api/event';
 import { createLogger } from '../utils/logger';
+import type { ConnectionStatus } from '../app/sshIntegration';
 
 const log = createLogger('TabManagement');
 
@@ -42,7 +43,7 @@ interface UseTabManagementReturn {
 export function useTabManagement(
   isInitialized: boolean,
   ptyToProfileMap: Map<number, string>,
-  updateConnection: (ptyId: string, data: any) => void
+  updateConnection: (ptyId: string, data: ConnectionStatus) => void
 ): UseTabManagementReturn {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
@@ -103,7 +104,9 @@ export function useTabManagement(
           profileId,
           status: 'disconnected',
           tabId: String(pane.id),
-        }).catch(() => {});
+        }).catch((err) => {
+          log.debug('Failed to emit disconnection status to SSH panel', err);
+        });
       }
     });
 
@@ -197,7 +200,9 @@ export function useTabManagement(
         profileId,
         status: 'disconnected',
         tabId: String(paneId),
-      }).catch(() => {});
+      }).catch((err) => {
+        log.debug('Failed to emit disconnection status to SSH panel', err);
+      });
     }
 
     invoke("close_pty", { id: paneId }).catch((error) => {

@@ -1,9 +1,15 @@
 import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 export interface AiStreamHandlers {
     onChunk: (content: string) => void;
-    onToolCalls?: (toolCalls: any[]) => void;
+    onToolCalls?: (toolCalls: ToolCall[]) => void;
     onEnd: () => void;
     onError: (error: string) => void;
 }
@@ -39,7 +45,7 @@ export function attachAiStreamListeners(params: {
     // Listen for tool calls
     if (handlers.onToolCalls) {
         unlistenPromises.push(
-            listen<{ request_id: string; tool_calls: any[] }>('ai-stream:tool-calls', (event) => {
+            listen<{ request_id: string; tool_calls: ToolCall[] }>('ai-stream:tool-calls', (event) => {
                 if (event.payload.request_id !== requestId) return;
                 handlers.onToolCalls!(event.payload.tool_calls);
             })

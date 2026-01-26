@@ -1,26 +1,23 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
-import Terminal from "./components/Terminal";
-import AIPanel from "./components/AIPanel";
-import SSHSessionWindow from "./components/SSHSessionWindow";
-import OutputViewer from "./components/OutputViewer";
-import QuickActionsWindow from "./components/QuickActionsWindow";
+import { useState, useEffect, useCallback, useRef } from "react";
 import SettingsModal from "./components/SettingsModal";
-import { PortForwardStatus } from "./components/PortForwardStatus";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { WindowRouter } from "./components/WindowRouter";
+import { TabBar } from "./components/TabBar";
+import { AppToolbar } from "./components/AppToolbar";
+import { TerminalGrid } from "./components/TerminalGrid";
 
-// Lazy load heavy components
-const PreviewWindow = React.lazy(() => import("./components/PreviewWindow"));
 import { SettingsProvider } from "./context/SettingsContext";
 import { AIProvider } from "./context/AIContext";
 import { SSHProfilesProvider, useSSHProfiles } from "./context/SSHProfilesContext";
-import { SSHProfile } from "./types/ssh";
-import { QuickAction } from "./components/QuickActionsWindow";
-import { connectSSHProfileNewTab, getProfileDisplayName } from "./utils/sshConnect";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useSessionPersistence } from "./hooks/useSessionPersistence";
+import { useQuickActionsExecutor } from "./hooks/useQuickActionsExecutor";
+import { useCrossWindowEvents } from "./hooks/useCrossWindowEvents";
+import { useSSHConnection } from "./hooks/useSSHConnection";
+import { detectWindowType } from "./utils/windowDetection";
+import { openAIPanelWindow, openSSHPanelWindow, openQuickActionsWindow, closeAuxiliaryWindows } from "./utils/windowManagement";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { emitTo, listen } from "@tauri-apps/api/event";
 import { createLogger } from "./utils/logger";
 import "./App.css";
 
@@ -30,31 +27,11 @@ function AppContent() {
   const [mainActiveTabId, setMainActiveTabId] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [editingTabId, setEditingTabId] = useState<number | null>(null);
-  const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStartX, setDragStartX] = useState(0);
   const { updateProfile, updateConnection, getProfileById } = useSSHProfiles();
   
-  // Determine window type early
-  let isAiWindow = false;
-  let isSSHWindow = false;
-  let isOutputViewer = false;
-  let isQuickActionsWindow = false;
-  let isPreviewWindow = false;
-  try {
-    isAiWindow = window.location.hash.startsWith("#/ai-panel");
-    isSSHWindow = window.location.hash.startsWith("#/ssh-panel");
-    isOutputViewer = window.location.hash.startsWith("#/output-viewer");
-    isQuickActionsWindow = window.location.hash.startsWith("#/quick-actions");
-    isPreviewWindow = window.location.search.includes("preview=");
-  } catch {
-    isAiWindow = false;
-    isSSHWindow = false;
-    isOutputViewer = false;
-    isQuickActionsWindow = false;
-    isPreviewWindow = false;
-  }
+  // Detect window type
+  const windowType = detectWindowType();
+  const { isAiWindow, isSSHWindow, isOutputViewer, isQuickActionsWindow, isPreviewWindow } = windowType;
   
   // Map PTY ID to Profile ID for connection tracking
   const [ptyToProfileMap, setPtyToProfileMap] = useState<Map<number, string>>(new Map());
@@ -76,6 +53,16 @@ function AppContent() {
     addSSHTab,
   } = useTabManagement(isInitialized, ptyToProfileMap, updateConnection);
   
+  // Use SSH connection hook
+  const { connectSSHProfile } = useSSHConnection({
+    tabs,
+    ptyToProfileMap,
+    setPtyToProfileMap,
+    addSSHTab,
+    updateProfile,
+    updateConnection,
+  });
+  
   // Use session persistence hook (only in main window)
   const { saveSession, loadSession } = useSessionPersistence({
     tabs,
@@ -88,46 +75,6 @@ function AppContent() {
   const [runningCommands, setRunningCommands] = useState<Map<number, { startTime: number; elapsed: number }>>(new Map());
   const elapsedTimerRef = useRef<number | null>(null);
   const tabsRef = useRef(tabs);
-
-  const connectSSHProfile = async (profile: SSHProfile) => {
-    try {
-      const ptyId = await connectSSHProfileNewTab(profile);
-      const displayName = getProfileDisplayName(profile);
-      
-      // Use hook to add SSH tab
-      addSSHTab(ptyId, displayName, profile.id);
-      
-      // Link PTY to Profile for health tracking
-      setPtyToProfileMap(prev => new Map(prev).set(ptyId, profile.id));
-      
-      // Update connection state (keyed by ptyId)
-      updateConnection(String(ptyId), {
-        profileId: profile.id,
-        tabId: String(ptyId),
-        tabName: displayName,
-        status: 'connecting',
-        connectedAt: new Date(),
-        lastActivity: new Date(),
-      });
-      
-      // Broadcast to SSH window
-      emitTo("ssh-panel", "connection-status-update", {
-        ptyId: String(ptyId),
-        profileId: profile.id,
-        tabName: displayName,
-        status: 'connecting',
-        tabId: String(ptyId),
-      }).catch(() => {});
-      
-      // Update profile connection stats
-      await updateProfile(profile.id, {
-        lastConnectedAt: new Date().toISOString(),
-        connectionCount: (profile.connectionCount || 0) + 1,
-      });
-    } catch (error) {
-      log.error("Failed to connect SSH profile", error);
-    }
-  };
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -186,13 +133,6 @@ function AppContent() {
       }
     };
   }, [runningCommands.size]);
-
-  const formatElapsedTime = (ms: number): string => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
-  };
 
   // Get SSH profiles from context for session restoration
   const { profiles } = useSSHProfiles();
@@ -277,95 +217,6 @@ function AppContent() {
     restoreOrCreateSession();
   }, []); // Empty deps - only run once on mount
 
-  // Monitor connection health for SSH sessions
-  useEffect(() => {
-    if (ptyToProfileMap.size === 0) return;
-
-    const monitorConnections = async () => {
-      for (const [ptyId, profileId] of ptyToProfileMap.entries()) {
-        try {
-          // Get PTY info
-          const ptyInfo = await invoke<any>('get_pty_info', { id: ptyId });
-          
-          // Get latency
-          const latency = await invoke<number>('measure_pty_latency', { id: ptyId });
-          
-          // Get tab name
-          const tab = tabs.find(t => t.panes.some(p => p.id === ptyId));
-          const tabName = tab?.customName || tab?.title || 'Unknown';
-          
-          // Determine status
-          let status: 'connected' | 'disconnected' | 'error' = 'disconnected';
-          if (ptyInfo && ptyInfo.pty_type === 'ssh') {
-            status = 'connected';
-          }
-          
-          // Update connection health (keyed by ptyId)
-          updateConnection(String(ptyId), {
-            profileId,
-            tabId: String(ptyId),
-            tabName,
-            status,
-            latency: latency > 0 ? latency : undefined,
-            lastActivity: new Date(),
-          });
-          
-          // Broadcast to SSH window
-          emitTo("ssh-panel", "connection-status-update", {
-            ptyId: String(ptyId),
-            profileId,
-            tabName,
-            status,
-            latency: latency > 0 ? latency : undefined,
-            tabId: String(ptyId),
-          }).catch(() => {});
-        } catch (error) {
-          // PTY might be closed
-          updateConnection(String(ptyId), {
-            profileId,
-            tabId: String(ptyId),
-            status: 'disconnected',
-          });
-          
-          // Broadcast to SSH window
-          emitTo("ssh-panel", "connection-status-update", {
-            ptyId: String(ptyId),
-            profileId,
-            status: 'disconnected',
-            tabId: String(ptyId),
-          }).catch(() => {});
-        }
-      }
-    };
-
-    // Monitor immediately
-    monitorConnections();
-
-    // Then monitor every 5 seconds
-    const intervalId = setInterval(monitorConnections, 5000);
-
-    return () => clearInterval(intervalId);
-  }, [ptyToProfileMap, updateConnection]);
-
-  // Clean up connection tracking when tabs close
-  useEffect(() => {
-    const activePtyIds = new Set(tabs.flatMap(tab => tab.panes.map(pane => pane.id)));
-    
-    setPtyToProfileMap(prev => {
-      const updated = new Map(prev);
-      let changed = false;
-      
-      for (const ptyId of prev.keys()) {
-        if (!activePtyIds.has(ptyId)) {
-          updated.delete(ptyId);
-          changed = true;
-        }
-      }
-      
-      return changed ? updated : prev;
-    });
-  }, [tabs]);
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
@@ -409,7 +260,7 @@ function AppContent() {
           setIsSettingsOpen(true);
         } else if (e.key === "b") {
           e.preventDefault();
-          openAIPanelWindow();
+          openAIPanelWindow({ activeTabId, tabs });
         } else if (e.key === "o" && e.shiftKey) {
           e.preventDefault();
           openSSHPanelWindow();
@@ -420,8 +271,6 @@ function AppContent() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeTabId, tabs]);
-
-  // No resizing or attach/detach logic needed for separate window mode
 
   useEffect(() => {
     if (isAiWindow) return; // Only run in main window
@@ -437,14 +286,7 @@ function AppContent() {
         log.error('Failed to save session on window close:', error);
       }
       
-      const aiPanel = await WebviewWindow.getByLabel("ai-panel").catch(() => null);
-      if (aiPanel) {
-        await aiPanel.close().catch(() => {});
-      }
-      const sshPanel = await WebviewWindow.getByLabel("ssh-panel").catch(() => null);
-      if (sshPanel) {
-        await sshPanel.close().catch(() => {});
-      }
+      await closeAuxiliaryWindows();
     });
 
     return () => {
@@ -452,488 +294,97 @@ function AppContent() {
     };
   }, [isAiWindow, saveSession]);
 
-  useEffect(() => {
-    if (isAiWindow || isSSHWindow || isOutputViewer || isQuickActionsWindow) return; // Only run in main window
+  // Use cross-window events hook
+  useCrossWindowEvents({
+    isAiWindow,
+    isSSHWindow,
+    isOutputViewer,
+    isQuickActionsWindow,
+    tabs,
+    activeTabId,
+    ptyToProfileMap,
+    onMainActiveTabIdChange: setMainActiveTabId,
+    onGoToTab: handleGoToTab,
+    onConnectSSHProfile: connectSSHProfile,
+  });
 
-    // Listen for SSH connection events from SSH window
-    const unlistenConnect = listen<{ profile: SSHProfile }>("ssh:connect", async (event) => {
-      await connectSSHProfile(event.payload.profile);
-    });
-
-    const unlistenNewTab = listen<{ profile: SSHProfile }>("ssh:connect-new-tab", async (event) => {
-      await connectSSHProfile(event.payload.profile);
-    });
-
-    const unlistenGoToTab = listen<{ ptyId: string }>("ssh:goto-tab", (event) => {
-      handleGoToTab(event.payload.ptyId);
-    });
-
-    // Listen for status requests from SSH window
-    const unlistenStatusRequest = listen("ssh:request-status", async () => {
-      // Send current connection status for all tracked PTYs
-      for (const [ptyId, profileId] of ptyToProfileMap.entries()) {
-        try {
-          const ptyInfo = await invoke<any>('get_pty_info', { id: ptyId });
-          const latency = await invoke<number>('measure_pty_latency', { id: ptyId });
-          
-          let status: 'connected' | 'disconnected' | 'error' = 'disconnected';
-          if (ptyInfo && ptyInfo.pty_type === 'ssh') {
-            status = 'connected';
-          }
-          
-          emitTo("ssh-panel", "connection-status-update", {
-            ptyId: String(ptyId),
-            profileId,
-            status,
-            latency: latency > 0 ? latency : undefined,
-            tabId: String(ptyId),
-          }).catch(() => {});
-        } catch (error) {
-          // PTY closed
-        }
-      }
-    });
-
-    return () => {
-      unlistenConnect.then((unlisten) => unlisten());
-      unlistenNewTab.then((unlisten) => unlisten());
-      unlistenGoToTab.then((unlisten) => unlisten());
-      unlistenStatusRequest.then((unlisten) => unlisten());
-    };
-  }, [handleGoToTab]); // Include handleGoToTab which depends on tabs
-
-  useEffect(() => {
-    if (!isAiWindow) return;
-    const unlistenPromise = listen<{ id: number | null }>("ai-panel:active-terminal", (event) => {
-      setMainActiveTabId(event.payload?.id ?? null);
-    });
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [isAiWindow]);
-
-  useEffect(() => {
-    if (!isQuickActionsWindow) return;
-    const unlistenPromise = listen<{ id: number | null }>("quick-actions:active-terminal", (event) => {
-      setMainActiveTabId(event.payload?.id ?? null);
-    });
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [isQuickActionsWindow]);
-
-  useEffect(() => {
-    if (isAiWindow || isQuickActionsWindow) return;
-    // Best-effort: keep detached AI panel and Quick Actions aware of the current active terminal pane.
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
-    emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId }).catch(() => {});
-    emitTo("quick-actions", "quick-actions:active-terminal", { id: focusedPaneId }).catch(() => {});
-  }, [activeTabId, tabs, isAiWindow, isQuickActionsWindow]);
-
-  const executeQuickAction = async (action: QuickAction) => {
-    // Get the active terminal's PTY ID
-    let activePty: number | null = null;
-    
-    if (isQuickActionsWindow) {
-      // In popup window: use mainActiveTabId from events, default to null if not set yet
-      // We'll wait a moment for the event to arrive if it's null
-      activePty = mainActiveTabId;
-      
-      if (activePty === null || activePty === undefined) {
-        // Try waiting briefly for the event to arrive
-        await new Promise(resolve => setTimeout(resolve, 100));
-        activePty = mainActiveTabId;
-      }
-    } else {
-      // In main window: use the focused pane
-      activePty = tabs.find(t => t.id === activeTabId)?.focusedPaneId || activeTabId;
-    }
-    
-    if (activePty === null || activePty === undefined) {
-      log.error("No active terminal", { mainActiveTabId, activeTabId });
-      alert("No active terminal found. Please make sure a terminal is active in the main window and try again.");
-      return;
-    }
-    
-    // Execute commands sequentially
-    for (let i = 0; i < action.commands.length; i++) {
-      const command = action.commands[i];
-      
-      try {
-        // Send command to PTY (with newline to execute)
-        await invoke("write_to_pty", { 
-          id: activePty, 
-          data: command + "\r" 
-        });
-        
-        // Wait for command to complete
-        await waitForCommandComplete(activePty);
-        
-      } catch (error) {
-        log.error(`Quick action '${action.name}' failed to execute command: ${command}`, error);
-      }
-    }
-  };
-
-  const waitForCommandComplete = (ptyId: number): Promise<void> => {
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        // Check if command is still running
-        if (!runningCommands.has(ptyId)) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
-      
-      // Safety timeout (10 minutes max per command)
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 10 * 60 * 1000);
-    });
-  };
-
-  const openAIPanelWindow = async () => {
-    const existing = await WebviewWindow.getByLabel("ai-panel");
-    if (existing) {
-      await existing.setFocus();
-      return;
-    }
-
-    const panelWindow = new WebviewWindow("ai-panel", {
-      title: "AI Panel",
-      width: 380,
-      height: 620,
-      resizable: true,
-      url: "/#/ai-panel",
-    });
-    panelWindow.once("tauri://created", () => {
-      panelWindow.setFocus().catch(() => {});
-      const activeTab = tabs.find(t => t.id === activeTabId);
-      const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
-      emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId }).catch(() => {});
-    });
-    panelWindow.once("tauri://error", (event) => {
-      log.error("AI panel window error", event);
-    });
-  };
-
-  const openQuickActionsWindow = async () => {
-    const existing = await WebviewWindow.getByLabel("quick-actions");
-    if (existing) {
-      await existing.setFocus();
-      return;
-    }
-
-    const qaWindow = new WebviewWindow("quick-actions", {
-      title: "Quick Actions",
-      width: 600,
-      height: 600,
-      resizable: true,
-      url: "/#/quick-actions",
-    });
-    qaWindow.once("tauri://created", async () => {
-      await qaWindow.setFocus().catch(() => {});
-      
-      // Wait a moment for the window to fully initialize and set up listeners
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      const activeTab = tabs.find(t => t.id === activeTabId);
-      const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
-      await emitTo("quick-actions", "quick-actions:active-terminal", { id: focusedPaneId }).catch((err) => {
-        log.error('Failed to emit active terminal event', err);
-      });
-    });
-    qaWindow.once("tauri://error", (event) => {
-      log.error("Quick Actions window error", event);
-    });
-  };
-
-  const openSSHPanelWindow = async () => {
-    const existing = await WebviewWindow.getByLabel("ssh-panel");
-    if (existing) {
-      // If window exists, close it (toggle behavior)
-      await existing.close().catch(() => {});
-      return;
-    }
-
-    const sshWindow = new WebviewWindow("ssh-panel", {
-      title: "SSH Sessions",
-      width: 350,
-      height: 600,
-      resizable: true,
-      url: "/#/ssh-panel",
-    });
-    sshWindow.once("tauri://created", () => {
-      sshWindow.setFocus().catch(() => {});
-    });
-    sshWindow.once("tauri://error", (event) => {
-      log.error("SSH panel window error", event);
-    });
-  };
-
-  if (isAiWindow) {
-    return (
-      <div className="ai-window">
-        <AIPanel
-          activeTerminalId={mainActiveTabId}
-        />
-      </div>
-    );
-  }
-
-  if (isSSHWindow) {
-    return (
-      <div className="ssh-window">
-        <SSHSessionWindow />
-      </div>
-    );
-  }
-
-  if (isQuickActionsWindow) {
-    return (
-      <div className="quick-actions-window-wrapper">
-        <QuickActionsWindow
-          onClose={async () => {
-            const window = await WebviewWindow.getByLabel("quick-actions");
-            await window?.close();
-          }}
-          onExecute={executeQuickAction}
-        />
-      </div>
-    );
-  }
-
-  if (isPreviewWindow) {
-    return (
-      <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#999' }}>Loading preview...</div>}>
-        <PreviewWindow />
-      </Suspense>
-    );
-  }
-
-  if (isOutputViewer) {
-    return <OutputViewer />;
-  }
+  // Use Quick Actions executor hook
+  const { executeQuickAction } = useQuickActionsExecutor({
+    isQuickActionsWindow,
+    mainActiveTabId,
+    tabs,
+    activeTabId,
+    runningCommands,
+  });
 
   return (
-    <div className="app-container">
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
-      <div className="tabs-header">
-        {tabs.map((tab, index) => (
-          <div
-            key={tab.id}
-            className={`tab ${tab.id === activeTabId ? "active" : ""} ${isDragging && draggedTabIndex === index ? "dragging" : ""}`}
-            onMouseDown={(e) => {
-              if (editingTabId === tab.id || e.button !== 0) return;
-              setDragStartX(e.clientX);
-              setDraggedTabIndex(index);
-            }}
-            onMouseMove={(e) => {
-              if (draggedTabIndex === index && e.buttons === 1 && Math.abs(e.clientX - dragStartX) > 5) {
-                setIsDragging(true);
-              }
-              if (isDragging && draggedTabIndex !== null && draggedTabIndex !== index) {
-                reorderTabs(draggedTabIndex, index);
-                setDraggedTabIndex(index);
-              }
-            }}
-            onMouseUp={() => {
-              setIsDragging(false);
-              setDraggedTabIndex(null);
-            }}
-            onClick={() => {
-              if (!isDragging && editingTabId !== tab.id) {
-                setActiveTabId(tab.id);
-              }
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              setEditingTabId(tab.id);
-            }}
-          >
-            {editingTabId === tab.id ? (
-              <input
-                type="text"
-                className="tab-name-input"
-                defaultValue={tab.customName || tab.title}
-                autoFocus
-                onBlur={(e) => {
-                  renameTab(tab.id, e.target.value);
-                  setEditingTabId(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    renameTab(tab.id, e.currentTarget.value);
-                    setEditingTabId(null);
-                  } else if (e.key === "Escape") {
-                    setEditingTabId(null);
-                  }
-                }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <>
-                {runningCommands.has(tab.id) && (
-                  <span className="tab-running-indicator" title="Command running">
-                    ⏳ {formatElapsedTime(runningCommands.get(tab.id)!.elapsed)}
-                  </span>
-                )}
-                {tab.customName || tab.title}
-              </>
-            )}
-            <span
-              className="close-tab"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeTab(tab.id);
-              }}
-            >
-              ×
-            </span>
-          </div>
-        ))}
-        <div className="new-tab-button" onClick={createTab}>
-          +
+    <WindowRouter
+      isAiWindow={isAiWindow}
+      isSSHWindow={isSSHWindow}
+      isOutputViewer={isOutputViewer}
+      isQuickActionsWindow={isQuickActionsWindow}
+      isPreviewWindow={isPreviewWindow}
+      mainActiveTabId={mainActiveTabId}
+      onExecuteQuickAction={executeQuickAction}
+    >
+      <div className="app-container">
+        <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        <div className="tabs-header">
+          <TabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            runningCommands={runningCommands}
+            onTabClick={setActiveTabId}
+            onNewTab={createTab}
+            onCloseTab={closeTab}
+            onRenameTab={renameTab}
+            onReorderTabs={reorderTabs}
+          />
+          <div style={{ flex: 1 }} /> {/* Spacer */}
+          <AppToolbar
+            onSSHClick={openSSHPanelWindow}
+            onAIPanelClick={() => openAIPanelWindow({ activeTabId, tabs })}
+            onQuickActionsClick={() => openQuickActionsWindow({ activeTabId, tabs })}
+            onHistoryClick={() => window.dispatchEvent(new CustomEvent('toggle-command-history'))}
+            onSettingsClick={() => setIsSettingsOpen(true)}
+          />
         </div>
-        <div style={{ flex: 1 }} /> {/* Spacer */}
-        <div className="top-segmented" role="group" aria-label="Top actions">
-          <div
-            className="segmented-button"
-            onClick={openSSHPanelWindow}
-            title="SSH Sessions (Cmd/Ctrl+Shift+O)"
-          >
-            SSH
-          </div>
-          <div
-            className="segmented-button"
-            onClick={openAIPanelWindow}
-            title="Open AI Panel (Cmd/Ctrl+B)"
-          >
-            AI Panel
-          </div>
-          <div
-            className="segmented-button"
-            onClick={openQuickActionsWindow}
-            title="Quick Actions"
-          >
-            Quick Actions
-          </div>
-          <div
-            className="segmented-button"
-            onClick={() => window.dispatchEvent(new CustomEvent('toggle-command-history'))}
-            title="Command History (Cmd+R)"
-          >
-            History
-          </div>
-          <div 
-            className="segmented-button"
-            onClick={() => setIsSettingsOpen(true)}
-            title="Settings (Cmd+,)"
-          >
-            Settings
-          </div>
-        </div>
+        <TerminalGrid
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onFocusPane={setFocusedPane}
+          onUpdateRemoteState={updateTabRemoteState}
+          onClosePane={closePane}
+          onCommandRunning={handleCommandRunning}
+          onUpdateSplitRatio={updateSplitRatio}
+          getProfileById={getProfileById}
+        />
       </div>
-      <div className="workbench">
-        <div className="terminal-pane" style={{ flex: 1 }}>
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className={`tab-content ${tab.id === activeTabId ? "active" : ""}`}
-              style={{ display: tab.id === activeTabId ? 'flex' : 'none' }}
-            >
-              <div 
-                className={`split-container split-${tab.splitLayout}`}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: tab.splitLayout === 'vertical' 
-                    ? `${tab.splitRatio}% 4px ${100 - tab.splitRatio}%` 
-                    : '1fr',
-                  gridTemplateRows: tab.splitLayout === 'horizontal' 
-                    ? `${tab.splitRatio}% 4px ${100 - tab.splitRatio}%` 
-                    : '1fr',
-                  width: '100%',
-                  height: '100%'
-                }}
-              >
-                {tab.panes.map((pane, index) => (
-                  <React.Fragment key={pane.id}>
-                    <div
-                      className={`terminal-wrapper ${pane.id === tab.focusedPaneId ? "focused" : ""}`}
-                      onClick={() => setFocusedPane(tab.id, pane.id)}
-                      style={{
-                        border: pane.id === tab.focusedPaneId ? '2px solid #007acc' : '2px solid transparent',
-                        borderRadius: '4px',
-                        overflow: 'hidden',
-                        position: 'relative',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}
-                    >
-                      {/* Show port forwards if this is an SSH tab with forwarding configured */}
-                      {tab.profileId && (() => {
-                        const profile = getProfileById(tab.profileId);
-                        return profile?.portForwards && profile.portForwards.length > 0 ? (
-                          <PortForwardStatus portForwards={profile.portForwards} />
-                        ) : null;
-                      })()}
-                      <Terminal 
-                        id={pane.id} 
-                        visible={tab.id === activeTabId}
-                        onUpdateRemoteState={(isRemote, remoteHost) => updateTabRemoteState(tab.id, pane.id, isRemote, remoteHost)}
-                        onClose={() => closePane(tab.id, pane.id)}
-                        onCommandRunning={(isRunning, startTime) => handleCommandRunning(pane.id, isRunning, startTime)}
-                      />
-                    </div>
-                    {index === 0 && tab.panes.length > 1 && (
-                      <div
-                        className={`split-divider split-divider-${tab.splitLayout}`}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          const container = e.currentTarget.parentElement;
-                          if (!container) return;
-
-                          const handleMouseMove = (e: MouseEvent) => {
-                            const containerRect = container.getBoundingClientRect();
-                            const containerStart = tab.splitLayout === 'vertical' ? containerRect.left : containerRect.top;
-                            const containerSize = tab.splitLayout === 'vertical' ? containerRect.width : containerRect.height;
-                            const currentPos = tab.splitLayout === 'vertical' ? e.clientX : e.clientY;
-                            const newRatio = ((currentPos - containerStart) / containerSize) * 100;
-                            updateSplitRatio(tab.id, newRatio);
-                          };
-
-                          const handleMouseUp = () => {
-                            document.removeEventListener('mousemove', handleMouseMove);
-                            document.removeEventListener('mouseup', handleMouseUp);
-                          };
-
-                          document.addEventListener('mousemove', handleMouseMove);
-                          document.addEventListener('mouseup', handleMouseUp);
-                        }}
-                      />
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+    </WindowRouter>
   );
 }
 
 function App() {
     return (
-        <SettingsProvider>
-            <AIProvider>
-                <SSHProfilesProvider>
-                    <AppContent />
-                </SSHProfilesProvider>
-            </AIProvider>
-        </SettingsProvider>
+        <ErrorBoundary 
+          name="Application Root"
+          onError={(error, errorInfo) => {
+            // Log critical root-level errors
+            log.error("Critical application error:", {
+              error: error.message,
+              stack: error.stack,
+              componentStack: errorInfo.componentStack,
+            });
+          }}
+        >
+          <SettingsProvider>
+              <AIProvider>
+                  <SSHProfilesProvider>
+                      <AppContent />
+                  </SSHProfilesProvider>
+              </AIProvider>
+          </SettingsProvider>
+        </ErrorBoundary>
     );
 }
 

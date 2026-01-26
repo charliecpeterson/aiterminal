@@ -59,10 +59,10 @@ export function getLoggerConfig(): Readonly<LoggerConfig> {
 }
 
 interface Logger {
-  debug: (message: string, ...args: any[]) => void;
-  info: (message: string, ...args: any[]) => void;
-  warn: (message: string, ...args: any[]) => void;
-  error: (message: string, ...args: any[]) => void;
+  debug: (message: string, ...args: unknown[]) => void;
+  info: (message: string, ...args: unknown[]) => void;
+  warn: (message: string, ...args: unknown[]) => void;
+  error: (message: string, ...args: unknown[]) => void;
 }
 
 /**
@@ -109,7 +109,7 @@ export function createLogger(context: string): Logger {
     return parts.join(' ');
   };
 
-  const log = (level: LogLevel, message: string, ...args: any[]): void => {
+  const log = (level: LogLevel, message: string, ...args: unknown[]): void => {
     if (!shouldLog(level)) return;
 
     const formattedMessage = formatMessage(level, message);
@@ -132,10 +132,10 @@ export function createLogger(context: string): Logger {
   };
 
   return {
-    debug: (message: string, ...args: any[]) => log('debug', message, ...args),
-    info: (message: string, ...args: any[]) => log('info', message, ...args),
-    warn: (message: string, ...args: any[]) => log('warn', message, ...args),
-    error: (message: string, ...args: any[]) => log('error', message, ...args),
+    debug: (message: string, ...args: unknown[]) => log('debug', message, ...args),
+    info: (message: string, ...args: unknown[]) => log('info', message, ...args),
+    warn: (message: string, ...args: unknown[]) => log('warn', message, ...args),
+    error: (message: string, ...args: unknown[]) => log('error', message, ...args),
   };
 }
 

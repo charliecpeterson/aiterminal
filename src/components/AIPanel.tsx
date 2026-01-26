@@ -1,10 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import {
-  aiPanelStyles,
-  getModeButtonStyle,
-  getHeaderButtonStyle,
-  getTabStyle,
-} from "./AIPanel.styles";
+import { aiPanelStyles } from "./AIPanel.styles";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendChatMessage } from "../ai/chatSend-vercel";
@@ -297,7 +292,13 @@ const AIPanel = ({
         </div>
         <div style={aiPanelStyles.tabs}>
           <button
-            style={getTabStyle(activeTab === "chat", hoverStates.chatTab || false)}
+            style={
+              activeTab === "chat"
+                ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabActive }
+                : hoverStates.chatTab
+                ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabHover }
+                : aiPanelStyles.tab
+            }
             onClick={() => setActiveTab("chat")}
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, chatTab: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, chatTab: false }))}
@@ -305,7 +306,13 @@ const AIPanel = ({
             Chat
           </button>
           <button
-            style={getTabStyle(activeTab === "context", hoverStates.contextTab || false)}
+            style={
+              activeTab === "context"
+                ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabActive }
+                : hoverStates.contextTab
+                ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabHover }
+                : aiPanelStyles.tab
+            }
             onClick={() => setActiveTab("context")}
             onMouseEnter={() => setHoverStates(prev => ({ ...prev, contextTab: true }))}
             onMouseLeave={() => setHoverStates(prev => ({ ...prev, contextTab: false }))}
@@ -319,11 +326,15 @@ const AIPanel = ({
         <div style={aiPanelStyles.actions}>
           <div style={aiPanelStyles.mode} title="Chat: no tools. Agent: tools enabled.">
             <button
-              style={getModeButtonStyle(
-                aiMode === 'chat',
-                hoverStates.chatMode || false,
+              style={
                 !settings
-              )}
+                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonDisabled }
+                  : aiMode === 'chat'
+                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonActive }
+                  : hoverStates.chatMode
+                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonHover }
+                  : aiPanelStyles.modeButton
+              }
               onClick={() => setAiMode('chat')}
               disabled={!settings}
               type="button"
@@ -333,11 +344,15 @@ const AIPanel = ({
               Chat
             </button>
             <button
-              style={getModeButtonStyle(
-                aiMode === 'agent',
-                hoverStates.agentMode || false,
+              style={
                 !settings
-              )}
+                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonDisabled }
+                  : aiMode === 'agent'
+                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonActive }
+                  : hoverStates.agentMode
+                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonHover }
+                  : aiPanelStyles.modeButton
+              }
               onClick={() => setAiMode('agent')}
               disabled={!settings}
               type="button"
@@ -350,7 +365,14 @@ const AIPanel = ({
           {activeTab === "chat" && (
             <>
               <button 
-                style={getHeaderButtonStyle(hoverStates.exportBtn || false, messages.length === 0)}
+                style={{
+                  ...aiPanelStyles.headerButton,
+                  ...(messages.length === 0
+                    ? aiPanelStyles.headerButtonDisabled
+                    : hoverStates.exportBtn
+                    ? aiPanelStyles.headerButtonHover
+                    : {}),
+                }}
                 onClick={async () => {
                   if (messages.length === 0) return;
                   try {
@@ -379,7 +401,10 @@ const AIPanel = ({
                 Export
               </button>
               <button 
-                style={getHeaderButtonStyle(hoverStates.clearBtn || false, false)}
+                style={{
+                  ...aiPanelStyles.headerButton,
+                  ...(hoverStates.clearBtn ? aiPanelStyles.headerButtonHover : {}),
+                }}
                 onClick={clearChat}
                 title="Clear chat"
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, clearBtn: true }))}

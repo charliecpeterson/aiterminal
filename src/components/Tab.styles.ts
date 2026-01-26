@@ -4,7 +4,6 @@
  * Demonstrates migration of tab styling to the centralized design system.
  */
 
-import { CSSProperties } from 'react';
 import { tokens } from '../styles/tokens';
 
 // ============================================================================
@@ -136,108 +135,4 @@ export const tabStyles = {
   },
 } as const;
 
-// ============================================================================
-// TAB VARIANTS
-// ============================================================================
 
-/**
- * Get tab style based on state
- */
-export function getTabStyle(isActive: boolean, isHover: boolean = false): CSSProperties {
-  if (isActive) {
-    return { ...tabStyles.tab, ...tabStyles.tabActive };
-  }
-  if (isHover) {
-    return { ...tabStyles.tab, ...tabStyles.tabHover };
-  }
-  return tabStyles.tab;
-}
-
-/**
- * Get tab close button style based on state
- */
-export function getTabCloseButtonStyle(isHover: boolean = false): CSSProperties {
-  if (isHover) {
-    return { ...tabStyles.tabCloseButton, ...tabStyles.tabCloseButtonHover };
-  }
-  return tabStyles.tabCloseButton;
-}
-
-// ============================================================================
-// USAGE EXAMPLE
-// ============================================================================
-
-/*
-import { tabStyles, getTabStyle } from './Tab.styles';
-
-function TabBar({ tabs, activeTabId, onTabClick, onTabClose, onNewTab }) {
-  const [hoveredTab, setHoveredTab] = useState<number | null>(null);
-  
-  return (
-    <div style={tabStyles.tabBar}>
-      {tabs.map((tab) => (
-        <div
-          key={tab.id}
-          style={getTabStyle(tab.id === activeTabId, hoveredTab === tab.id)}
-          onClick={() => onTabClick(tab.id)}
-          onMouseEnter={() => setHoveredTab(tab.id)}
-          onMouseLeave={() => setHoveredTab(null)}
-        >
-          <span style={tabStyles.tabLabel}>{tab.title}</span>
-          {tab.splitLayout !== 'single' && (
-            <div style={
-              tab.id === activeTabId 
-                ? {...tabStyles.splitIndicator, ...tabStyles.splitIndicatorActive}
-                : tabStyles.splitIndicator
-            } />
-          )}
-          <button
-            style={getTabCloseButtonStyle(hoveredTab === tab.id)}
-            onClick={(e) => {
-              e.stopPropagation();
-              onTabClose(tab.id);
-            }}
-          >
-            ×
-          </button>
-        </div>
-      ))}
-      <button
-        style={tabStyles.newTabButton}
-        onClick={onNewTab}
-        title="New Tab"
-      >
-        +
-      </button>
-    </div>
-  );
-}
-*/
-
-// ============================================================================
-// MIGRATION NOTES
-// ============================================================================
-
-/*
-Key improvements with design tokens:
-
-1. Consistency:
-   - All tabs use the same spacing, colors, and transitions
-   - Changes to the design system automatically propagate
-
-2. Maintainability:
-   - Update tokens.ts once to change all tab styling
-   - No need to search through CSS files
-
-3. Type Safety:
-   - TypeScript ensures correct property values
-   - Autocomplete for all token values
-
-4. Reusability:
-   - Helper functions encapsulate common patterns
-   - Easy to create variants (primary, secondary, etc.)
-
-5. Performance:
-   - Inline styles with tokens are tree-shakeable
-   - No unused CSS in production bundle
-*/

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '../utils/logger';
+import { ContextErrorBoundary } from '../components/ContextErrorBoundary';
 
 const log = createLogger('SettingsContext');
 
@@ -67,7 +68,7 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const SettingsProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [settings, setSettings] = useState<AppSettings | null>(null);
     const [loading, setLoading] = useState(true);
     const loadingRef = useRef(false); // Prevent double-load
@@ -149,6 +150,16 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         <SettingsContext.Provider value={{ settings, updateSettings, loading }}>
             {children}
         </SettingsContext.Provider>
+    );
+};
+
+export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    return (
+        <ContextErrorBoundary contextName="Settings">
+            <SettingsProviderInner>
+                {children}
+            </SettingsProviderInner>
+        </ContextErrorBoundary>
     );
 };
 

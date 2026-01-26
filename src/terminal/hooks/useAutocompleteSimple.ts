@@ -12,12 +12,22 @@ import { createLogger } from '../../utils/logger';
 
 const log = createLogger('Autocomplete');
 
+// Autocomplete timing constants
+const DEFAULT_DEBOUNCE_MS = 300;
+const HISTORY_REFRESH_INTERVAL_MS = 10000;
+const CWD_REFRESH_INTERVAL_MS = 5000;
+
+interface XTermKeyEvent {
+  key: string;
+  domEvent: KeyboardEvent;
+}
+
 export function useAutocompleteSimple(
   terminalRef: React.RefObject<XTermTerminal | null>,
   enabled: boolean,
   ptyId: number,
   source: 'history' | 'llm' | 'hybrid' = 'history',
-  debounceMs: number = 300,
+  debounceMs: number = DEFAULT_DEBOUNCE_MS,
   terminalReady: boolean = false,
 ) {
   const historyEngineRef = useRef<SimpleAutocomplete | null>(null);
@@ -61,7 +71,7 @@ export function useAutocompleteSimple(
     };
 
     loadHistory();
-    const interval = setInterval(loadHistory, 10000);
+    const interval = setInterval(loadHistory, HISTORY_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [enabled, source]);
 
@@ -109,7 +119,7 @@ export function useAutocompleteSimple(
     };
 
     getCwd();
-    const interval = setInterval(getCwd, 5000);
+    const interval = setInterval(getCwd, CWD_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [enabled, ptyId, source]);
 
@@ -164,7 +174,7 @@ export function useAutocompleteSimple(
     };
 
     getCwd();
-    const interval = setInterval(getCwd, 5000);
+    const interval = setInterval(getCwd, CWD_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [enabled, source, ptyId]);
 
@@ -218,7 +228,7 @@ export function useAutocompleteSimple(
 
 // History mode (current working behavior)
 function handleHistoryKey(
-  event: any,
+  event: XTermKeyEvent,
   key: string,
   terminal: XTermTerminal,
   engine: SimpleAutocomplete,
@@ -286,7 +296,7 @@ function handleHistoryKey(
 
 // LLM mode (smart AI-powered completion with debouncing)
 function handleLLMKey(
-  event: any,
+  event: XTermKeyEvent,
   key: string,
   terminal: XTermTerminal,
   engine: LLMInlineAutocomplete,

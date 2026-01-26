@@ -22,6 +22,14 @@ import { getRangeText } from './ui/copyContext';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
+import {
+  MIN_TERMINAL_ROWS,
+  MIN_TERMINAL_COLS,
+  MAX_TERMINAL_ROWS,
+  MAX_TERMINAL_COLS,
+  TERMINAL_FOCUS_DELAY_MS,
+  RESIZE_OBSERVER_DEBOUNCE_MS,
+} from './constants';
 
 export interface TerminalWiring {
     session: TerminalSession;
@@ -101,8 +109,8 @@ export function createTerminalWiring(params: {
     // This prevents the shell from assuming wrong columns before we send the real size
     Promise.resolve().then(() => {
         session.fitAddon.fit();
-        const rows = Math.max(1, Math.min(1000, term.rows));
-        const cols = Math.max(1, Math.min(1000, term.cols));
+        const rows = Math.max(MIN_TERMINAL_ROWS, Math.min(MAX_TERMINAL_ROWS, term.rows));
+        const cols = Math.max(MIN_TERMINAL_COLS, Math.min(MAX_TERMINAL_COLS, term.cols));
         invoke('resize_pty', { id, rows, cols });
     });
 
@@ -123,7 +131,7 @@ export function createTerminalWiring(params: {
 
     const focusTimeoutId = window.setTimeout(() => {
         term.focus();
-    }, 50);
+    }, TERMINAL_FOCUS_DELAY_MS);
 
     const selectionMenuHandle = attachSelectionMenu({
         term,
@@ -183,10 +191,10 @@ export function createTerminalWiring(params: {
         
         resizeTimeout = window.setTimeout(() => {
             session.fitAddon.fit();
-            const rows = Math.max(1, Math.min(1000, term.rows));
-            const cols = Math.max(1, Math.min(1000, term.cols));
+            const rows = Math.max(MIN_TERMINAL_ROWS, Math.min(MAX_TERMINAL_ROWS, term.rows));
+            const cols = Math.max(MIN_TERMINAL_COLS, Math.min(MAX_TERMINAL_COLS, term.cols));
             invoke('resize_pty', { id, rows, cols });
-        }, 50);
+        }, RESIZE_OBSERVER_DEBOUNCE_MS);
     });
     resizeObserver.observe(container);
 
