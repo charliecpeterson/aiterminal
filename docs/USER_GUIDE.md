@@ -171,7 +171,7 @@ To make it clear what the model actually saw, assistant messages include an expa
 - Lists retrieved snippets (with source type/path when available).
 
 #### AI Capabilities & Tools
-The AI assistant has access to 17 tools that execute automatically to help you:
+The AI assistant has access to 21 tools that execute automatically to help you:
 
 **File Operations**
 1. **get_current_directory** - Get the active terminal's current working directory
@@ -184,59 +184,88 @@ The AI assistant has access to 17 tools that execute automatically to help you:
    - Examples: Check package.json, read configuration files, examine logs
    - Supports text files up to 50KB by default
 
-4. **write_file** - Create new files or overwrite existing ones
+4. **get_file_info** - **NEW!** Get file metadata before reading
+   - Check file size, type, line count, text vs binary
+   - Prevents reading huge or binary files
+   - Example: "How big is package-lock.json?" → "1.2 MB, 45,678 lines - too large to read fully"
+
+5. **read_multiple_files** - **NEW!** Read up to 20 files at once
+   - More efficient than multiple read_file calls
+   - Perfect for errors spanning multiple files
+   - Example: Read src/main.rs, src/lib.rs, and Cargo.toml together
+
+6. **write_file** - Create new files or overwrite existing ones
    - Examples: Create config files, generate scripts, fix code files
   - Note: this writes locally; for remote/SSH edits use `execute_command`
 
-5. **append_to_file** - Add content to the end of a file
+7. **replace_in_file** - Search and replace text in files
+   - Safer than overwriting entire files
+   - Replace first occurrence or all occurrences
+   - Example: "Change 'localhost' to '0.0.0.0' in config.js"
+
+8. **append_to_file** - Add content to the end of a file
    - Examples: Add to logs, update lists, append notes
    - Creates file if it doesn't exist
 
-6. **list_directory** - Browse directory contents
+9. **list_directory** - Browse directory contents
    - Shows files and subdirectories
    - Works with absolute paths
 
-7. **tail_file** - Read the last N lines of a file
-   - More efficient than reading entire large log files
-   - Default: 50 lines, configurable
+10. **tail_file** - Read the last N lines of a file
+    - More efficient than reading entire large log files
+    - Default: 50 lines, configurable
 
-8. **make_directory** - Create directories (and parents if needed)
-   - Examples: Set up project structure, create nested folders
-  - Note: this runs locally; for remote/SSH mkdir use `execute_command`
+11. **make_directory** - Create directories (and parents if needed)
+    - Examples: Set up project structure, create nested folders
+   - Note: this runs locally; for remote/SSH mkdir use `execute_command`
 
 **Search & Discovery**
-9. **search_files** - Find files by name pattern or content
-   - Glob patterns for filenames (e.g., `*.ts`, `**/*.json`)
-   - Content search across files
+12. **search_files** - Find files by name pattern or content
+    - Glob patterns for filenames (e.g., `*.ts`, `**/*.json`)
+    - Content search across files
+
+13. **grep_in_files** - **NEW!** Fast pattern search in specific files
+    - More efficient than search_files for targeted searches
+    - Returns matching lines with line numbers
+    - Example: "Find 'ConnectionError' in all log files"
+
+**Error Analysis & Debugging** 🆕
+14. **analyze_error** - **NEW!** Smart error parser and debugger
+    - Automatically extracts file paths, line numbers, error types
+    - Parses stack traces and identifies root causes
+    - Checks which mentioned files exist
+    - Suggests search queries and fixes
+    - **Use this first when debugging errors!**
+    - Example: Paste crash output → AI extracts all relevant info and investigates
 
 **Git Operations**
-10. **git_status** - Get current branch, staged files, uncommitted changes
-   - Helps AI understand your git repository state
+15. **git_status** - Get current branch, staged files, uncommitted changes
+    - Helps AI understand your git repository state
 
-11. **get_git_diff** - Show uncommitted changes
+16. **get_git_diff** - Show uncommitted changes
     - See what's been modified before committing
 
 **System & Process**
-12. **find_process** - Search for running processes by name
+17. **find_process** - Search for running processes by name
     - Examples: Find node processes, check for running servers
     - Useful for debugging "port already in use" errors
 
-13. **check_port** - Check if a network port is in use
+18. **check_port** - Check if a network port is in use
     - Shows which process is using the port
     - Common for debugging port conflicts
 
-14. **get_system_info** - Get OS, architecture, and disk space
+19. **get_system_info** - Get OS, architecture, and disk space
     - Useful for environment debugging
 
-15. **get_environment_variable** - Check environment variables
+20. **get_environment_variable** - Check environment variables
     - Examples: PATH, HOME, custom variables
 
 **Utilities**
-16. **calculate** - Evaluate mathematical expressions
+21. **calculate** - Evaluate mathematical expressions
     - Examples: Unit conversions, sizing calculations
     - Supports arithmetic and math functions
 
-17. **web_search** - Generate search URLs for documentation
+22. **web_search** - Generate search URLs for documentation
     - Suggests Google searches when external info is needed
     - Cannot actually browse but provides helpful links
 
@@ -289,10 +318,21 @@ The AI can perform up to 5 sequential tool calls per request, allowing it to sol
 #### Example Prompts
 Try these to see the AI's capabilities:
 
+**Error Analysis & Debugging** 🆕
+- "I'm getting this error: <paste full error output>"
+- "Analyze this crash: <paste stack trace>"
+- "Why did my build fail? <paste compiler output>"
+- "Debug this TypeError in app.js:42"
+- "Find all occurrences of 'DatabaseConnection' in src/"
+- "Check files mentioned in this error: <paste error>"
+
 **File Operations**
 - "What files are in my current directory?"
 - "Read the package.json and tell me what scripts are available"
+- "Check how big package-lock.json is before reading it"
+- "Read these files together: src/main.ts, src/types.ts, package.json"
 - "Create a new config.json file with default settings"
+- "Change 'localhost' to '0.0.0.0' in all config files"
 - "Add a TODO item to my notes.txt file"
 - "Show me the last 100 lines of the error log"
 - "Create a new src/components folder"
@@ -311,6 +351,7 @@ Try these to see the AI's capabilities:
 **Search & Discovery**
 - "Find all TypeScript files in src/"
 - "Search for TODO comments in this project"
+- "Find all files that import 'database'"
 - "Show me what's in the README file"
 - "List all Python files in the current directory"
 

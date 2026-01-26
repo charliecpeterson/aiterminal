@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import Terminal from "./components/Terminal";
 import AIPanel from "./components/AIPanel";
 import SSHSessionWindow from "./components/SSHSessionWindow";
 import OutputViewer from "./components/OutputViewer";
 import QuickActionsWindow from "./components/QuickActionsWindow";
-import PreviewWindow from "./components/PreviewWindow";
 import SettingsModal from "./components/SettingsModal";
+
+// Lazy load heavy components
+const PreviewWindow = React.lazy(() => import("./components/PreviewWindow"));
 import { SettingsProvider } from "./context/SettingsContext";
 import { AIProvider } from "./context/AIContext";
 import { SSHProfilesProvider, useSSHProfiles } from "./context/SSHProfilesContext";
@@ -13,6 +15,7 @@ import { SSHProfile } from "./types/ssh";
 import { QuickAction } from "./components/QuickActionsWindow";
 import { connectSSHProfileNewTab, getProfileDisplayName } from "./utils/sshConnect";
 import { useTabManagement } from "./hooks/useTabManagement";
+import { useSessionPersistence } from "./hooks/useSessionPersistence";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -31,6 +34,26 @@ function AppContent() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const { updateProfile, updateConnection } = useSSHProfiles();
+  
+  // Determine window type early
+  let isAiWindow = false;
+  let isSSHWindow = false;
+  let isOutputViewer = false;
+  let isQuickActionsWindow = false;
+  let isPreviewWindow = false;
+  try {
+    isAiWindow = window.location.hash.startsWith("#/ai-panel");
+    isSSHWindow = window.location.hash.startsWith("#/ssh-panel");
+    isOutputViewer = window.location.hash.startsWith("#/output-viewer");
+    isQuickActionsWindow = window.location.hash.startsWith("#/quick-actions");
+    isPreviewWindow = window.location.search.includes("preview=");
+  } catch {
+    isAiWindow = false;
+    isSSHWindow = false;
+    isOutputViewer = false;
+    isQuickActionsWindow = false;
+    isPreviewWindow = false;
+  }
   
   // Map PTY ID to Profile ID for connection tracking
   const [ptyToProfileMap, setPtyToProfileMap] = useState<Map<number, string>>(new Map());
@@ -52,29 +75,18 @@ function AppContent() {
     addSSHTab,
   } = useTabManagement(isInitialized, ptyToProfileMap, updateConnection);
   
+  // Use session persistence hook (only in main window)
+  const { saveSession, loadSession } = useSessionPersistence({
+    tabs,
+    activeTabId,
+    ptyToProfileMap,
+    enabled: !isAiWindow && !isSSHWindow && !isOutputViewer && !isQuickActionsWindow && !isPreviewWindow,
+  });
+  
   // Track running commands per tab: Map<ptyId, { startTime: number, elapsed: number }>
   const [runningCommands, setRunningCommands] = useState<Map<number, { startTime: number; elapsed: number }>>(new Map());
   const elapsedTimerRef = useRef<number | null>(null);
   const tabsRef = useRef(tabs);
-  
-  let isAiWindow = false;
-  let isSSHWindow = false;
-  let isOutputViewer = false;
-  let isQuickActionsWindow = false;
-  let isPreviewWindow = false;
-  try {
-    isAiWindow = window.location.hash.startsWith("#/ai-panel");
-    isSSHWindow = window.location.hash.startsWith("#/ssh-panel");
-    isOutputViewer = window.location.hash.startsWith("#/output-viewer");
-    isQuickActionsWindow = window.location.hash.startsWith("#/quick-actions");
-    isPreviewWindow = window.location.search.includes("preview=");
-  } catch {
-    isAiWindow = false;
-    isSSHWindow = false;
-    isOutputViewer = false;
-    isQuickActionsWindow = false;
-    isPreviewWindow = false;
-  }
 
   const connectSSHProfile = async (profile: SSHProfile) => {
     try {
@@ -181,9 +193,88 @@ function AppContent() {
     return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
   };
 
+  // Get SSH profiles from context for session restoration
+  const { profiles } = useSSHProfiles();
+
+  /**
+   * Restore a saved session or create a new tab
+   */
   useEffect(() => {
-    createTab().then(() => setIsInitialized(true));
-  }, [createTab]);
+    const restoreOrCreateSession = async () => {
+      try {
+        const sessionState = await loadSession();
+        
+        if (!sessionState || sessionState.tabs.length === 0) {
+          // No saved session, create a new tab
+          log.info('No saved session, creating new tab');
+          await createTab();
+          setIsInitialized(true);
+          return;
+        }
+
+        log.info(`Restoring session with ${sessionState.tabs.length} tabs`);
+
+        // Restore each tab
+        for (const sessionTab of sessionState.tabs) {
+          for (const sessionPane of sessionTab.panes) {
+            if (sessionPane.restoreType === 'skip') {
+              log.debug(`Skipping pane ${sessionPane.id} (marked as skip)`);
+              continue;
+            }
+
+            if (sessionPane.restoreType === 'ssh' && sessionPane.sshProfileId) {
+              // Restore SSH connection
+              const profile = profiles.find(p => p.id === sessionPane.sshProfileId);
+              if (profile) {
+                log.info(`Restoring SSH connection to ${profile.name}`);
+                try {
+                  await connectSSHProfile(profile);
+                } catch (error) {
+                  log.error(`Failed to restore SSH connection for ${profile.name}:`, error);
+                }
+              } else {
+                log.warn(`SSH profile ${sessionPane.sshProfileId} not found, skipping`);
+              }
+            } else if (sessionPane.restoreType === 'local') {
+              // Restore local terminal
+              log.info(`Restoring local terminal (cwd: ${sessionPane.workingDirectory || 'default'})`);
+              try {
+                const ptyId = await invoke<number>("spawn_pty");
+                
+                // Create tab with restored title
+                addSSHTab(ptyId, sessionTab.customName || sessionTab.title, '');
+                
+                // Change to working directory if available
+                if (sessionPane.workingDirectory) {
+                  await invoke('write_to_pty', {
+                    id: ptyId,
+                    data: `cd "${sessionPane.workingDirectory}"\n`,
+                  });
+                }
+              } catch (error) {
+                log.error('Failed to restore local terminal:', error);
+              }
+            }
+          }
+        }
+
+        // Restore active tab
+        if (sessionState.activeTabId !== null) {
+          setActiveTabId(sessionState.activeTabId);
+        }
+
+        setIsInitialized(true);
+        log.info('Session restoration complete');
+      } catch (error) {
+        log.error('Session restoration failed:', error);
+        // Fallback to creating a new tab
+        await createTab();
+        setIsInitialized(true);
+      }
+    };
+
+    restoreOrCreateSession();
+  }, []); // Empty deps - only run once on mount
 
   // Monitor connection health for SSH sessions
   useEffect(() => {
@@ -337,6 +428,14 @@ function AppContent() {
     // Close AI Panel and SSH Panel windows when main window closes
     const currentWindow = getCurrentWindow();
     const unlistenPromise = currentWindow.onCloseRequested(async () => {
+      // Save session before closing
+      try {
+        await saveSession();
+        log.info('Session saved on window close');
+      } catch (error) {
+        log.error('Failed to save session on window close:', error);
+      }
+      
       const aiPanel = await WebviewWindow.getByLabel("ai-panel").catch(() => null);
       if (aiPanel) {
         await aiPanel.close().catch(() => {});
@@ -350,7 +449,7 @@ function AppContent() {
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [isAiWindow]);
+  }, [isAiWindow, saveSession]);
 
   useEffect(() => {
     if (isAiWindow || isSSHWindow || isOutputViewer || isQuickActionsWindow) return; // Only run in main window
@@ -606,7 +705,11 @@ function AppContent() {
   }
 
   if (isPreviewWindow) {
-    return <PreviewWindow />;
+    return (
+      <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#999' }}>Loading preview...</div>}>
+        <PreviewWindow />
+      </Suspense>
+    );
   }
 
   if (isOutputViewer) {

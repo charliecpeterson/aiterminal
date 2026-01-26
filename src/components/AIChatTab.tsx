@@ -1,9 +1,19 @@
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatMessage, PendingApproval } from "../context/AIContext";
 import { formatChatTime, handlePromptKeyDown, roleLabel } from "../ai/panelUi";
 import { AIMarkdown } from "./AIMarkdown";
 import { ToolExecutionStatus, type ToolExecution } from "./ToolExecutionStatus";
-import { ContextUsageDisplay } from "./ContextUsageDisplay";
+import { MessageMetrics } from "./ContextUsageDisplay";
+import { ToolProgressDisplay } from "./ToolProgressDisplay";
+import {
+  chatStyles,
+  getChipStyle,
+  getInputStyle,
+  getSendButtonStyle,
+  getCancelButtonStyle,
+  getMessageStyle,
+} from "./AIChatTab.styles";
 
 export function AIChatTab(props: {
   messages: ChatMessage[];
@@ -33,6 +43,10 @@ export function AIChatTab(props: {
     onDeny,
   } = props;
 
+  // Hover states for interactive elements
+  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
+  const [inputFocus, setInputFocus] = useState(false);
+
   const renderMarkdown = (content: string) => (
     <AIMarkdown
       content={content}
@@ -57,7 +71,7 @@ export function AIChatTab(props: {
   }));
 
   return (
-    <div className="ai-panel-section">
+    <div style={chatStyles.section}>
       {/* Pending Approvals */}
       {toolExecutions.length > 0 && (
         <ToolExecutionStatus
@@ -67,73 +81,98 @@ export function AIChatTab(props: {
         />
       )}
       
-      <div className="ai-panel-message-list">
+      <div style={chatStyles.messageList}>
         {messages.length === 0 ? (
-          <div className="ai-panel-card ai-panel-intro">
-            <div className="ai-panel-card-title">Start a prompt</div>
-            <div className="ai-panel-card-body">
-              Ask about output or draft commands with terminal context.
+          <div style={chatStyles.introCard}>
+            <div style={chatStyles.introTitle}>Start a conversation</div>
+            <div style={chatStyles.introBody}>
+              Ask about terminal output, draft commands, or get help with errors.
             </div>
-            <div className="ai-panel-chip-row">
+            <div style={chatStyles.chipRow}>
               <button
-                className="ai-panel-chip"
+                style={getChipStyle(hoverStates.chip1)}
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip1: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip1: false }))}
                 onClick={() => setPrompt("Summarize the last command and output.")}
               >
                 Summarize last command
               </button>
               <button
-                className="ai-panel-chip"
+                style={getChipStyle(hoverStates.chip2)}
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip2: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip2: false }))}
                 onClick={() => setPrompt("Explain this error and suggest a fix.")}
               >
                 Explain error
               </button>
               <button
-                className="ai-panel-chip"
+                style={getChipStyle(hoverStates.chip3)}
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip3: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip3: false }))}
                 onClick={() => setPrompt("Draft a fix for the issue above.")}
               >
-                Draft fix
+                Draft a fix
               </button>
             </div>
           </div>
         ) : (
           messages.map((message) => (
-            <div key={message.id} className={`ai-panel-message ${message.role}`}>
-              <div className="ai-panel-message-meta">
-                <span>{roleLabel(message.role)}</span>
-                <span>{formatChatTime(message.timestamp)}</span>
+            <div key={message.id} style={getMessageStyle(message.role)}>
+              <div style={chatStyles.messageMeta}>
+                <span style={chatStyles.messageRole}>{roleLabel(message.role)}</span>
+                <span style={chatStyles.messageTime}>{formatChatTime(message.timestamp)}</span>
               </div>
-              <div className="ai-panel-message-body">{renderMarkdown(message.content)}</div>
-
-              {message.role === 'assistant' && message.usedContext && (
-                <ContextUsageDisplay usedContext={message.usedContext} />
+              <div style={chatStyles.messageBody}>{renderMarkdown(message.content)}</div>
+              
+              {message.role === 'assistant' && message.toolProgress && message.toolProgress.length > 0 && (
+                <ToolProgressDisplay toolProgress={message.toolProgress} />
+              )}
+              
+              {message.role === 'assistant' && message.metrics && (
+                <MessageMetrics 
+                  metrics={message.metrics}
+                  usedContext={message.usedContext}
+                />
               )}
             </div>
           ))
         )}
       </div>
 
-      <div className="ai-panel-input-row">
+      <div style={chatStyles.inputRow}>
         <textarea
-          className="ai-panel-input"
+          style={getInputStyle(inputFocus, isSending)}
           placeholder="Ask about the terminal output..."
           rows={3}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => handlePromptKeyDown(event, onSend)}
+          onFocus={() => setInputFocus(true)}
+          onBlur={() => setInputFocus(false)}
           disabled={isSending}
         />
         {isSending ? (
-          <button className="ai-panel-cancel" onClick={onCancel}>
+          <button
+            style={getCancelButtonStyle(hoverStates.cancelBtn)}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
+            onClick={onCancel}
+          >
             Cancel
           </button>
         ) : (
-          <button className="ai-panel-send" onClick={onSend}>
+          <button
+            style={getSendButtonStyle(hoverStates.sendBtn)}
+            onMouseEnter={() => setHoverStates(prev => ({ ...prev, sendBtn: true }))}
+            onMouseLeave={() => setHoverStates(prev => ({ ...prev, sendBtn: false }))}
+            onClick={onSend}
+          >
             Send
           </button>
         )}
       </div>
 
-      {sendError && <div className="ai-panel-error">{sendError}</div>}
+      {sendError && <div style={chatStyles.error}>{sendError}</div>}
     </div>
   );
 }

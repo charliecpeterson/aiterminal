@@ -180,6 +180,187 @@ Examples:
       },
     }),
 
+    get_file_info: tool({
+      description: `Get metadata about a file before reading it. This helps decide if a file should be read, is too large, or is binary.
+
+Returns:
+- File size (bytes and human-readable)
+- Line count (for text files under 10MB)
+- File type/language detection
+- Whether file is text or binary
+- File extension
+- Last modified time
+
+Use this BEFORE read_file to:
+1. Check if file is too large (>1MB may need truncation)
+2. Verify it's a text file (not binary)
+3. Understand what type of code/content it contains
+4. Decide if reading is necessary
+
+Examples:
+- Check before reading: path="large_log.txt"
+- Verify file type: path="src/main.rs"
+- Check size: path="package-lock.json"`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file (absolute or relative to terminal directory)'),
+      }),
+      execute: async ({ path }) => {
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<{
+            path: string;
+            size_bytes: number;
+            size_human: string;
+            line_count: number | null;
+            is_text: boolean;
+            is_binary: boolean;
+            extension: string | null;
+            file_type: string;
+            last_modified: string | null;
+          }>('get_file_info_tool', {
+            path,
+            workingDirectory: cwd,
+          });
+          
+          const lines = [
+            `File: ${result.path}`,
+            `Size: ${result.size_human} (${result.size_bytes} bytes)`,
+            `Type: ${result.file_type}${result.extension ? ` (.${result.extension})` : ''}`,
+            `Format: ${result.is_binary ? 'Binary' : 'Text'}`,
+          ];
+          
+          if (result.line_count !== null) {
+            lines.push(`Lines: ${result.line_count}`);
+          }
+          
+          if (result.last_modified) {
+            lines.push(`Modified: ${result.last_modified}`);
+          }
+          
+          // Add helpful suggestions
+          if (result.is_binary) {
+            lines.push('\n⚠️  This is a binary file - cannot read with read_file');
+          } else if (result.size_bytes > 1024 * 1024) {
+            lines.push(`\n⚠️  Large file (${result.size_human}) - consider using max_bytes parameter with read_file`);
+          } else if (result.size_bytes > 100 * 1024) {
+            lines.push(`\n💡 File is ${result.size_human} - safe to read but consider if full content is needed`);
+          }
+          
+          return lines.join('\n');
+        } catch (error) {
+          return `Error getting file info: ${error}`;
+        }
+      },
+    }),
+
+    read_multiple_files: tool({
+      description: `Read multiple files at once (up to 20 files). Useful for error analysis when you need to check several related files.
+
+Use this when:
+- Error spans multiple files
+- Need to compare related files
+- Checking imports/dependencies
+- Analyzing project structure
+
+Each file has independent size limits. Binary files are skipped automatically.
+
+Examples:
+- Read related files: paths=["src/main.rs", "src/lib.rs", "Cargo.toml"]
+- Check package files: paths=["package.json", "package-lock.json", "tsconfig.json"]`,
+      inputSchema: z.object({
+        paths: z.array(z.string()).describe('Array of file paths (max 20)'),
+        max_bytes_per_file: z.number().optional().describe('Max bytes per file (default: 50000)'),
+      }),
+      execute: async ({ paths, max_bytes_per_file }) => {
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('read_multiple_files_tool', {
+            paths,
+            maxBytesPerFile: max_bytes_per_file,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error reading files: ${error}`;
+        }
+      },
+    }),
+
+    grep_in_files: tool({
+      description: `Search for a pattern within specific files. Fast grep/search operation.
+
+Use this when:
+- Looking for specific error messages in logs
+- Finding where a variable/function is used
+- Searching for TODO/FIXME comments
+- Checking for specific patterns in code
+
+Returns matching lines with line numbers.
+
+Examples:
+- Find error in logs: pattern="ConnectionError", paths=["app.log", "error.log"]
+- Search for function: pattern="handleRequest", paths=["src/server.ts", "src/routes.ts"]
+- Case-insensitive: pattern="todo", case_sensitive=false`,
+      inputSchema: z.object({
+        pattern: z.string().describe('Text pattern to search for'),
+        paths: z.array(z.string()).describe('Array of file paths to search (max 50)'),
+        case_sensitive: z.boolean().optional().describe('Case-sensitive search (default: false)'),
+      }),
+      execute: async ({ pattern, paths, case_sensitive }) => {
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('grep_in_files_tool', {
+            pattern,
+            paths,
+            caseSensitive: case_sensitive,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error searching files: ${error}`;
+        }
+      },
+    }),
+
+    analyze_error: tool({
+      description: `Intelligently analyze error output or stack traces. Automatically extracts:
+- File paths and line numbers
+- Error types and messages
+- Stack traces
+- Files that exist vs missing
+- Suggested search queries
+
+Use this FIRST when user provides error output. It will:
+1. Parse the error structure
+2. Extract relevant files/locations
+3. Check if mentioned files exist
+4. Suggest what to investigate next
+
+Examples:
+- Analyze crash: error_text="<paste full error output>"
+- Parse stack trace: error_text="<full stack trace>"
+- Debug compilation error: error_text="<compiler output>"`,
+      inputSchema: z.object({
+        error_text: z.string().describe('The full error output or stack trace to analyze'),
+      }),
+      execute: async ({ error_text }) => {
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('analyze_error_tool', {
+            errorText: error_text,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error analyzing error: ${error}`;
+        }
+      },
+    }),
+
     list_directory: tool({
       description: `List contents of a directory. Shows files and subdirectories.
 
@@ -273,6 +454,43 @@ Examples:
           return result || `Environment variable ${name} is not set`;
         } catch (error) {
           return `Error getting environment variable: ${error}`;
+        }
+      },
+    }),
+
+    replace_in_file: tool({
+      description: `Replace text in a file using search and replace. More precise and safer than overwriting the entire file with write_file.
+
+IMPORTANT: 
+- This searches for EXACT text matches (not regex)
+- By default, only replaces the first occurrence
+- Use all=true to replace all occurrences
+- Returns error if search text is not found
+
+Examples:
+- Fix typo: path="config.ts", search="prot", replace="port"
+- Update version: path="package.json", search="\\"version\\": \\"1.0.0\\"", replace="\\"version\\": \\"1.1.0\\""
+- Replace all: path="app.ts", search="oldName", replace="newName", all=true`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file (absolute or relative)'),
+        search: z.string().describe('Exact text to find (case-sensitive)'),
+        replace: z.string().describe('Replacement text'),
+        all: z.boolean().optional().describe('Replace all occurrences (default: false, only replaces first)'),
+      }),
+      execute: async ({ path, search, replace, all }) => {
+        const cwd = await getTerminalCwd(terminalId);
+        
+        try {
+          const result = await invoke<string>('replace_in_file_tool', {
+            path,
+            search,
+            replace,
+            all: all || false,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error replacing in file: ${error}`;
         }
       },
     }),

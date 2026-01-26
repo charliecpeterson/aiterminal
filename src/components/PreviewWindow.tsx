@@ -3,11 +3,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { AIMarkdown } from './AIMarkdown';
 import { NotebookRenderer } from './NotebookRenderer';
 import { previewStyles } from './PreviewWindow.styles';
-import Asciidoctor from '@asciidoctor/core';
 import JsonView from '@uiw/react-json-view';
 import yaml from 'js-yaml';
 import mammoth from 'mammoth';
-import { sanitizeHTML, sanitizeAsciiDocHTML, createSafeIframeSrcDoc } from '../utils/sanitize';
+import { sanitizeHTML, createSafeIframeSrcDoc } from '../utils/sanitize';
 
 // Component to render DOCX files
 const DocxRenderer: React.FC<{ base64Content: string }> = ({ base64Content }) => {
@@ -230,23 +229,25 @@ const PreviewWindow: React.FC = () => {
         );
       
       case 'asciidoc':
-        try {
-          const asciidoctor = Asciidoctor();
-          const rawHtml = asciidoctor.convert(content, { safe: 'safe' });
-          const sanitizedHtml = sanitizeAsciiDocHTML(String(rawHtml));
-          return (
-            <div style={previewStyles.asciidoc}>
-              <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />
+        // AsciiDoc files are treated as plain text with markdown-like rendering
+        // This avoids loading the heavy 8MB Asciidoctor library
+        // Most AsciiDoc syntax overlaps with markdown, so basic rendering works
+        return (
+          <div style={previewStyles.markdown}>
+            <AIMarkdown content={content} />
+            <div style={{
+              marginTop: '16px', 
+              padding: '12px', 
+              fontSize: '12px', 
+              color: '#888',
+              background: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '6px',
+              borderLeft: '3px solid rgba(255, 255, 255, 0.1)'
+            }}>
+              Note: AsciiDoc file rendered as Markdown (basic syntax). For full AsciiDoc support, use a dedicated viewer.
             </div>
-          );
-        } catch (err) {
-          return (
-            <div style={previewStyles.error}>
-              Error rendering AsciiDoc: {String(err)}
-              <pre>{content}</pre>
-            </div>
-          );
-        }
+          </div>
+        );
       
       case 'json':
         try {

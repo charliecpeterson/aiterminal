@@ -70,6 +70,8 @@ const AIPanel = ({
     messages,
     addMessage,
     appendMessage,
+    updateMessageMetrics,
+    updateToolProgress,
     removeContextItem,
     // addContextItem, // Not used directly, we use addContextItemWithScan
     addContextItemWithScan,
@@ -190,6 +192,8 @@ const AIPanel = ({
       terminalId: activeTerminalId || 0, // Default to terminal 0
       addMessage,
       appendMessage,
+      updateMessageMetrics,
+      updateToolProgress,
       setPrompt,
       setIsSending,
       setSendError,
@@ -203,7 +207,7 @@ const AIPanel = ({
       setSendError(message);
       setIsSending(false);
     });
-  }, [prompt, settings?.ai, settings, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, setPrompt, addPendingApproval, contextSmartMode]);
+  }, [prompt, settings?.ai, settings, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, updateMessageMetrics, updateToolProgress, setPrompt, addPendingApproval, contextSmartMode]);
 
   const handleCancel = useCallback(() => {
     if (abortController) {

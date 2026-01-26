@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useReducer, useEffect 
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createLogger } from "../utils/logger";
+import { clearSummaryCache } from "../ai/conversationHistory";
 
 const log = createLogger('AIContext');
 
@@ -45,6 +46,17 @@ export interface ContextItem {
   usageCount?: number;
 }
 
+export interface ToolProgress {
+  toolCallId: string;
+  toolName: string;
+  status: 'running' | 'completed' | 'failed';
+  args?: Record<string, any>;
+  result?: string;
+  error?: string;
+  startTime: number;
+  endTime?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -60,6 +72,21 @@ export interface ChatMessage {
       text: string;
     }>;
   };
+  metrics?: {
+    model: string;
+    mode: "chat" | "agent";
+    timings: {
+      total: number;
+      firstToken?: number;
+    };
+    tokens: {
+      input: number;
+      output: number;
+      total: number;
+    };
+    toolCalls?: number;
+  };
+  toolProgress?: ToolProgress[];
 }
 
 export interface PendingApproval {
@@ -90,6 +117,8 @@ type AIAction =
   | { type: "chat:add"; message: ChatMessage }
   | { type: "chat:clear" }
   | { type: "chat:append"; id: string; content: string }
+  | { type: "chat:update-metrics"; id: string; metrics: ChatMessage['metrics'] }
+  | { type: "chat:update-tool-progress"; id: string; toolProgress: ToolProgress[] }
   | { type: "approval:add"; approval: PendingApproval }
   | { type: "approval:remove"; id: string };
 
@@ -174,6 +203,24 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
             : message
         ),
       };
+    case "chat:update-metrics":
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.id
+            ? { ...message, metrics: action.metrics }
+            : message
+        ),
+      };
+    case "chat:update-tool-progress":
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.id
+            ? { ...message, toolProgress: action.toolProgress }
+            : message
+        ),
+      };
     case "chat:clear":
       return {
         ...state,
@@ -207,6 +254,8 @@ interface AIContextValue extends AIState {
   clearChat: () => void;
   buildPrompt: (userInput: string) => string;
   appendMessage: (id: string, content: string) => void;
+  updateMessageMetrics: (id: string, metrics: ChatMessage['metrics']) => void;
+  updateToolProgress: (id: string, toolProgress: ToolProgress[]) => void;
   addPendingApproval: (approval: PendingApproval) => void;
   removePendingApproval: (id: string) => void;
   toggleSecretRedaction: (id: string) => void;
@@ -281,10 +330,20 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
 
   const clearChat = useCallback(() => {
     dispatch({ type: "chat:clear" });
+    // Clear conversation summary cache when chat is cleared
+    clearSummaryCache();
   }, []);
 
   const appendMessage = useCallback((id: string, content: string) => {
     dispatch({ type: "chat:append", id, content });
+  }, []);
+
+  const updateMessageMetrics = useCallback((id: string, metrics: ChatMessage['metrics']) => {
+    dispatch({ type: "chat:update-metrics", id, metrics });
+  }, []);
+
+  const updateToolProgress = useCallback((id: string, toolProgress: ToolProgress[]) => {
+    dispatch({ type: "chat:update-tool-progress", id, toolProgress });
   }, []);
 
   const addPendingApproval = useCallback((approval: PendingApproval) => {
@@ -436,6 +495,8 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       addMessage,
       clearChat,
       appendMessage,
+      updateMessageMetrics,
+      updateToolProgress,
       buildPrompt,
       addPendingApproval,
       removePendingApproval,
@@ -454,6 +515,8 @@ export const AIProvider = ({ children }: { children: React.ReactNode }) => {
       addMessage,
       clearChat,
       appendMessage,
+      updateMessageMetrics,
+      updateToolProgress,
       buildPrompt,
       addPendingApproval,
       removePendingApproval,

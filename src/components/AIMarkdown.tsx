@@ -6,8 +6,53 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import 'katex/dist/katex.min.css';
 import { createLogger } from '../utils/logger';
+import { aiPanelStyles, getCodeButtonStyle } from './AIPanel.styles';
+import { useState } from 'react';
 
 const log = createLogger('AIMarkdown');
+
+function CodeBlock(props: {
+  language: string;
+  code: string;
+  onCopy: () => void;
+  onRun?: () => void;
+}) {
+  const { language, code, onCopy, onRun } = props;
+  const [copyHover, setCopyHover] = useState(false);
+  const [runHover, setRunHover] = useState(false);
+
+  return (
+    <div style={aiPanelStyles.codeBlock}>
+      <div style={aiPanelStyles.codeHeader}>
+        <span style={aiPanelStyles.codeLang}>{language}</span>
+        <div style={aiPanelStyles.codeActions}>
+          <button
+            style={getCodeButtonStyle(copyHover)}
+            onMouseEnter={() => setCopyHover(true)}
+            onMouseLeave={() => setCopyHover(false)}
+            onClick={onCopy}
+          >
+            Copy
+          </button>
+          {onRun && (
+            <button
+              style={getCodeButtonStyle(runHover)}
+              onMouseEnter={() => setRunHover(true)}
+              onMouseLeave={() => setRunHover(false)}
+              onClick={onRun}
+            >
+              Run
+            </button>
+          )}
+        </div>
+      </div>
+      <pre style={aiPanelStyles.codePre}>
+        <code style={aiPanelStyles.codeContent}>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
 
 export function AIMarkdown(props: {
   content: string;
@@ -29,6 +74,36 @@ export function AIMarkdown(props: {
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={[rehypeKatex]}
       components={{
+        p: ({ children }) => (
+          <p style={aiPanelStyles.markdownParagraph}>{children}</p>
+        ),
+        h1: ({ children }) => (
+          <h1 style={aiPanelStyles.markdownHeading}>{children}</h1>
+        ),
+        h2: ({ children }) => (
+          <h2 style={aiPanelStyles.markdownHeading}>{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 style={aiPanelStyles.markdownHeading}>{children}</h3>
+        ),
+        h4: ({ children }) => (
+          <h4 style={aiPanelStyles.markdownHeading}>{children}</h4>
+        ),
+        h5: ({ children }) => (
+          <h5 style={aiPanelStyles.markdownHeading}>{children}</h5>
+        ),
+        h6: ({ children }) => (
+          <h6 style={aiPanelStyles.markdownHeading}>{children}</h6>
+        ),
+        ul: ({ children }) => (
+          <ul style={aiPanelStyles.markdownList}>{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol style={aiPanelStyles.markdownList}>{children}</ol>
+        ),
+        li: ({ children }) => (
+          <li style={aiPanelStyles.markdownListItem}>{children}</li>
+        ),
         a: ({ href, children }) => (
           <a href={href} target="_blank" rel="noreferrer">
             {children}
@@ -62,25 +137,12 @@ export function AIMarkdown(props: {
             return <code>{raw}</code>;
           }
           return (
-            <div className="ai-panel-code-block">
-              <div className="ai-panel-code-header">
-                <span className="ai-panel-code-lang">{language}</span>
-                <div className="ai-panel-code-actions">
-                  <button className="ai-panel-code-copy" onClick={() => handleCopyCode(raw)}>
-                    Copy
-                  </button>
-                  <button
-                    className="ai-panel-code-run"
-                    onClick={() => onRunCommand?.(raw)}
-                  >
-                    Run
-                  </button>
-                </div>
-              </div>
-              <pre>
-                <code>{raw}</code>
-              </pre>
-            </div>
+            <CodeBlock
+              language={language}
+              code={raw}
+              onCopy={() => handleCopyCode(raw)}
+              onRun={onRunCommand ? () => onRunCommand(raw) : undefined}
+            />
           );
         },
       }}

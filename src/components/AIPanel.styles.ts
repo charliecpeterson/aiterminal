@@ -178,6 +178,91 @@ export const aiPanelStyles = {
     flexDirection: 'column',
     overflow: 'hidden',
   } as CSSProperties,
+
+  // Code blocks
+  codeBlock: {
+    borderRadius: tokens.borderRadius.lg,
+    overflow: 'hidden',
+    marginTop: tokens.spacing[8],
+    marginBottom: tokens.spacing[8],
+    background: '#1e1e1e',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+  } as CSSProperties,
+
+  // Markdown content styles
+  markdownParagraph: {
+    margin: `${tokens.spacing[3]} 0`,
+    lineHeight: '1.6',
+  } as CSSProperties,
+
+  markdownHeading: {
+    margin: `${tokens.spacing[6]} 0 ${tokens.spacing[3]} 0`,
+    fontWeight: tokens.fontWeight.semibold,
+    lineHeight: '1.4',
+  } as CSSProperties,
+
+  markdownList: {
+    margin: `${tokens.spacing[3]} 0`,
+    paddingLeft: tokens.spacing[16],
+  } as CSSProperties,
+
+  markdownListItem: {
+    margin: `${tokens.spacing[2]} 0`,
+  } as CSSProperties,
+
+  codeHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: `${tokens.spacing[3]} ${tokens.spacing[4]}`,
+    background: 'rgba(0, 0, 0, 0.3)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+  } as CSSProperties,
+
+  codeLang: {
+    fontSize: tokens.fontSize.xs,
+    fontWeight: tokens.fontWeight.medium,
+    color: 'rgba(255, 255, 255, 0.6)',
+    textTransform: 'lowercase',
+    letterSpacing: '0.02em',
+  } as CSSProperties,
+
+  codeActions: {
+    display: 'flex',
+    gap: tokens.spacing[2],
+    alignItems: 'center',
+  } as CSSProperties,
+
+  codeButton: {
+    border: 'none',
+    background: 'rgba(255, 255, 255, 0.08)',
+    color: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: tokens.borderRadius.md,
+    padding: `${tokens.spacing[2]} ${tokens.spacing[4]}`,
+    cursor: 'pointer',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: tokens.fontWeight.medium,
+    transition: tokens.transition.fast,
+  } as CSSProperties,
+
+  codeButtonHover: {
+    background: 'rgba(255, 255, 255, 0.15)',
+    color: tokens.colors.white,
+  } as CSSProperties,
+
+  codePre: {
+    margin: 0,
+    padding: tokens.spacing[4],
+    background: '#1e1e1e',
+    overflowX: 'auto',
+    fontSize: tokens.fontSize.sm,
+    lineHeight: '1.6',
+  } as CSSProperties,
+
+  codeContent: {
+    fontFamily: '"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
+    color: '#d4d4d4',
+  } as CSSProperties,
 };
 
 // Helper functions
@@ -231,5 +316,12 @@ export function getTabStyle(isActive: boolean, isHover: boolean): CSSProperties 
   return {
     ...aiPanelStyles.tab,
     ...(isHover ? aiPanelStyles.tabHover : {}),
+  };
+}
+
+export function getCodeButtonStyle(isHover: boolean): CSSProperties {
+  return {
+    ...aiPanelStyles.codeButton,
+    ...(isHover ? aiPanelStyles.codeButtonHover : {}),
   };
 }

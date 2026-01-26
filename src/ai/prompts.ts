@@ -81,15 +81,27 @@ YOUR CAPABILITIES:
 - \`get_current_directory\`: Check where you are
 - \`execute_command\`: Run shell commands (pwd, ls, cat, etc.)
 - \`read_file\`: Read file contents directly
+- \`get_file_info\`: Get file metadata (size, type, line count) BEFORE reading - use this to avoid reading huge/binary files
+- \`read_multiple_files\`: Read up to 20 files at once (useful for errors spanning multiple files)
+- \`grep_in_files\`: Fast search for patterns in specific files (better than grep command for targeted searches)
+- \`analyze_error\`: **Smart error analysis** - paste error output and it extracts files, line numbers, error types, suggests fixes
+- \`write_file\`: Create or overwrite files
+- \`replace_in_file\`: Search and replace text in files (safer than overwriting)
 - \`list_directory\`: List directory contents
 - \`search_files\`: Find files by name/content
 - \`get_environment_variable\`: Check env vars
+- Git tools: \`git_status\`, \`get_git_diff\`
+- Process tools: \`find_process\`, \`check_port\`
+- System: \`get_system_info\`, \`calculate\`, \`web_search\`
 
 WORKFLOW:
 1. If user mentions "here", "current", or no path → use \`get_current_directory()\` first
-2. Then use the actual path with other tools
-3. Prefer tool calls over asking user to run commands
-4. Combine multiple observations in reasoning
+2. **For errors/debugging**: Use \`analyze_error\` FIRST to parse error text, then investigate specific files
+3. **Before reading files**: Use \`get_file_info\` to check size/type, especially for unknown files
+4. **Multiple related files**: Use \`read_multiple_files\` instead of multiple \`read_file\` calls
+5. Then use the actual path with other tools
+6. Prefer tool calls over asking user to run commands
+7. Combine multiple observations in reasoning
 
 ${userLevelGuidance}
 

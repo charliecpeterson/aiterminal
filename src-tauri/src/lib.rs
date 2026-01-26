@@ -11,6 +11,7 @@ mod pty;
 mod quick_actions;
 mod secret_scanner;
 mod security;
+mod sessions;
 mod settings;
 mod ssh;
 mod tools;
@@ -45,14 +46,16 @@ use preview::{get_preview_content, open_preview_window, read_preview_file, stop_
 use pty::{close_pty, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
 use quick_actions::{load_quick_actions, save_quick_actions};
 use secret_scanner::scan_content_for_secrets;
+use sessions::{clear_session_state, has_saved_session, load_session_state, save_session_state};
 use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_settings};
 use ssh::{get_ssh_config_hosts, load_ssh_profiles, save_ssh_profiles};
 use tauri::Emitter;
 use tools::{
-    append_to_file_tool, calculate_tool, check_port_tool, execute_tool_command, find_process_tool,
-    get_current_directory_tool, get_env_var_tool, get_git_diff_tool, get_system_info_tool,
-    git_status_tool, list_directory_tool, make_directory_tool, read_file_tool, search_files_tool,
-    tail_file_tool, web_search_tool, write_file_tool,
+    analyze_error_tool, append_to_file_tool, calculate_tool, check_port_tool, execute_tool_command,
+    find_process_tool, get_current_directory_tool, get_env_var_tool, get_file_info_tool,
+    get_git_diff_tool, get_system_info_tool, git_status_tool, grep_in_files_tool,
+    list_directory_tool, make_directory_tool, read_file_tool, read_multiple_files_tool,
+    replace_in_file_tool, search_files_tool, tail_file_tool, web_search_tool, write_file_tool,
 };
 #[tauri::command]
 async fn context_index_sync(
@@ -274,6 +277,10 @@ pub fn run() {
             load_ssh_profiles,
             load_quick_actions,
             save_quick_actions,
+            save_session_state,
+            load_session_state,
+            clear_session_state,
+            has_saved_session,
             open_preview_window,
             get_preview_content,
             read_preview_file,
@@ -283,12 +290,17 @@ pub fn run() {
             ai_chat_stream,
             execute_tool_command,
             read_file_tool,
+            get_file_info_tool,
+            read_multiple_files_tool,
+            grep_in_files_tool,
+            analyze_error_tool,
             list_directory_tool,
             search_files_tool,
             get_current_directory_tool,
             get_env_var_tool,
             write_file_tool,
             append_to_file_tool,
+            replace_in_file_tool,
             git_status_tool,
             find_process_tool,
             check_port_tool,
