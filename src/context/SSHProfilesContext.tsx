@@ -19,6 +19,7 @@ interface SSHProfilesContextType {
   addProfile: (profile: SSHProfile) => Promise<void>;
   updateProfile: (id: string, updates: Partial<SSHProfile>) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
+  getProfileById: (id: string) => SSHProfile | undefined;
   
   // SSH config integration
   sshConfigHosts: SSHConfigHost[];
@@ -174,6 +175,11 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     return Array.from(connections.values()).filter(c => c.profileId === profileId);
   }, [connections]);
 
+  // Get a profile by ID
+  const getProfileById = useCallback((id: string): SSHProfile | undefined => {
+    return profiles.find(p => p.id === id);
+  }, [profiles]);
+
   // Load profiles and SSH config on mount
   useEffect(() => {
     const init = async () => {
@@ -190,6 +196,7 @@ export const SSHProfilesProvider: React.FC<SSHProfilesProviderProps> = ({ childr
     addProfile,
     updateProfile,
     deleteProfile,
+    getProfileById,
     sshConfigHosts,
     loadSSHConfig,
     connections,

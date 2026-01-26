@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useSSHProfiles } from '../context/SSHProfilesContext';
-import { SSHProfile, ProfileGroup } from '../types/ssh';
+import { SSHProfile, ProfileGroup, PortForwardHealth } from '../types/ssh';
 import {
   sshSessionPanelStyles,
   getPanelStyle,
@@ -36,6 +37,9 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
   // Hover states for interactive elements
   const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
 
+  // Port forward health status - keyed by profile.id + forward.id
+  const [portHealthStatus, setPortHealthStatus] = useState<Map<string, PortForwardHealth>>(new Map());
+
   // Get all active connections across all profiles
   const activeConnections = useMemo(() => {
     return profiles.flatMap(profile => {
@@ -48,6 +52,54 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
       return nameA.localeCompare(nameB);
     });
   }, [profiles, getProfileConnections]);
+
+  // Check port health for all active connections
+  const checkPortHealth = useCallback(async () => {
+    const newHealthStatus = new Map<string, PortForwardHealth>();
+    
+    for (const { profile } of activeConnections) {
+      if (!profile.portForwards || profile.portForwards.length === 0) continue;
+      
+      for (const forward of profile.portForwards) {
+        const healthKey = `${profile.id}-${forward.id}`;
+        
+        try {
+          const result = await invoke<string>('check_port_tool', { 
+            port: forward.localPort 
+          });
+          
+          const isActive = result.toLowerCase().includes('in use') || 
+                          result.toLowerCase().includes('listening');
+          
+          newHealthStatus.set(healthKey, {
+            forwardId: forward.id,
+            isActive,
+            lastChecked: new Date(),
+            error: isActive ? undefined : 'Port not listening',
+          });
+        } catch (error) {
+          newHealthStatus.set(healthKey, {
+            forwardId: forward.id,
+            isActive: false,
+            lastChecked: new Date(),
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+    
+    setPortHealthStatus(newHealthStatus);
+  }, [activeConnections]);
+
+  // Check port health on mount and every 10 seconds
+  useEffect(() => {
+    if (activeConnections.length === 0) return;
+    
+    checkPortHealth();
+    const intervalId = setInterval(checkPortHealth, 10000);
+    
+    return () => clearInterval(intervalId);
+  }, [checkPortHealth, activeConnections.length]);
 
   // Group profiles
   const profileGroups = useMemo<ProfileGroup[]>(() => {
@@ -237,29 +289,94 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
             {showActive && (
               <div style={sshSessionPanelStyles.groupProfiles}>
                 {activeConnections.map(({ profile, connection }) => (
-                  <div 
-                    key={connection.tabId}
-                    style={getActiveItemStyle(hoverStates[`active-${connection.tabId}`] || false)}
-                    onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`active-${connection.tabId}`]: true }))}
-                    onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`active-${connection.tabId}`]: false }))}
-                  >
-                    <span style={sshSessionPanelStyles.statusIcon}>
-                      {connection.status === 'connected' 
-                        ? (connection.latency && connection.latency > 500 ? '🟡' : '🟢')
-                        : '🔵'}
-                    </span>
-                    <span style={sshSessionPanelStyles.profileName}>{connection.tabName || profile.name}</span>
-                    {connection.latency && (
-                      <span style={sshSessionPanelStyles.latencyBadge}>{connection.latency}ms</span>
-                    )}
-                    <button 
-                      style={getActionButtonStyle(true, hoverStates[`goto-${connection.tabId}`] || false)}
-                      onClick={() => onGoToTab && onGoToTab(connection.tabId)}
-                      onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`goto-${connection.tabId}`]: true }))}
-                      onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`goto-${connection.tabId}`]: false }))}
+                  <div key={connection.tabId}>
+                    <div 
+                      style={getActiveItemStyle(hoverStates[`active-${connection.tabId}`] || false)}
+                      onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`active-${connection.tabId}`]: true }))}
+                      onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`active-${connection.tabId}`]: false }))}
                     >
-                      Go to Tab
-                    </button>
+                      <span style={sshSessionPanelStyles.statusIcon}>
+                        {connection.status === 'connected' 
+                          ? (connection.latency && connection.latency > 500 ? '🟡' : '🟢')
+                          : '🔵'}
+                      </span>
+                      <span style={sshSessionPanelStyles.profileName}>{connection.tabName || profile.name}</span>
+                      {connection.latency && (
+                        <span style={sshSessionPanelStyles.latencyBadge}>{connection.latency}ms</span>
+                      )}
+                      <button 
+                        style={getActionButtonStyle(true, hoverStates[`goto-${connection.tabId}`] || false)}
+                        onClick={() => onGoToTab && onGoToTab(connection.tabId)}
+                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`goto-${connection.tabId}`]: true }))}
+                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`goto-${connection.tabId}`]: false }))}
+                      >
+                        Go to Tab
+                      </button>
+                    </div>
+                    
+                    {/* Show port forwards if profile has them */}
+                    {profile.portForwards && profile.portForwards.length > 0 && (
+                      <div style={{
+                        paddingLeft: '32px',
+                        fontSize: '12px',
+                        color: '#999',
+                        marginTop: '4px',
+                        marginBottom: '8px'
+                      }}>
+                        {profile.portForwards.map(forward => {
+                          const healthKey = `${profile.id}-${forward.id}`;
+                          const health = portHealthStatus.get(healthKey);
+                          const statusIndicator = health?.isActive ? '🟢' : '🔴';
+                          
+                          let forwardLabel = '';
+                          if (forward.type === 'local') {
+                            forwardLabel = `${forward.localPort} → ${forward.remoteHost}:${forward.remotePort}`;
+                          } else if (forward.type === 'remote') {
+                            forwardLabel = `${forward.remotePort} ← ${forward.remoteHost}:${forward.localPort}`;
+                          } else if (forward.type === 'dynamic') {
+                            forwardLabel = `SOCKS :${forward.localPort}`;
+                          }
+                          
+                          return (
+                            <div 
+                              key={forward.id}
+                              style={{
+                                padding: '4px 8px',
+                                marginBottom: '2px',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                borderLeft: health?.isActive 
+                                  ? '2px solid #10b981' 
+                                  : '2px solid #ef4444'
+                              }}
+                              title={health?.error || (health?.isActive ? 'Port is active' : 'Checking...')}
+                            >
+                              <span style={{ fontSize: '10px' }}>{statusIndicator}</span>
+                              <span style={{ 
+                                fontFamily: 'SF Mono, Monaco, Cascadia Code, Courier New, monospace',
+                                color: '#e0e0e0',
+                                fontSize: '11px',
+                                flex: 1
+                              }}>
+                                {forwardLabel}
+                              </span>
+                              {forward.description && (
+                                <span style={{ 
+                                  color: '#666',
+                                  fontSize: '10px',
+                                  fontStyle: 'italic'
+                                }}>
+                                  {forward.description}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

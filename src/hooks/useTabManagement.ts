@@ -20,6 +20,7 @@ export interface Tab {
   focusedPaneId: number | null;
   splitLayout: 'single' | 'vertical' | 'horizontal';
   splitRatio: number;
+  profileId?: string; // SSH profile ID if this is an SSH tab
 }
 
 interface UseTabManagementReturn {
@@ -66,7 +67,7 @@ export function useTabManagement(
     }
   }, []);
 
-  const addSSHTab = useCallback((ptyId: number, displayName: string, _profileId: string) => {
+  const addSSHTab = useCallback((ptyId: number, displayName: string, profileId: string) => {
     setTabs((prev) => {
       const newTab: Tab = {
         id: ptyId,
@@ -74,7 +75,8 @@ export function useTabManagement(
         panes: [{ id: ptyId, isRemote: true, remoteHost: displayName }],
         focusedPaneId: ptyId,
         splitLayout: 'single',
-        splitRatio: 50
+        splitRatio: 50,
+        profileId, // Store profile ID for port forward access
       };
       return [...prev, newTab];
     });

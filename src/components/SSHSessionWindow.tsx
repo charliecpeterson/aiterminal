@@ -66,11 +66,12 @@ const SSHSessionWindow: React.FC = () => {
     setShowEditor(true);
   };
 
-  const handleSaveProfile = (profile: SSHProfile) => {
+  const handleSaveProfile = async (profile: SSHProfile) => {
     if (editingProfile) {
-      updateProfile(profile.id, profile);
+      // When editing, pass the complete profile
+      await updateProfile(profile.id, profile);
     } else {
-      addProfile(profile);
+      await addProfile(profile);
     }
     setShowEditor(false);
   };

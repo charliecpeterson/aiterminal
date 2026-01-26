@@ -10,6 +10,31 @@ export function buildSSHCommand(profile: SSHProfile): string {
   // Add options to enable interactive password/keyboard auth
   sshCommand += '-o BatchMode=no -o PreferredAuthentications=publickey,keyboard-interactive,password ';
 
+  // Add custom SSH options/flags
+  if (profile.sshOptions && profile.sshOptions.length > 0) {
+    for (const option of profile.sshOptions) {
+      if (option.trim()) {
+        sshCommand += `${option.trim()} `;
+      }
+    }
+  }
+
+  // Add port forwarding flags
+  if (profile.portForwards && profile.portForwards.length > 0) {
+    for (const forward of profile.portForwards) {
+      if (forward.type === 'local' && forward.remoteHost && forward.remotePort) {
+        // Local forward: -L localPort:remoteHost:remotePort
+        sshCommand += `-L ${forward.localPort}:${forward.remoteHost}:${forward.remotePort} `;
+      } else if (forward.type === 'remote' && forward.remoteHost && forward.remotePort) {
+        // Remote forward: -R remotePort:remoteHost:localPort
+        sshCommand += `-R ${forward.remotePort}:${forward.remoteHost}:${forward.localPort} `;
+      } else if (forward.type === 'dynamic') {
+        // Dynamic forward (SOCKS proxy): -D localPort
+        sshCommand += `-D ${forward.localPort} `;
+      }
+    }
+  }
+
   if (profile.connectionType === 'ssh-config' && profile.sshConfigHost) {
     // Use SSH config host - simplest case
     sshCommand += profile.sshConfigHost;

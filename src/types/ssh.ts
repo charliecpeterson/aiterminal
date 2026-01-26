@@ -61,6 +61,18 @@ export interface SSHProfile {
    */
   envVars?: Record<string, string>;
   
+  /**
+   * Port forwards to establish when connecting
+   * Example: [{ type: 'local', localPort: 8080, remoteHost: 'localhost', remotePort: 3000 }]
+   */
+  portForwards?: PortForward[];
+  
+  /**
+   * Custom SSH options/flags to add to the SSH command
+   * Example: ["-v", "-oHostKeyAlgorithms=+ssh-rsa", "-oStrictHostKeyChecking=no"]
+   */
+  sshOptions?: string[];
+  
   // Behavior Options
   
   /** Automatically connect when app starts */
@@ -137,6 +149,51 @@ export interface SSHConfigHost {
   
   /** Other SSH options */
   options?: Record<string, string>;
+}
+
+/**
+ * Port forwarding configuration
+ */
+export interface PortForward {
+  /** Unique identifier for this forward */
+  id: string;
+  
+  /**
+   * Forward type:
+   * - 'local': Forward local port to remote (ssh -L)
+   * - 'remote': Forward remote port to local (ssh -R)
+   * - 'dynamic': SOCKS proxy on local port (ssh -D)
+   */
+  type: 'local' | 'remote' | 'dynamic';
+  
+  /** Local port number */
+  localPort: number;
+  
+  /** Remote host (for local/remote forwards, e.g., 'localhost' or 'example.com') */
+  remoteHost?: string;
+  
+  /** Remote port (for local/remote forwards) */
+  remotePort?: number;
+  
+  /** Optional description (e.g., "Dev server", "MySQL") */
+  description?: string;
+}
+
+/**
+ * Port forward health status
+ */
+export interface PortForwardHealth {
+  /** Port forward ID */
+  forwardId: string;
+  
+  /** Whether the port is actively listening */
+  isActive: boolean;
+  
+  /** Last check timestamp */
+  lastChecked: Date;
+  
+  /** Error message if check failed */
+  error?: string;
 }
 
 /**

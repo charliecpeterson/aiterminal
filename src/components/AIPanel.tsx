@@ -8,7 +8,7 @@ import {
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendChatMessage } from "../ai/chatSend-vercel";
-import { requestCaptureLast } from "../ai/contextCapture";
+import { requestCaptureLast, captureFileContent } from "../ai/contextCapture";
 import { getSmartContextForPrompt } from "../ai/smartContext";
 import { AIChatTab } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
@@ -227,9 +227,6 @@ const AIPanel = ({
     if (!filePath.trim()) return;
 
     try {
-      // Import the new smart capture function
-      const { captureFileContent } = await import('../ai/contextCapture');
-      
       const result = await captureFileContent({
         path: filePath,
         fileLimitKb,

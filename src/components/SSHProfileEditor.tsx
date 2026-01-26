@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SSHProfile } from '../types/ssh';
+import { SSHProfile, PortForward } from '../types/ssh';
 import { useSSHProfiles } from '../context/SSHProfilesContext';
 import {
   sshProfileEditorStyles,
@@ -54,6 +54,8 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
   // Post-connection
   const [startupCommands, setStartupCommands] = useState<string[]>([]);
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [portForwards, setPortForwards] = useState<PortForward[]>([]);
+  const [sshOptions, setSshOptions] = useState<string[]>([]);
   
   // Options
   const [autoConnect, setAutoConnect] = useState(false);
@@ -82,6 +84,8 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
       
       setStartupCommands(profile.startupCommands || []);
       setEnvVars(profile.envVars || {});
+      setPortForwards(profile.portForwards || []);
+      setSshOptions(profile.sshOptions || []);
       setAutoConnect(profile.autoConnect || false);
       setHealthCheckInterval(String(profile.healthCheckInterval || 30));
       setAlertOnDisconnect(profile.alertOnDisconnect || false);
@@ -104,6 +108,8 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
       } : undefined,
       startupCommands: startupCommands.filter(cmd => cmd.trim().length > 0),
       envVars: Object.keys(envVars).length > 0 ? envVars : undefined,
+      portForwards: portForwards.length > 0 ? portForwards : undefined,
+      sshOptions: sshOptions.filter(opt => opt.trim().length > 0).length > 0 ? sshOptions.filter(opt => opt.trim().length > 0) : undefined,
       autoConnect,
       healthCheckInterval: parseInt(healthCheckInterval) || 30,
       alertOnDisconnect,
@@ -145,6 +151,41 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
     const updated = { ...envVars };
     delete updated[key];
     setEnvVars(updated);
+  };
+
+  const addPortForward = () => {
+    const newForward: PortForward = {
+      id: `pf-${Date.now()}`,
+      type: 'local',
+      localPort: 8080,
+      remoteHost: 'localhost',
+      remotePort: 3000,
+    };
+    setPortForwards([...portForwards, newForward]);
+  };
+
+  const updatePortForward = (id: string, updates: Partial<PortForward>) => {
+    setPortForwards(portForwards.map(pf => 
+      pf.id === id ? { ...pf, ...updates } : pf
+    ));
+  };
+
+  const removePortForward = (id: string) => {
+    setPortForwards(portForwards.filter(pf => pf.id !== id));
+  };
+
+  const addSshOption = () => {
+    setSshOptions([...sshOptions, '']);
+  };
+
+  const updateSshOption = (index: number, value: string) => {
+    const updated = [...sshOptions];
+    updated[index] = value;
+    setSshOptions(updated);
+  };
+
+  const removeSshOption = (index: number) => {
+    setSshOptions(sshOptions.filter((_, i) => i !== index));
   };
 
   if (!isOpen) return null;
@@ -411,6 +452,167 @@ export const SSHProfileEditor: React.FC<SSHProfileEditorProps> = ({
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, addEnv: false }))}
               >
                 + Add Variable
+              </button>
+            </div>
+          </section>
+
+          {/* Port Forwards */}
+          <section style={sshProfileEditorStyles.section}>
+            <h3 style={sshProfileEditorStyles.sectionTitle}>Port Forwards</h3>
+            <div style={sshProfileEditorStyles.commandList}>
+              {portForwards.map((forward) => (
+                <div key={forward.id} style={{ 
+                  ...sshProfileEditorStyles.commandItem, 
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  gap: '8px',
+                  padding: '12px',
+                  background: 'var(--surface-tertiary, #252525)',
+                  borderRadius: '6px'
+                }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <select
+                      value={forward.type}
+                      onChange={e => updatePortForward(forward.id, { 
+                        type: e.target.value as 'local' | 'remote' | 'dynamic' 
+                      })}
+                      style={{ 
+                        ...sshProfileEditorStyles.listItemInput, 
+                        flex: '0 0 120px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      <option value="local">Local (-L)</option>
+                      <option value="remote">Remote (-R)</option>
+                      <option value="dynamic">Dynamic (-D)</option>
+                    </select>
+                    <button
+                      onClick={() => removePortForward(forward.id)}
+                      style={getRemoveButtonStyle(hoverStates[`removePf-${forward.id}`] || false)}
+                      onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removePf-${forward.id}`]: true }))}
+                      onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removePf-${forward.id}`]: false }))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <label style={{ ...sshProfileEditorStyles.formLabel, flex: 1, margin: 0 }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary, #999)' }}>Local Port</span>
+                      <input
+                        type="text"
+                        value={forward.localPort}
+                        onChange={e => {
+                          const port = parseInt(e.target.value);
+                          if (!isNaN(port) && port >= 1 && port <= 65535) {
+                            updatePortForward(forward.id, { localPort: port });
+                          }
+                        }}
+                        placeholder="8080"
+                        style={{ ...sshProfileEditorStyles.listItemInput, fontSize: '12px' }}
+                        {...textInputProps}
+                      />
+                    </label>
+                    
+                    {forward.type !== 'dynamic' && (
+                      <>
+                        <label style={{ ...sshProfileEditorStyles.formLabel, flex: 1, margin: 0 }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary, #999)' }}>Remote Host</span>
+                          <input
+                            type="text"
+                            value={forward.remoteHost || ''}
+                            onChange={e => updatePortForward(forward.id, { 
+                              remoteHost: e.target.value 
+                            })}
+                            placeholder="localhost"
+                            style={{ ...sshProfileEditorStyles.listItemInput, fontSize: '12px' }}
+                            {...textInputProps}
+                          />
+                        </label>
+                        <label style={{ ...sshProfileEditorStyles.formLabel, flex: 1, margin: 0 }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary, #999)' }}>Remote Port</span>
+                          <input
+                            type="text"
+                            value={forward.remotePort || ''}
+                            onChange={e => {
+                              const port = parseInt(e.target.value);
+                              if (e.target.value === '') {
+                                updatePortForward(forward.id, { remotePort: undefined });
+                              } else if (!isNaN(port) && port >= 1 && port <= 65535) {
+                                updatePortForward(forward.id, { remotePort: port });
+                              }
+                            }}
+                            placeholder="3000"
+                            style={{ ...sshProfileEditorStyles.listItemInput, fontSize: '12px' }}
+                            {...textInputProps}
+                          />
+                        </label>
+                      </>
+                    )}
+                  </div>
+                  
+                  <input
+                    type="text"
+                    value={forward.description || ''}
+                    onChange={e => updatePortForward(forward.id, { 
+                      description: e.target.value 
+                    })}
+                    placeholder="Description (e.g., Dev server)"
+                    style={{ ...sshProfileEditorStyles.listItemInput, fontSize: '11px', fontStyle: 'italic' }}
+                    {...textInputProps}
+                  />
+                </div>
+              ))}
+              <button 
+                onClick={addPortForward}
+                style={getAddItemButtonStyle(hoverStates.addPortForward || false)}
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, addPortForward: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, addPortForward: false }))}
+              >
+                + Add Port Forward
+              </button>
+            </div>
+          </section>
+
+          {/* SSH Options */}
+          <section style={sshProfileEditorStyles.section}>
+            <h3 style={sshProfileEditorStyles.sectionTitle}>SSH Options</h3>
+            <p style={{ 
+              fontSize: '12px', 
+              color: 'var(--text-tertiary, #999)', 
+              margin: '0 0 12px 0',
+              lineHeight: '1.4'
+            }}>
+              Custom SSH flags to add to the connection command.
+            </p>
+            <div style={sshProfileEditorStyles.commandList}>
+              {sshOptions.map((option, index) => (
+                <div key={index} style={sshProfileEditorStyles.commandItem}>
+                  <input
+                    type="text"
+                    value={option}
+                    onChange={e => updateSshOption(index, e.target.value)}
+                    placeholder="e.g., -v or -oHostKeyAlgorithms=+ssh-rsa"
+                    style={sshProfileEditorStyles.listItemInput}
+                    {...textInputProps}
+                  />
+                  <button
+                    onClick={() => removeSshOption(index)}
+                    style={getRemoveButtonStyle(hoverStates[`removeSshOpt-${index}`] || false)}
+                    onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`removeSshOpt-${index}`]: true }))}
+                    onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`removeSshOpt-${index}`]: false }))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button 
+                onClick={addSshOption}
+                style={getAddItemButtonStyle(hoverStates.addSshOption || false)}
+                onMouseEnter={() => setHoverStates(prev => ({ ...prev, addSshOption: true }))}
+                onMouseLeave={() => setHoverStates(prev => ({ ...prev, addSshOption: false }))}
+              >
+                + Add SSH Option
               </button>
             </div>
           </section>

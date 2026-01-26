@@ -5,6 +5,7 @@ import SSHSessionWindow from "./components/SSHSessionWindow";
 import OutputViewer from "./components/OutputViewer";
 import QuickActionsWindow from "./components/QuickActionsWindow";
 import SettingsModal from "./components/SettingsModal";
+import { PortForwardStatus } from "./components/PortForwardStatus";
 
 // Lazy load heavy components
 const PreviewWindow = React.lazy(() => import("./components/PreviewWindow"));
@@ -33,7 +34,7 @@ function AppContent() {
   const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
-  const { updateProfile, updateConnection } = useSSHProfiles();
+  const { updateProfile, updateConnection, getProfileById } = useSSHProfiles();
   
   // Determine window type early
   let isAiWindow = false;
@@ -866,9 +867,18 @@ function AppContent() {
                         border: pane.id === tab.focusedPaneId ? '2px solid #007acc' : '2px solid transparent',
                         borderRadius: '4px',
                         overflow: 'hidden',
-                        position: 'relative'
+                        position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'column'
                       }}
                     >
+                      {/* Show port forwards if this is an SSH tab with forwarding configured */}
+                      {tab.profileId && (() => {
+                        const profile = getProfileById(tab.profileId);
+                        return profile?.portForwards && profile.portForwards.length > 0 ? (
+                          <PortForwardStatus portForwards={profile.portForwards} />
+                        ) : null;
+                      })()}
                       <Terminal 
                         id={pane.id} 
                         visible={tab.id === activeTabId}

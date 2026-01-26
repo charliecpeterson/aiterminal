@@ -27,6 +27,10 @@ pub struct SSHProfile {
     pub startup_commands: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env_vars: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port_forwards: Option<Vec<PortForward>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssh_options: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_connect: Option<bool>,
@@ -61,6 +65,29 @@ pub struct ManualSSHConfig {
     pub identity_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_jump: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortForward {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub forward_type: PortForwardType,
+    pub local_port: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PortForwardType {
+    Local,
+    Remote,
+    Dynamic,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
