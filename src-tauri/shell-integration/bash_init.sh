@@ -33,6 +33,14 @@ export TERM_PROGRAM=aiterminal
 # Ensure user rc is loaded once (for colors/aliases) before installing hooks
 if [ -z "$__AITERM_USER_RC_DONE" ]; then
     __AITERM_USER_RC_DONE=1
+    
+    # Source /etc/profile first to get system PATH (like login shells)
+    # This is especially important on macOS to get paths like /usr/local/bin
+    if [ -f /etc/profile ] && [ -z "$__AITERM_PROFILE_SOURCED" ]; then
+        __AITERM_PROFILE_SOURCED=1
+        __aiterm_source_user_file /etc/profile
+    fi
+    
     if [ -n "$BASH_VERSION" ]; then __aiterm_source_user_file ~/.bashrc; fi
     if [ -n "$BASH_VERSION" ] && [ -f ~/.bash_profile ] && [ -z "$__AITERM_BASH_PROFILE_DONE" ]; then
         __AITERM_BASH_PROFILE_DONE=1
