@@ -227,6 +227,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
           const deduped = deduplicateContext(deps.contextItems);
           const rankedContext = rankContextByRelevance(deduped, trimmed, 8000, {
             recentMessageTopics: recentTopics,
+            recentMessages: messages, // Pass message history for conversation memory
           });
           
           formattedContextArray = formatRankedContext(rankedContext);
@@ -238,6 +239,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         const deduped = deduplicateContext(deps.contextItems);
         const rankedContext = rankContextByRelevance(deduped, trimmed, 8000, {
           recentMessageTopics: recentTopics,
+          recentMessages: messages, // Pass message history for conversation memory
         });
         
         formattedContextArray = formatRankedContext(rankedContext);
@@ -253,6 +255,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         const deduped = deduplicateContext(deps.contextItems);
         const rankedContext = rankContextByRelevance(deduped, trimmed, 8000, {
           recentMessageTopics: recentTopics,
+          recentMessages: messages, // Pass message history for conversation memory
         });
         // Estimate token count (rough approximation: ~4 chars per token)
         const estimatedTokens = Math.ceil(contextForPrompt.length / 4);

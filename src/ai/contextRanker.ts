@@ -4,6 +4,10 @@
  */
 
 import type { ContextItem } from '../context/AIContext';
+import type { ChatMessage } from '../context/AIContext';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('ContextRanker');
 
 export interface RankedContext {
   item: ContextItem;
@@ -16,12 +20,14 @@ export interface RankedContext {
     usagePenalty: number;
     timeDecay: number;
     conversationRelevance: number;
+    conversationMemory: number;
   };
 }
 
 interface ScoringContext {
   recentMessageTopics?: string[];
   currentMessageId?: string;
+  recentMessages?: ChatMessage[]; // For conversation memory tracking
 }
 
 interface RelevanceBreakdown {
@@ -31,6 +37,8 @@ interface RelevanceBreakdown {
   usagePenalty: number;
   timeDecay: number;
   conversationRelevance: number;
+  conversationMemory: number;
+  total: number;
 }
 
 /**
@@ -62,6 +70,7 @@ export function rankContextByRelevance(
         usagePenalty: breakdown.usagePenalty,
         timeDecay: breakdown.timeDecay,
         conversationRelevance: breakdown.conversationRelevance,
+        conversationMemory: breakdown.conversationMemory,
       },
     };
   });
@@ -92,6 +101,7 @@ function calculateRelevanceScoreWithBreakdown(
   usagePenalty: number;
   timeDecay: number;
   conversationRelevance: number;
+  conversationMemory: number;
 } {
   let recency = 0;
   let queryMatch = 0;
@@ -99,6 +109,7 @@ function calculateRelevanceScoreWithBreakdown(
   let usagePenalty = 0;
   let timeDecay = 0;
   let conversationRelevance = 0;
+  let conversationMemory = 0;
 
   const content = item.content.toLowerCase();
   const metadata = item.metadata;
@@ -146,6 +157,63 @@ function calculateRelevanceScoreWithBreakdown(
       usagePenalty -= 10;
     } else if (usageCount > 1) {
       usagePenalty -= 5;
+    }
+  }
+
+  // 2B. CONVERSATION MEMORY - Heavily penalize context already sent to AI
+  // This is the KEY optimization - prevents redundant context from being re-sent
+  if (item.lastUsedInMessageId && scoringContext?.recentMessages) {
+    const messages = scoringContext.recentMessages;
+    
+    // Find how many messages ago this context was sent
+    let messagesSinceUsed = 0;
+    let foundUsage = false;
+    
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].id === item.lastUsedInMessageId) {
+        foundUsage = true;
+        break;
+      }
+      if (messages[i].role === 'user' || messages[i].role === 'assistant') {
+        messagesSinceUsed++;
+      }
+    }
+    
+    if (foundUsage) {
+      // AI already saw this context recently in the conversation
+      if (messagesSinceUsed === 0) {
+        // Sent in the LAST message - AI definitely remembers
+        conversationMemory = -50; // Very heavy penalty
+      } else if (messagesSinceUsed <= 2) {
+        // Sent 1-2 messages ago - AI likely remembers
+        conversationMemory = -40;
+      } else if (messagesSinceUsed <= 5) {
+        // Sent 3-5 messages ago - AI probably remembers
+        conversationMemory = -25;
+      } else if (messagesSinceUsed <= 10) {
+        // Sent 6-10 messages ago - AI might remember
+        conversationMemory = -15;
+      } else {
+        // Sent >10 messages ago - AI might have forgotten
+        conversationMemory = -5;
+      }
+      
+      // Exception: If query is highly relevant (lots of term matches), reduce penalty
+      // The user is asking specifically about this context, so resend it
+      const queryRelevanceThreshold = 30;
+      if (queryMatch > queryRelevanceThreshold) {
+        conversationMemory = Math.floor(conversationMemory * 0.5); // Cut penalty in half
+      }
+      
+      // Debug logging
+      const displayName = item.metadata?.path || item.id.substring(0, 40);
+      log.debug(`Conversation memory: context "${displayName}" was sent ${messagesSinceUsed} messages ago`, {
+        itemId: item.id,
+        messagesSinceUsed,
+        penalty: conversationMemory,
+        queryMatch,
+        queryRelevanceOverride: queryMatch > queryRelevanceThreshold
+      });
     }
   }
 
@@ -214,8 +282,26 @@ function calculateRelevanceScoreWithBreakdown(
   else if (contentLength > 5000) timeDecay -= 5;
 
   const total = Math.min(100, Math.max(0, 
-    recency + queryMatch + typeRelevance + usagePenalty + timeDecay + conversationRelevance
+    recency + queryMatch + typeRelevance + usagePenalty + timeDecay + conversationRelevance + conversationMemory
   ));
+
+  // Debug: Log significant conversation memory penalties
+  if (conversationMemory < -20) {
+    const displayName = item.metadata?.path || item.id.substring(0, 40);
+    log.debug(`Heavy conversation memory penalty for "${displayName}"`, {
+      itemId: item.id,
+      finalScore: total,
+      breakdown: {
+        recency,
+        queryMatch,
+        typeRelevance,
+        usagePenalty,
+        timeDecay,
+        conversationRelevance,
+        conversationMemory
+      }
+    });
+  }
 
   return {
     total,
@@ -225,6 +311,7 @@ function calculateRelevanceScoreWithBreakdown(
     usagePenalty,
     timeDecay,
     conversationRelevance,
+    conversationMemory,
   };
 }
 
