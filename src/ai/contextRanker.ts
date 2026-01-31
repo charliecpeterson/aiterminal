@@ -28,6 +28,7 @@ interface ScoringContext {
   recentMessageTopics?: string[];
   currentMessageId?: string;
   recentMessages?: ChatMessage[]; // For conversation memory tracking
+  mode?: 'chat' | 'agent'; // AI mode for mode-specific scoring
 }
 
 interface RelevanceBreakdown {
@@ -281,8 +282,27 @@ function calculateRelevanceScoreWithBreakdown(
   if (contentLength > 10000) timeDecay -= 10;
   else if (contentLength > 5000) timeDecay -= 5;
 
+  // 8. MODE-SPECIFIC ADJUSTMENTS
+  // Chat mode: Be more inclusive, boost recent context
+  // Agent mode: Be more selective, agent can fetch files as needed
+  let modeBonus = 0;
+  if (scoringContext?.mode === 'chat') {
+    // Chat mode: Front-load context
+    // Boost recency bonus to include more recent context
+    if (recency > 15) modeBonus += 5; // Boost already-relevant recent items
+    // Reduce conversation memory penalty slightly (chat needs more context upfront)
+    if (conversationMemory < 0) {
+      conversationMemory = Math.floor(conversationMemory * 0.8); // Reduce penalty by 20%
+    }
+  } else if (scoringContext?.mode === 'agent') {
+    // Agent mode: Just-in-time context
+    // Boost query match to be even more selective (only send highly relevant)
+    if (queryMatch > 25) modeBonus += 5; // Only boost items with strong query match
+    // Keep conversation memory penalties strong (agent can fetch via tools)
+  }
+
   const total = Math.min(100, Math.max(0, 
-    recency + queryMatch + typeRelevance + usagePenalty + timeDecay + conversationRelevance + conversationMemory
+    recency + queryMatch + typeRelevance + usagePenalty + timeDecay + conversationRelevance + conversationMemory + modeBonus
   ));
 
   // Debug: Log significant conversation memory penalties

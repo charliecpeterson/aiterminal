@@ -178,6 +178,13 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     const aiMode = settingsAi.mode || 'agent';
     const enableTools = aiMode === 'agent';
 
+    // Mode-specific context strategies
+    // Chat mode: Front-load context (can't fetch files later)
+    // Agent mode: Just-in-time context (can use tools to fetch more)
+    const contextTokenBudget = aiMode === 'chat' ? 12000 : 6000;
+    
+    log.debug(`Using ${aiMode} mode with ${contextTokenBudget} token budget for context`);
+
     // Extract recent conversation topics for better relevance scoring
     const recentTopics = extractRecentTopics(messages, 3);
 
@@ -204,11 +211,15 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         // Use smart context with embeddings for better relevance
         try {
           useSmartContext = true;
+          // Chat mode: Retrieve more context items (topK: 12)
+          // Agent mode: Retrieve fewer items, rely on tools (topK: 6)
+          const smartTopK = aiMode === 'chat' ? 12 : 6;
+          
           const smartResult = await getSmartContextForPrompt({
             ai: settingsAi,
             contextItems: deps.contextItems,
             query: trimmed,
-            topK: 8,
+            topK: smartTopK,
             globalSmartMode: true,
           });
           
@@ -225,9 +236,10 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
           useSmartContext = false;
           
           const deduped = deduplicateContext(deps.contextItems);
-          const rankedContext = rankContextByRelevance(deduped, trimmed, 8000, {
+          const rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
             recentMessageTopics: recentTopics,
             recentMessages: messages, // Pass message history for conversation memory
+            mode: aiMode, // Pass mode for mode-specific scoring
           });
           
           formattedContextArray = formatRankedContext(rankedContext);
@@ -237,9 +249,10 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       } else {
         // Use traditional keyword-based ranking
         const deduped = deduplicateContext(deps.contextItems);
-        const rankedContext = rankContextByRelevance(deduped, trimmed, 8000, {
+        const rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
           recentMessageTopics: recentTopics,
           recentMessages: messages, // Pass message history for conversation memory
+          mode: aiMode, // Pass mode for mode-specific scoring
         });
         
         formattedContextArray = formatRankedContext(rankedContext);
@@ -253,9 +266,10 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       if (!useSmartContext) {
         // For caching, we need rankedContext format - regenerate it
         const deduped = deduplicateContext(deps.contextItems);
-        const rankedContext = rankContextByRelevance(deduped, trimmed, 8000, {
+        const rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
           recentMessageTopics: recentTopics,
           recentMessages: messages, // Pass message history for conversation memory
+          mode: aiMode, // Pass mode for mode-specific scoring
         });
         // Estimate token count (rough approximation: ~4 chars per token)
         const estimatedTokens = Math.ceil(contextForPrompt.length / 4);
