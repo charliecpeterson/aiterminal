@@ -485,12 +485,19 @@ const AIPanel = ({
                   try {
                     const { save } = await import('@tauri-apps/plugin-dialog');
                     const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+                    
+                    log.debug('Opening save dialog', { exportMode });
                     const filePath = await save({
                       defaultPath: `aiterminal-chat-${exportMode}-${Date.now()}.md`,
                       filters: [{ name: 'Markdown', extensions: ['md'] }]
                     });
-                    if (!filePath) return;
                     
+                    if (!filePath) {
+                      log.debug('Save dialog cancelled by user');
+                      return;
+                    }
+                    
+                    log.debug('Generating export content', { mode: exportMode, filePath });
                     let exportContent = '';
                     if (exportMode === 'basic') {
                       exportContent = exportBasic(messages);
@@ -500,9 +507,18 @@ const AIPanel = ({
                       exportContent = exportVerbose(messages);
                     }
                     
+                    log.debug('Writing file', { filePath, contentLength: exportContent.length });
                     await writeTextFile(filePath, exportContent);
+                    log.info('Chat exported successfully', { filePath, mode: exportMode });
+                    
+                    // Show success feedback (using existing error state temporarily)
+                    setSendError(null);
+                    
+                    // Could add a toast notification here in the future
                   } catch (error) {
-                    log.error('Failed to export chat', error);
+                    const errorMsg = error instanceof Error ? error.message : String(error);
+                    log.error('Failed to export chat', { error: errorMsg, exportMode });
+                    setSendError(`Export failed: ${errorMsg}`);
                   }
                 }}
                 disabled={messages.length === 0}
