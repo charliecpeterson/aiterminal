@@ -17,13 +17,6 @@ export function AIContextTab(props: {
   captureCount: number;
   setCaptureCount: (value: number) => void;
   onCaptureLast: () => void;
-
-  filePath: string;
-  setFilePath: (value: string) => void;
-
-  fileLimitKb: number;
-  setFileLimitKb: (value: number) => void;
-  onCaptureFile: () => void;
 }) {
   const {
     contextItems,
@@ -38,11 +31,6 @@ export function AIContextTab(props: {
     captureCount,
     setCaptureCount,
     onCaptureLast,
-    filePath,
-    setFilePath,
-    fileLimitKb,
-    setFileLimitKb,
-    onCaptureFile,
   } = props;
 
   const effectiveIncludeMode = (item: ContextItem): ContextIncludeMode => {
@@ -228,30 +216,10 @@ export function AIContextTab(props: {
           </button>
         </div>
 
-        <div className="ai-panel-file-row">
-          <input
-            type="text"
-            value={filePath}
-            onChange={(event) => setFilePath(event.target.value)}
-            placeholder="Add file path…"
-          />
-          <input
-            type="number"
-            min={1}
-            max={2048}
-            value={fileLimitKb}
-            onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
-              const value = Number.isFinite(parsed)
-                ? Math.min(2048, Math.max(1, parsed))
-                : 200;
-              setFileLimitKb(value);
-            }}
-          />
-          <span className="ai-panel-unit">KB</span>
-          <button className="ai-panel-action ghost" onClick={onCaptureFile}>
-            Add File
-          </button>
+        <div className="ai-panel-terminal-command-hint">
+          <span style={{ opacity: 0.6 }}>💡 Tip: Use </span>
+          <code>aiterm_add &lt;file&gt;</code>
+          <span style={{ opacity: 0.6 }}> in terminal to add files. Supports wildcards!</span>
         </div>
 
         <button className="ai-panel-clear" onClick={clearContext}>

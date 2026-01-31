@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useReducer, useEffect } from "react";
+import { createContext, useCallback, useContext, useMemo, useReducer, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createLogger } from "../utils/logger";
@@ -140,6 +140,12 @@ const MAX_CONTEXT_ITEMS = 50; // Keep last 50 context items
 const aiReducer = (state: AIState, action: AIAction): AIState => {
   switch (action.type) {
     case "context:add":
+      // Check if item already exists (prevent duplicates during sync)
+      if (state.contextItems.some(item => item.id === action.item.id)) {
+        log.debug(`Skipping duplicate context item: ${action.item.id}`);
+        return state;
+      }
+      
       const newContextItems = [action.item, ...state.contextItems];
       
       // Automatically remove oldest context items if we exceed the limit
@@ -321,6 +327,14 @@ const AIContext = createContext<AIContextValue | undefined>(undefined);
 
 const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
   const [state, dispatch] = useReducer(aiReducer, initialState);
+  
+  // Keep a ref to the current context items for sync requests
+  const contextItemsRef = useRef(state.contextItems);
+  
+  // Update ref when context changes
+  useEffect(() => {
+    contextItemsRef.current = state.contextItems;
+  }, [state.contextItems]);
 
   // Set up cross-window event synchronization
   useEffect(() => {
@@ -334,12 +348,23 @@ const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
       listen("ai-context:sync-clear", () => {
         dispatch({ type: "context:clear" });
       }),
+      // Handle requests for full context state (e.g., when AI Panel opens)
+      listen("ai-context:request-sync", () => {
+        log.debug('Received context sync request, broadcasting all items');
+        // Use ref to get current context items without re-creating listeners
+        contextItemsRef.current.forEach((item) => {
+          invoke("emit_event", {
+            event: "ai-context:sync-add",
+            payload: item,
+          }).catch((err) => log.error("Failed to broadcast context item", err));
+        });
+      }),
     ];
 
     return () => {
       unlistenPromises.forEach((p) => p.then((unlisten) => unlisten()));
     };
-  }, []);
+  }, []); // No dependencies - listeners set up once
 
   const addContextItem = useCallback((item: ContextItem) => {
     dispatch({ type: "context:add", item });

@@ -14,7 +14,8 @@ export function attachHostLabelOsc(
   setHostLabel: (label: string) => void,
   onPythonREPL?: (enabled: boolean) => void,
   onRREPL?: (enabled: boolean) => void,
-  onPrompt?: () => void
+  onPrompt?: () => void,
+  onAddFileToContext?: (filePath: string) => void
 ): HostLabelHandle {
   // Handle OSC 633;H;hostname (custom format)
   const disposable633 = term.parser.registerOscHandler(633, (data) => {
@@ -85,6 +86,12 @@ export function attachHostLabelOsc(
         const value = data.substring('RREPL='.length);
         const enabled = value === '1';
         onRREPL?.(enabled);
+      } else if (data.startsWith('AddFileToContext=')) {
+        // Handle add file to context command
+        const filePath = data.substring('AddFileToContext='.length).trim();
+        if (filePath) {
+          onAddFileToContext?.(filePath);
+        }
       }
     } catch (e) {
       log.error('Error handling OSC 1337', e);

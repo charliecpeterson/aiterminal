@@ -18,6 +18,7 @@ import { useSessionRestoration } from "./hooks/useSessionRestoration";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useCommandTracking } from "./hooks/useCommandTracking";
 import { useWindowCloseHandler } from "./hooks/useWindowCloseHandler";
+import { useAIPanelAutoOpen } from "./hooks/useAIPanelAutoOpen";
 import { detectWindowType } from "./utils/windowDetection";
 import { openAIPanelWindow, openSSHPanelWindow, openQuickActionsWindow } from "./utils/windowManagement";
 import { createLogger } from "./utils/logger";
@@ -108,6 +109,13 @@ function AppContent() {
   useWindowCloseHandler({
     isAiWindow,
     saveSession,
+  });
+
+  // Auto-open AI Panel when context is added from terminal
+  useAIPanelAutoOpen({
+    enabled: !isAiWindow && !isSSHWindow && !isOutputViewer && !isQuickActionsWindow && !isPreviewWindow,
+    activeTabId,
+    tabs,
   });
 
   // Use cross-window events hook

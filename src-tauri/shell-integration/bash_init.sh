@@ -707,8 +707,9 @@ if [ -n "$BASH_VERSION" ]; then
         if [ -n "$COMP_LINE" ]; then return; fi  # skip completion
         if [ -n "$__AITERM_IN_PROMPT" ]; then return; fi
         if [ -n "$__AITERM_COMMAND_STARTED" ]; then return; fi
+        # Skip internal prompt/marker functions to prevent duplicate OSC sequences
         case "$BASH_COMMAND" in
-            __aiterm_prompt_wrapper*|__aiterm_preexec*) return ;;
+            __aiterm_prompt_wrapper*|__aiterm_preexec*|__aiterm_mark_*|__aiterm_emit*) return ;;
         esac
         __AITERM_COMMAND_STARTED=1
         __aiterm_mark_output_start
@@ -782,3 +783,60 @@ aiterm_render() {
 }
 
 export -f aiterm_render 2>/dev/null || true
+
+# aiterm_add - Add file(s) to AI context
+aiterm_add() {
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then
+        echo "aiterm_add: This command only works in AI Terminal"
+        return 1
+    fi
+    
+    if [ $# -eq 0 ]; then
+        echo "Usage: aiterm_add <file> [file2 ...]"
+        echo "       aiterm_add *.log"
+        echo "       aiterm_add src/**/*.ts"
+        echo ""
+        echo "Add files to AI context for conversation. Supports wildcards."
+        return 1
+    fi
+    
+    local file_count=0
+    local error_count=0
+    
+    for file in "$@"; do
+        if [ ! -f "$file" ]; then
+            echo "aiterm_add: '$file' not found or not a regular file" >&2
+            error_count=$((error_count + 1))
+            continue
+        fi
+        
+        # Get absolute path
+        local abs_path
+        if [[ "$file" = /* ]]; then
+            abs_path="$file"
+        else
+            abs_path="$(pwd)/$file"
+        fi
+        
+        # Send OSC sequence to add file to context
+        printf "\033]1337;AddFileToContext=%s\007" "$abs_path"
+        
+        file_count=$((file_count + 1))
+    done
+    
+    if [ $file_count -gt 0 ]; then
+        if [ $file_count -eq 1 ]; then
+            echo "✓ Added 1 file to AI context"
+        else
+            echo "✓ Added $file_count files to AI context"
+        fi
+    fi
+    
+    if [ $error_count -gt 0 ]; then
+        return 1
+    fi
+    
+    return 0
+}
+
+export -f aiterm_add 2>/dev/null || true

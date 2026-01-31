@@ -19,6 +19,7 @@ import { attachWindowResize } from './resize';
 import { attachPtyDataListener } from './core/ptyListeners';
 import { attachCaptureLastListener } from './captureLast';
 import { getRangeText } from './ui/copyContext';
+import { createLogger } from '../utils/logger';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
@@ -30,6 +31,8 @@ import {
   TERMINAL_FOCUS_DELAY_MS,
   RESIZE_OBSERVER_DEBOUNCE_MS,
 } from './constants';
+
+const log = createLogger('TerminalWiring');
 
 export interface TerminalWiring {
     session: TerminalSession;
@@ -169,13 +172,73 @@ export function createTerminalWiring(params: {
         },
         () => {
             markerManager.handlePromptDetected();
+        },
+        (filePath) => {
+            // Handle add file to context from terminal command
+            import('@tauri-apps/api/core').then(({ invoke }) => {
+                // Determine if we're in a remote session by checking PTY info
+                invoke<{ pty_type: string }>('get_pty_info', { id })
+                    .then((info) => {
+                        const isRemote = info.pty_type === 'ssh';
+                        const maxBytes = 200 * 1024; // 200KB default
+                        
+                        if (isRemote) {
+                            // Remote file via silent command execution
+                            invoke<{
+                                stdout: string;
+                                stderr: string;
+                                exit_code: number;
+                            }>('execute_tool_command', {
+                                command: `head -c ${maxBytes} "${filePath.replace(/"/g, '\\"')}" 2>&1`,
+                                workingDirectory: null,
+                            }).then((result) => {
+                                if (result.exit_code === 0) {
+                                    addContextItemWithScan?.(result.stdout, 'file', {
+                                        path: filePath,
+                                        sizeKb: Math.round(result.stdout.length / 1024),
+                                        source: 'remote',
+                                    }).catch((err) => {
+                                        log.error('Failed to add remote file to context', err);
+                                        term.write(`\r\naiterm_add: Failed to add file to context: ${err}\r\n`);
+                                    });
+                                } else {
+                                    term.write(`\r\naiterm_add: Failed to read file: ${result.stderr || result.stdout}\r\n`);
+                                }
+                            }).catch((err) => {
+                                log.error('Failed to execute remote read command', err);
+                                term.write(`\r\naiterm_add: Failed to read remote file: ${err}\r\n`);
+                            });
+                        } else {
+                            // Local file via direct filesystem access
+                            invoke<string>('read_file_tool', {
+                                path: filePath,
+                                maxBytes,
+                            }).then((content) => {
+                                addContextItemWithScan?.(content, 'file', {
+                                    path: filePath,
+                                    sizeKb: Math.round(content.length / 1024),
+                                    source: 'local',
+                                }).catch((err) => {
+                                    log.error('Failed to add local file to context', err);
+                                    term.write(`\r\naiterm_add: Failed to add file to context: ${err}\r\n`);
+                                });
+                            }).catch((err) => {
+                                log.error('Failed to read local file', err);
+                                term.write(`\r\naiterm_add: Failed to read file: ${err}\r\n`);
+                            });
+                        }
+                    })
+                    .catch((err) => {
+                        log.error('Failed to get PTY info', err);
+                        term.write(`\r\naiterm_add: Failed to determine session type: ${err}\r\n`);
+                    });
+            }).catch((err) => {
+                log.error('Failed to import invoke', err);
+            });
         }
     );
 
     const onDataDisposable = term.onData((data) => {
-        if (data.includes('\r') || data.includes('\n')) {
-            markerManager.noteUserCommandIssued();
-        }
         invoke('write_to_pty', { id, data });
     });
 

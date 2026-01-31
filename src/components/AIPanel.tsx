@@ -3,7 +3,7 @@ import { aiPanelStyles } from "./AIPanel.styles";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendChatMessage } from "../ai/chatSend-vercel";
-import { requestCaptureLast, captureFileContent } from "../ai/contextCapture";
+import { requestCaptureLast } from "../ai/contextCapture";
 import { getSmartContextForPrompt } from "../ai/smartContext";
 import { AIChatTab } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
@@ -17,13 +17,10 @@ type PanelTab = "chat" | "context";
 
 interface AIPanelProps {
   activeTerminalId?: number | null;
-  isRemote?: boolean;
-  remoteHost?: string;
 }
 
 const AIPanel = ({
   activeTerminalId,
-  isRemote = false,
 }: AIPanelProps) => {
   const [activeTab, setActiveTab] = useState<PanelTab>("chat");
   const [prompt, setPrompt] = useState("");
@@ -31,8 +28,6 @@ const AIPanel = ({
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [captureCount, setCaptureCount] = useState(1);
-  const [filePath, setFilePath] = useState("");
-  const [fileLimitKb, setFileLimitKb] = useState(200);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [smartContextStatus, setSmartContextStatus] = useState<string | null>(null);
   const { settings, updateSettings } = useSettings();
@@ -68,8 +63,6 @@ const AIPanel = ({
     updateMessageMetrics,
     updateToolProgress,
     removeContextItem,
-    // addContextItem, // Not used directly, we use addContextItemWithScan
-    addContextItemWithScan,
     clearContext,
     clearChat,
     addPendingApproval,
@@ -78,6 +71,25 @@ const AIPanel = ({
     toggleSecretRedaction,
     markContextAsUsed,
   } = useAIContext();
+
+  // Request context sync when AI Panel mounts (for newly opened windows)
+  useEffect(() => {
+    const requestSync = async () => {
+      try {
+        log.debug('AI Panel mounted, requesting context sync');
+        await invoke("emit_event", {
+          event: "ai-context:request-sync",
+          payload: {},
+        });
+      } catch (err) {
+        log.error('Failed to request context sync', err);
+      }
+    };
+    
+    // Small delay to ensure event listeners are set up
+    const timer = setTimeout(requestSync, 100);
+    return () => clearTimeout(timer);
+  }, []); // Only run once on mount
 
   const handleApprove = useCallback(async (id: string) => {
     const approval = pendingApprovals.find(a => a.id === id);
@@ -216,48 +228,6 @@ const AIPanel = ({
     requestCaptureLast(captureCount).catch((err) => {
       log.error('Failed to request capture', err);
     });
-  };
-
-  const handleCaptureFile = async () => {
-    if (!filePath.trim()) return;
-
-    try {
-      const result = await captureFileContent({
-        path: filePath,
-        fileLimitKb,
-        isRemote,
-        workingDirectory: undefined,
-      });
-
-      // Add to context with secret scanning
-      await addContextItemWithScan(
-        result.content,
-        'file',
-        {
-          path: filePath,
-          source: result.source,
-          sizeKb: Math.round(result.content.length / 1024),
-        }
-      );
-
-      addMessage({
-        id: crypto.randomUUID(),
-        role: 'system',
-        content: `Captured file: ${filePath} (${Math.round(result.content.length / 1024)}KB, ${result.source})`,
-        timestamp: Date.now(),
-      });
-
-      setFilePath(''); // Clear input after successful capture
-    } catch (err) {
-      log.error('Failed to capture file', err);
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      addMessage({
-        id: crypto.randomUUID(),
-        role: 'system',
-        content: `Failed to capture file: ${errorMsg}`,
-        timestamp: Date.now(),
-      });
-    }
   };
 
   useEffect(() => {
@@ -447,11 +417,6 @@ const AIPanel = ({
             captureCount={captureCount}
             setCaptureCount={setCaptureCount}
             onCaptureLast={handleCaptureLast}
-            filePath={filePath}
-            setFilePath={setFilePath}
-            fileLimitKb={fileLimitKb}
-            setFileLimitKb={setFileLimitKb}
-            onCaptureFile={handleCaptureFile}
           />
         )}
       </div>
