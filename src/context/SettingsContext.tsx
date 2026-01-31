@@ -20,6 +20,19 @@ export interface AiSettings {
     mode?: 'chat' | 'agent'; // Chat = no agent toolkit/tools, Agent = tools enabled
     require_command_approval?: boolean; // New: Require approval before executing commands
     api_key_in_keychain?: boolean; // Track if key is stored in keychain
+    
+    // Advanced: Conversation History
+    conversation_window_size?: number;        // Default: 8
+    conversation_min_for_summary?: number;    // Default: 12
+    
+    // Advanced: Context Budget
+    context_token_budget_chat?: number;       // Default: 12000
+    context_token_budget_agent?: number;      // Default: 6000
+    
+    // Advanced: Context Behavior (for future features)
+    enable_context_summaries?: boolean;       // Default: false
+    context_summary_threshold?: number;       // Default: 2
+    context_auto_cleanup_hours?: number;      // Default: 0 (disabled)
 }
 
 export interface TerminalSettings {

@@ -71,6 +71,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         });
     }, []);
 
+    const handleResetAdvancedSettings = useCallback(() => {
+        setLocalSettings(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                ai: {
+                    ...prev.ai,
+                    conversation_window_size: undefined,
+                    conversation_min_for_summary: undefined,
+                    context_token_budget_chat: undefined,
+                    context_token_budget_agent: undefined,
+                    enable_context_summaries: undefined,
+                    context_summary_threshold: undefined,
+                    context_auto_cleanup_hours: undefined,
+                }
+            };
+        });
+    }, []);
+
     const handleTestConnection = useCallback(async () => {
         if (!localSettings) return;
         setAiTestStatus('testing');
@@ -573,6 +592,126 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     </label>
                                     <div style={settingsModalStyles.formHint}>
                                         When enabled, the AI will ask for permission before running potentially destructive commands (rm, sudo, etc.). Safe read-only commands run automatically.
+                                    </div>
+                                </div>
+
+                                {/* Advanced Settings Section */}
+                                <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                                        <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.9)' }}>Advanced Settings</h3>
+                                        <button
+                                            style={{
+                                                ...settingsModalStyles.button,
+                                                ...settingsModalStyles.buttonSecondary,
+                                                fontSize: '12px',
+                                                padding: '4px 12px'
+                                            }}
+                                            onClick={handleResetAdvancedSettings}
+                                            title="Reset all advanced settings to defaults"
+                                        >
+                                            Reset to Default
+                                        </button>
+                                    </div>
+                                    
+                                    {/* Conversation History */}
+                                    <div style={settingsModalStyles.formGroup}>
+                                        <label style={settingsModalStyles.formLabel}>Conversation Window Size: {localSettings.ai.conversation_window_size ?? 8} messages</label>
+                                        <input
+                                            type="range"
+                                            min="4"
+                                            max="20"
+                                            step="2"
+                                            value={localSettings.ai.conversation_window_size ?? 8}
+                                            onChange={(e) => handleChange('ai', 'conversation_window_size', parseInt(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        />
+                                        <div style={settingsModalStyles.formHint}>
+                                            Keep last N messages in full. Older messages are summarized to save tokens.
+                                        </div>
+                                        {(localSettings.ai.conversation_window_size ?? 8) < 4 && (
+                                            <div style={settingsModalStyles.warningText}>
+                                                ⚠️ Very small window may lose important context
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div style={settingsModalStyles.formGroup}>
+                                        <label style={settingsModalStyles.formLabel}>Summarize after: {localSettings.ai.conversation_min_for_summary ?? 12} messages</label>
+                                        <input
+                                            type="range"
+                                            min="8"
+                                            max="50"
+                                            step="2"
+                                            value={localSettings.ai.conversation_min_for_summary ?? 12}
+                                            onChange={(e) => handleChange('ai', 'conversation_min_for_summary', parseInt(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        />
+                                        <div style={settingsModalStyles.formHint}>
+                                            Start summarizing old messages when conversation exceeds this length.
+                                        </div>
+                                        {(localSettings.ai.conversation_min_for_summary ?? 12) > 30 && (
+                                            <div style={settingsModalStyles.warningText}>
+                                                ⚠️ Large value increases token usage. Summarization saves 60-80% tokens.
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Context Budget */}
+                                    <div style={settingsModalStyles.formGroup}>
+                                        <label style={settingsModalStyles.formLabel}>Context Budget (Chat Mode): {localSettings.ai.context_token_budget_chat ?? 12000} tokens</label>
+                                        <input
+                                            type="range"
+                                            min="4000"
+                                            max="20000"
+                                            step="1000"
+                                            value={localSettings.ai.context_token_budget_chat ?? 12000}
+                                            onChange={(e) => handleChange('ai', 'context_token_budget_chat', parseInt(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        />
+                                        <div style={settingsModalStyles.formHint}>
+                                            Chat mode front-loads context (cannot fetch files later). Higher = more context.
+                                        </div>
+                                        {(localSettings.ai.context_token_budget_chat ?? 12000) < 6000 && (
+                                            <div style={settingsModalStyles.warningText}>
+                                                ⚠️ Low budget may truncate important context in chat mode
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div style={settingsModalStyles.formGroup}>
+                                        <label style={settingsModalStyles.formLabel}>Context Budget (Agent Mode): {localSettings.ai.context_token_budget_agent ?? 6000} tokens</label>
+                                        <input
+                                            type="range"
+                                            min="2000"
+                                            max="12000"
+                                            step="1000"
+                                            value={localSettings.ai.context_token_budget_agent ?? 6000}
+                                            onChange={(e) => handleChange('ai', 'context_token_budget_agent', parseInt(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        />
+                                        <div style={settingsModalStyles.formHint}>
+                                            Agent mode can use read_file/grep tools to fetch details on demand. Lower = more efficient.
+                                        </div>
+                                        {(localSettings.ai.context_token_budget_agent ?? 6000) > 10000 && (
+                                            <div style={settingsModalStyles.warningText}>
+                                                ⚠️ High budget reduces efficiency. Agent can fetch files using tools.
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Future Features (Disabled) */}
+                                    <div style={settingsModalStyles.formGroup}>
+                                        <label style={{ ...settingsModalStyles.checkboxLabel, opacity: 0.5 }}>
+                                            <input
+                                                type="checkbox"
+                                                disabled
+                                                checked={false}
+                                            />
+                                            <span>Enable context summaries (Coming Soon)</span>
+                                        </label>
+                                        <div style={settingsModalStyles.formHint}>
+                                            Summarize repeated context instead of resending full content. Saves 30-50% tokens.
+                                        </div>
                                     </div>
                                 </div>
                             </>

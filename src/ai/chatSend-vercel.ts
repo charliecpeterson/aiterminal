@@ -181,9 +181,17 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     // Mode-specific context strategies
     // Chat mode: Front-load context (can't fetch files later)
     // Agent mode: Just-in-time context (can use tools to fetch more)
-    const contextTokenBudget = aiMode === 'chat' ? 12000 : 6000;
+    const contextTokenBudget = aiMode === 'chat' 
+      ? (settingsAi.context_token_budget_chat ?? 12000)
+      : (settingsAi.context_token_budget_agent ?? 6000);
     
-    log.debug(`Using ${aiMode} mode with ${contextTokenBudget} token budget for context`);
+    log.debug(`Using ${aiMode} mode with ${contextTokenBudget} token budget for context`, {
+      mode: aiMode,
+      budget: contextTokenBudget,
+      isDefault: aiMode === 'chat' 
+        ? settingsAi.context_token_budget_chat === undefined
+        : settingsAi.context_token_budget_agent === undefined
+    });
 
     // Extract recent conversation topics for better relevance scoring
     const recentTopics = extractRecentTopics(messages, 3);

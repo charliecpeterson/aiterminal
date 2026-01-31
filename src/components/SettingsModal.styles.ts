@@ -226,6 +226,16 @@ export const settingsModalStyles = {
     wordBreak: 'break-word',
   } as CSSProperties,
 
+  // Warning text
+  warningText: {
+    fontSize: tokens.fontSize.xs,
+    color: '#f59e0b', // amber-500
+    marginTop: tokens.spacing[2],
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+  } as CSSProperties,
+
   // Loading
   loadingContainer: {
     padding: tokens.spacing[10],

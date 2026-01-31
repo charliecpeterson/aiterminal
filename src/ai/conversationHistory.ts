@@ -22,10 +22,17 @@ export interface ConversationWindow {
 
 // Configuration
 const CONFIG = {
-  SLIDING_WINDOW_SIZE: 8, // Keep last 8 messages (4 exchanges)
-  MIN_MESSAGES_FOR_SUMMARY: 12, // Only summarize if we have 12+ messages
   SUMMARY_CACHE_TTL: 5 * 60 * 1000, // Cache summary for 5 minutes
 };
+
+// Get settings-aware config values
+function getWindowSize(settings?: AiSettings | null): number {
+  return settings?.conversation_window_size ?? 8;
+}
+
+function getMinForSummary(settings?: AiSettings | null): number {
+  return settings?.conversation_min_for_summary ?? 12;
+}
 
 // Cache for generated summaries
 interface SummaryCache {
@@ -208,8 +215,11 @@ export async function prepareConversationHistory(
   // Filter out system messages for history
   const nonSystemMessages = messages.filter(m => m.role !== 'system');
   
+  const windowSize = getWindowSize(settings);
+  const minForSummary = getMinForSummary(settings);
+  
   // If conversation is short, use all messages
-  if (nonSystemMessages.length <= CONFIG.SLIDING_WINDOW_SIZE) {
+  if (nonSystemMessages.length <= windowSize) {
     return {
       recentMessages: nonSystemMessages,
       totalOriginalCount: nonSystemMessages.length,
@@ -218,15 +228,15 @@ export async function prepareConversationHistory(
   }
   
   // Take recent messages (sliding window)
-  const recentMessages = nonSystemMessages.slice(-CONFIG.SLIDING_WINDOW_SIZE);
-  const oldMessages = nonSystemMessages.slice(0, -CONFIG.SLIDING_WINDOW_SIZE);
+  const recentMessages = nonSystemMessages.slice(-windowSize);
+  const oldMessages = nonSystemMessages.slice(0, -windowSize);
   
   // Calculate tokens saved
   const originalTokens = calculateMessageTokens(nonSystemMessages);
   const recentTokens = calculateMessageTokens(recentMessages);
   
   // Only summarize if we have enough old messages and settings are available
-  if (oldMessages.length >= CONFIG.MIN_MESSAGES_FOR_SUMMARY - CONFIG.SLIDING_WINDOW_SIZE && settings) {
+  if (oldMessages.length >= minForSummary - windowSize && settings) {
     try {
       const summary = await summarizeOldMessages(oldMessages, settings);
       const summaryTokens = estimateTokens(summary);
