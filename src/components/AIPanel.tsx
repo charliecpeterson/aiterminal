@@ -13,6 +13,126 @@ import { createLogger } from "../utils/logger";
 
 const log = createLogger('AIPanel');
 
+// Export functions for chat conversations
+function exportBasic(messages: any[]): string {
+  return messages
+    .filter(msg => msg.role !== 'system')
+    .map(msg => {
+      const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+      const role = msg.role.toUpperCase();
+      return `## ${role} - ${timestamp}\n\n${msg.content}\n`;
+    })
+    .join('\n---\n\n');
+}
+
+function exportDetailed(messages: any[]): string {
+  return messages
+    .filter(msg => msg.role !== 'system')
+    .map(msg => {
+      const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+      const role = msg.role.toUpperCase();
+      
+      let content = `## ${role} - ${timestamp}\n\n`;
+      
+      // Add metadata for user messages (context sent)
+      if (msg.role === 'user' && msg.usedContext) {
+        const ctx = msg.usedContext;
+        content += `**Context Sent**: ${ctx.chunkCount || 0} items`;
+        if (ctx.contextBudget) content += ` (budget: ${ctx.contextBudget} tokens)`;
+        content += `\n`;
+        if (ctx.contextStrategy) content += `**Strategy**: ${ctx.contextStrategy}\n`;
+        content += `\n`;
+      }
+      
+      // Add metrics for assistant messages
+      if (msg.role === 'assistant' && msg.metrics) {
+        const m = msg.metrics;
+        content += `**Model**: ${m.model} | **Mode**: ${m.mode}\n`;
+        content += `**Tokens**: ${m.tokens.input} input / ${m.tokens.output} output\n`;
+        content += `**Duration**: ${(m.timings.total / 1000).toFixed(1)}s`;
+        if (m.timings.contextSelection) {
+          content += ` (context: ${m.timings.contextSelection}ms)`;
+        }
+        content += `\n\n`;
+      }
+      
+      content += `${msg.content}\n`;
+      return content;
+    })
+    .join('\n---\n\n');
+}
+
+function exportVerbose(messages: any[]): string {
+  return messages
+    .filter(msg => msg.role !== 'system')
+    .map(msg => {
+      const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+      const role = msg.role.toUpperCase();
+      
+      let content = `## ${role} - ${timestamp}\n`;
+      content += `**Message ID**: ${msg.id}\n\n`;
+      
+      // Verbose context details for user messages
+      if (msg.role === 'user' && msg.usedContext) {
+        const ctx = msg.usedContext;
+        content += `### Request Metadata\n`;
+        content += `- **Context Strategy**: ${ctx.contextStrategy || 'unknown'}\n`;
+        content += `- **Context Budget**: ${ctx.contextBudget || 'unknown'} tokens\n`;
+        content += `- **Items Sent**: ${ctx.chunkCount || 0}\n\n`;
+        
+        // List context items with details
+        if (ctx.contextItems && ctx.contextItems.length > 0) {
+          content += `### Context Items Sent\n`;
+          ctx.contextItems.forEach((item: any, idx: number) => {
+            content += `${idx + 1}. **${item.label || item.path || item.id}**\n`;
+            content += `   - Type: ${item.type}\n`;
+            if (item.usageCount) content += `   - Usage count: ${item.usageCount}\n`;
+            if (item.conversationMemoryPenalty !== undefined) {
+              content += `   - Conversation memory penalty: ${item.conversationMemoryPenalty}\n`;
+            }
+            content += `\n`;
+          });
+          
+          // Show full context content
+          content += `### Full Context Content\n\n`;
+          ctx.contextItems.forEach((item: any, idx: number) => {
+            content += `#### ${idx + 1}. ${item.label || item.path || item.id}\n`;
+            content += `\`\`\`\n${item.content.substring(0, 5000)}${item.content.length > 5000 ? '\n... (truncated)' : ''}\n\`\`\`\n\n`;
+          });
+        }
+        
+        // Show system prompt if available
+        if (msg.systemPrompt) {
+          content += `### System Prompt\n\`\`\`\n${msg.systemPrompt}\n\`\`\`\n\n`;
+        }
+      }
+      
+      // Verbose metrics for assistant messages
+      if (msg.role === 'assistant' && msg.metrics) {
+        const m = msg.metrics;
+        content += `### Response Metadata\n`;
+        content += `- **Model**: ${m.model}\n`;
+        content += `- **Mode**: ${m.mode}\n`;
+        content += `- **Tokens**: ${m.tokens.input} input / ${m.tokens.output} output / ${m.tokens.total} total\n`;
+        content += `- **Duration**: ${(m.timings.total / 1000).toFixed(1)}s\n`;
+        if (m.timings.firstToken) {
+          content += `- **Time to first token**: ${m.timings.firstToken}ms\n`;
+        }
+        if (m.timings.contextSelection) {
+          content += `- **Context selection time**: ${m.timings.contextSelection}ms\n`;
+        }
+        if (m.toolCalls) {
+          content += `- **Tool calls**: ${m.toolCalls}\n`;
+        }
+        content += `\n`;
+      }
+      
+      content += `### Message Content\n${msg.content}\n`;
+      return content;
+    })
+    .join('\n---\n\n');
+}
+
 type PanelTab = "chat" | "context";
 
 interface AIPanelProps {
@@ -30,6 +150,7 @@ const AIPanel = ({
   const [captureCount, setCaptureCount] = useState(1);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [smartContextStatus, setSmartContextStatus] = useState<string | null>(null);
+  const [exportMode, setExportMode] = useState<'basic' | 'detailed' | 'verbose'>('basic');
   const { settings, updateSettings } = useSettings();
 
   // Hover states for interactive elements
@@ -334,6 +455,22 @@ const AIPanel = ({
           </div>
           {activeTab === "chat" && (
             <>
+              <select
+                value={exportMode}
+                onChange={(e) => setExportMode(e.target.value as 'basic' | 'detailed' | 'verbose')}
+                style={{
+                  ...aiPanelStyles.headerButton,
+                  padding: '4px 8px',
+                  marginRight: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+                title="Export format"
+              >
+                <option value="basic">Basic</option>
+                <option value="detailed">Detailed</option>
+                <option value="verbose">Verbose</option>
+              </select>
               <button 
                 style={{
                   ...aiPanelStyles.headerButton,
@@ -349,15 +486,20 @@ const AIPanel = ({
                     const { save } = await import('@tauri-apps/plugin-dialog');
                     const { writeTextFile } = await import('@tauri-apps/plugin-fs');
                     const filePath = await save({
-                      defaultPath: `aiterminal-chat-${Date.now()}.md`,
+                      defaultPath: `aiterminal-chat-${exportMode}-${Date.now()}.md`,
                       filters: [{ name: 'Markdown', extensions: ['md'] }]
                     });
                     if (!filePath) return;
-                    const exportContent = messages.map(msg => {
-                      const timestamp = new Date(msg.timestamp).toLocaleString();
-                      const role = msg.role.toUpperCase();
-                      return `## ${role} - ${timestamp}\n\n${msg.content}\n`;
-                    }).join('\n---\n\n');
+                    
+                    let exportContent = '';
+                    if (exportMode === 'basic') {
+                      exportContent = exportBasic(messages);
+                    } else if (exportMode === 'detailed') {
+                      exportContent = exportDetailed(messages);
+                    } else {
+                      exportContent = exportVerbose(messages);
+                    }
+                    
                     await writeTextFile(filePath, exportContent);
                   } catch (error) {
                     log.error('Failed to export chat', error);

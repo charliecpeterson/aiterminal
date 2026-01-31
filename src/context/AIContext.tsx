@@ -72,6 +72,19 @@ export interface ChatMessage {
       path?: string | null;
       text: string;
     }>;
+    // For verbose export: full context with item details
+    contextItems?: Array<{
+      id: string;
+      type: string;
+      label?: string;
+      path?: string;
+      content: string;
+      usageCount?: number;
+      conversationMemoryPenalty?: number;
+    }>;
+    // Context selection details
+    contextBudget?: number;
+    contextStrategy?: 'keyword' | 'smart' | 'cached';
   };
   metrics?: {
     model: string;
@@ -79,6 +92,7 @@ export interface ChatMessage {
     timings: {
       total: number;
       firstToken?: number;
+      contextSelection?: number;
     };
     tokens: {
       input: number;
@@ -88,6 +102,8 @@ export interface ChatMessage {
     toolCalls?: number;
   };
   toolProgress?: ToolProgress[];
+  // For verbose export: full system prompt sent to API
+  systemPrompt?: string;
 }
 
 export interface PendingApproval {

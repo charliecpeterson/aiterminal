@@ -114,13 +114,9 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
   // Pre-formatted context is available in formattedContextItems (already handles redaction)
   // Note: Not used directly here, but passed through via contextItems for ranking/deduplication
 
-  // Add user message
-  addMessage({
-    id: crypto.randomUUID(),
-    role: 'user',
-    content: trimmed,
-    timestamp: Date.now(),
-  });
+  // Generate message IDs upfront so we can use them for tracking
+  const userMsgId = crypto.randomUUID();
+  const assistantMsgId = crypto.randomUUID();
 
   setPrompt('');
   setSendError(null);
@@ -129,6 +125,9 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
   // Start performance metrics tracking
   startRequestMetrics(settingsAi.model, settingsAi.mode || 'agent');
   let firstTokenRecorded = false;
+  
+  // Track context selection timing
+  const contextSelectionStart = Date.now();
 
   try {
     // Prepare conversation history with sliding window and summarization
@@ -203,12 +202,14 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     let contextForPrompt: string;
     let usedContextIds: string[];
     let useSmartContext = false;
+    let rankedContext: any[] | undefined; // Store for verbose export
 
     if (cached) {
       // Use cached context
       formattedContextArray = cached.formatted;
       contextForPrompt = formattedContextArray.join('\n\n---\n\n');
       usedContextIds = cached.ranked.map(r => r.item.id);
+      rankedContext = cached.ranked; // Store ranked context
       log.debug('Using cached context', { items: cached.ranked.length });
     } else {
       // Decide whether to use smart context (embeddings) or keyword ranking
@@ -244,7 +245,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
           useSmartContext = false;
           
           const deduped = deduplicateContext(deps.contextItems);
-          const rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
+          rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
             recentMessageTopics: recentTopics,
             recentMessages: messages, // Pass message history for conversation memory
             mode: aiMode, // Pass mode for mode-specific scoring
@@ -257,7 +258,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       } else {
         // Use traditional keyword-based ranking
         const deduped = deduplicateContext(deps.contextItems);
-        const rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
+        rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
           recentMessageTopics: recentTopics,
           recentMessages: messages, // Pass message history for conversation memory
           mode: aiMode, // Pass mode for mode-specific scoring
@@ -271,20 +272,16 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       }
       
       // Cache the results for future requests (only cache keyword ranking for now)
-      if (!useSmartContext) {
-        // For caching, we need rankedContext format - regenerate it
-        const deduped = deduplicateContext(deps.contextItems);
-        const rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
-          recentMessageTopics: recentTopics,
-          recentMessages: messages, // Pass message history for conversation memory
-          mode: aiMode, // Pass mode for mode-specific scoring
-        });
+      if (!useSmartContext && rankedContext) {
         // Estimate token count (rough approximation: ~4 chars per token)
         const estimatedTokens = Math.ceil(contextForPrompt.length / 4);
         setCachedContext(deps.contextItems, trimmed, rankedContext, formattedContextArray, estimatedTokens);
         log.debug('Cached new context', { items: rankedContext.length });
       }
     }
+    
+    // Calculate context selection time
+    const contextSelectionTime = Date.now() - contextSelectionStart;
 
     const contextSummary = summarizeContext(deps.contextItems);
 
@@ -310,6 +307,31 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     const finalSystemPrompt = contextForPrompt 
       ? `${systemPrompt}\n\nTERMINAL CONTEXT PROVIDED BY USER:\n${contextForPrompt}`
       : systemPrompt;
+    
+    // Now add user message with verbose metadata for export
+    addMessage({
+      id: userMsgId,
+      role: 'user',
+      content: trimmed,
+      timestamp: Date.now(),
+      usedContext: {
+        mode: useSmartContext ? 'smart' : 'full',
+        chunkCount: usedContextIds.length,
+        contextBudget: contextTokenBudget,
+        contextStrategy: useSmartContext ? 'smart' : (cached ? 'cached' : 'keyword'),
+        // Store detailed context items for verbose export
+        contextItems: rankedContext?.map(rc => ({
+          id: rc.item.id,
+          type: rc.item.type,
+          label: rc.item.metadata?.path || rc.item.id,
+          path: rc.item.metadata?.path,
+          content: rc.item.content,
+          usageCount: rc.item.usageCount,
+          conversationMemoryPenalty: rc.breakdown?.conversationMemory,
+        })),
+      },
+      systemPrompt: finalSystemPrompt, // Store system prompt for verbose export
+    });
 
     // Create tools only when enabled (Agent mode)
     const tools = enableTools
@@ -336,16 +358,15 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     });
 
     // Create assistant message
-    const assistantId = crypto.randomUUID();
     
     // Mark context as used in this message
     if (deps.markContextAsUsed && usedContextIds.length > 0) {
-      deps.markContextAsUsed(usedContextIds, assistantId);
+      deps.markContextAsUsed(usedContextIds, assistantMsgId);
     }
     
     // We'll add metrics after streaming completes
     let assistantMessage: ChatMessage = {
-      id: assistantId,
+      id: assistantMsgId,
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
@@ -356,14 +377,14 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
 
     // Create streaming buffer to batch UI updates
     const streamBuffer = createStreamingBuffer((text) => {
-      appendMessage(assistantId, text);
+      appendMessage(assistantMsgId, text);
     });
 
     // Track tool executions
     const toolProgressList: ToolProgress[] = [];
     
     const updateToolProgressUI = () => {
-      updateToolProgress(assistantId, [...toolProgressList]);
+      updateToolProgress(assistantMsgId, [...toolProgressList]);
     };
 
     // Stream the full response including tool calls and results
@@ -449,12 +470,13 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     
     // Update the assistant message with metrics
     if (requestMetrics) {
-      updateMessageMetrics(assistantId, {
+      updateMessageMetrics(assistantMsgId, {
         model: requestMetrics.model,
         mode: requestMetrics.mode,
         timings: {
           total: requestMetrics.totalDurationMs || 0,
           firstToken: requestMetrics.firstTokenMs,
+          contextSelection: contextSelectionTime, // Add context selection time
         },
         tokens: {
           input: requestMetrics.inputTokens || 0,
