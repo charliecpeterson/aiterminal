@@ -1,7 +1,6 @@
 import type { IDecoration, IDisposable, IMarker, Terminal as XTermTerminal } from '@xterm/xterm';
 import type { ContextItem, ContextType } from '../../context/AIContext';
 import type { PendingFileCaptureRef } from '../core/fileCapture';
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import {
   computeEndLineForMarkers,
   computeOutputInfo,
@@ -27,10 +26,21 @@ export interface CopyMenuState {
 export type AddContextItem = (item: ContextItem) => void;
 export type AddContextItemWithScan = (content: string, type: ContextType, metadata?: ContextItem['metadata']) => Promise<void>;
 
+// State for output actions popup when clicking the vertical line indicator
+export interface OutputActionsState {
+  x: number; // Screen X position for popup
+  y: number; // Screen Y position for popup
+  startLine: number;
+  endLine: number;
+  lineCount: number;
+  content: string; // Pre-fetched content for copy/view
+}
+
 export interface MarkerManagerParams {
   term: XTermTerminal;
   maxMarkers: number;
   setCopyMenu: (value: CopyMenuState | null) => void;
+  setOutputActions: (value: OutputActionsState | null) => void;
   getRangeText: (range: [number, number]) => string;
   addContextItem: AddContextItem;
   addContextItemWithScan?: AddContextItemWithScan;
@@ -61,6 +71,13 @@ function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDe
   const meta = markerMeta.get(marker);
   let doneLine = meta?.doneMarker?.line ?? undefined;
 
+  // If the command is finished and we have a done marker, prefer it to avoid spanning
+  // into subsequent commands (especially after long outputs/scrollback shifts).
+  let endLineFromDone: number | null = null;
+  if (meta?.exitCode !== undefined && doneLine != null && doneLine >= 0) {
+    endLineFromDone = Math.max(startLine, doneLine);
+  }
+
   // Python REPL nuance: our OSC 133;D often arrives *before* Python prints the next ">>>" prompt.
   // In that case, `doneMarker` lands on the last output line, but `computeEndLineForMarkers`
   // subtracts 1 (to exclude the prompt), which incorrectly drops that last output line and can
@@ -80,7 +97,7 @@ function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDe
       // ignore
     }
   }
-  return computeEndLineForMarkers({
+  let endLine = computeEndLineForMarkers({
     startLine,
     bufferLength: term.buffer.active.length,
     markers: markers.map((item) => item.marker.line),
@@ -88,6 +105,25 @@ function computeEndLine(term: XTermTerminal, markers: IDecoration[], marker: IDe
     isPythonREPL: meta?.isPythonREPL,
     isRREPL: meta?.isRREPL,
   });
+
+  // Clamp to the next completed marker's start line so we don't overlap into later commands.
+  let nextCompletedStart: number | null = null;
+  for (const item of markers) {
+    const line = item.marker.line;
+    if (line <= startLine || line < 0) continue;
+    const itemMeta = markerMeta.get(item);
+    if (itemMeta?.exitCode === undefined) continue;
+    if (nextCompletedStart == null || line < nextCompletedStart) {
+      nextCompletedStart = line;
+    }
+  }
+  if (nextCompletedStart != null) {
+    endLine = Math.min(endLine, nextCompletedStart - 1);
+  }
+  if (endLineFromDone != null) {
+    endLine = Math.min(endLine, endLineFromDone);
+  }
+  return Math.max(startLine, endLine);
 }
 
 function computeRanges(
@@ -130,12 +166,15 @@ export interface MarkerManager {
   setRREPL: (enabled: boolean) => void; // Control R REPL marker behavior
   handlePromptDetected: () => void;
   noteUserCommandIssued: () => void;
+  clearCommandBlockHighlight: () => void; // Clear the command block highlight
+  shouldIgnoreSelectionClear: () => boolean; // Used to avoid clearing highlight on simple clicks
 }
 
 export function createMarkerManager({
   term,
   maxMarkers,
   setCopyMenu,
+  setOutputActions,
   getRangeText,
   addContextItem,
   addContextItemWithScan,
@@ -150,16 +189,15 @@ export function createMarkerManager({
   const markerMeta = new WeakMap<IDecoration, MarkerMeta>();
   const markerElement = new WeakMap<IDecoration, HTMLElement>();
   let hasSeenFirstCommand = false; // Track if we've seen at least one complete command
-  let currentHighlight: IDecoration | null = null;
-  let currentHighlightMarker: IMarker | null = null;
+  let currentHighlight: { element: HTMLElement; dispose: () => void } | null = null;
   let currentHighlightedMarker: IDecoration | null = null;
-  let currentHighlightVisibleStart: number | null = null;
-  let currentHighlightHeight: number | null = null;
+  let currentHighlightOutputInfo: { startLine: number; endLine: number; content: string } | null = null;
   let isPythonREPL = false; // Track if we're currently inside a Python REPL
   let isRREPL = false; // Track if we're currently inside an R REPL
   let rOuterMarker: IDecoration | null = null; // Shell marker for the long-running `R` command
   let pendingStartTime: number | null = null;
   let commandRunning = false;
+  let suppressSelectionClearUntil = 0;
   
   // Allow external control of Python REPL state
   const setPythonREPL = (enabled: boolean) => {
@@ -199,24 +237,11 @@ export function createMarkerManager({
     onPythonREPL(isPythonREPL);
   }
 
-  let currentOutputButton: HTMLDivElement | null = null;
-  let currentOutputButtonRemoveListener: ((e: MouseEvent) => void) | null = null;
-  let currentOutputButtonTimeoutId: ReturnType<typeof setTimeout> | null = null;
   const pythonMarkersById = new Map<string, IDecoration>();
 
-  const cleanupOutputButton = () => {
-    if (currentOutputButton) {
-      currentOutputButton.remove();
-      currentOutputButton = null;
-    }
-    if (currentOutputButtonTimeoutId) {
-      clearTimeout(currentOutputButtonTimeoutId);
-      currentOutputButtonTimeoutId = null;
-    }
-    if (currentOutputButtonRemoveListener) {
-      document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-      currentOutputButtonRemoveListener = null;
-    }
+  // Simple helper to clear output actions state
+  const clearOutputActions = () => {
+    setOutputActions(null);
   };
 
   const notifyMarkersChanged = () => {
@@ -443,16 +468,36 @@ export function createMarkerManager({
     onCommandStart?.();
   };
 
-  // Find which command block contains a given line
+  const getHighlightSpan = (marker: IDecoration) => {
+    const startLine = marker.marker.line;
+    const meta = markerMeta.get(marker);
+    const outputStart = meta?.outputStartMarker?.line ?? null;
+    const doneLine = meta?.doneMarker?.line ?? null;
+
+    if (outputStart != null && doneLine != null) {
+      const start = Math.max(startLine + 1, outputStart);
+      const end = Math.max(start, doneLine - 1);
+      return { start, end };
+    }
+
+    const stub = Math.max(startLine + 1, startLine);
+    return { start: stub, end: stub };
+  };
+
+  // Find which command output block contains a given line (marker-anchored)
   const findMarkerAtLine = (lineNumber: number): IDecoration | null => {
+    let bestMatch: IDecoration | null = null;
+    let bestStart = -1;
     for (const marker of markers) {
-      const startLine = marker.marker.line;
-      const endLine = computeEndLine(term, markers, marker, markerMeta);
-      if (lineNumber >= startLine && lineNumber <= endLine) {
-        return marker;
+      const span = getHighlightSpan(marker);
+      if (lineNumber >= span.start && lineNumber <= span.end) {
+        if (span.start > bestStart) {
+          bestStart = span.start;
+          bestMatch = marker;
+        }
       }
     }
-    return null;
+    return bestMatch;
   };
 
   const clearHighlight = () => {
@@ -460,77 +505,123 @@ export function createMarkerManager({
       currentHighlight.dispose();
       currentHighlight = null;
     }
-    if (currentHighlightMarker) {
-      currentHighlightMarker.dispose();
-      currentHighlightMarker = null;
-    }
-    currentHighlightVisibleStart = null;
-    currentHighlightHeight = null;
+    currentHighlightOutputInfo = null;
   };
 
-  const computeVisibleHighlight = (marker: IDecoration) => {
-    const startLine = marker.marker.line;
-    const endLine = computeEndLine(term, markers, marker, markerMeta);
+  const suppressSelectionClearForClick = () => {
+    suppressSelectionClearUntil = performance.now() + 150;
+  };
 
-    const viewportStart = term.buffer.active.viewportY;
-    const viewportEnd = viewportStart + term.rows - 1;
-    const visibleStart = Math.max(startLine, viewportStart);
-    const visibleEnd = Math.min(endLine, viewportEnd);
-    const height = visibleEnd - visibleStart + 1;
-
-    if (height <= 0) return null;
-    return { visibleStart, height };
+  const shouldIgnoreSelectionClear = () => {
+    if (performance.now() < suppressSelectionClearUntil) {
+      suppressSelectionClearUntil = 0;
+      return true;
+    }
+    return false;
   };
 
   const renderHighlightForMarker = (marker: IDecoration) => {
-    const visible = computeVisibleHighlight(marker);
-    if (!visible) {
-      // Keep the selected marker; just don't draw a highlight while it's off-screen.
-      clearHighlight();
+    const span = getHighlightSpan(marker);
+    const viewportStart = term.buffer.active.viewportY;
+    const viewportEnd = viewportStart + term.rows - 1;
+    const visibleStart = Math.max(span.start, viewportStart);
+    const visibleEnd = Math.min(span.end, viewportEnd);
+    if (visibleStart > visibleEnd) {
+      if (currentHighlight) {
+        currentHighlight.element.style.display = 'none';
+      }
       return;
     }
 
-    // Avoid thrashing on scroll if nothing changed.
-    if (
-      currentHighlight &&
-      currentHighlightVisibleStart === visible.visibleStart &&
-      currentHighlightHeight === visible.height
-    ) {
+    const termRect = term.element?.getBoundingClientRect();
+    let container: HTMLElement | null = term.element?.parentElement ?? null;
+    while (container && !container.classList.contains('terminal-body')) {
+      container = container.parentElement;
+    }
+    const containerRect = container?.getBoundingClientRect();
+    const baseTop = (termRect?.top || 0) - (containerRect?.top || 0);
+    const baseLeft = (termRect?.left || 0) - (containerRect?.left || 0);
+    const containerHeight = containerRect?.height ?? term.element?.clientHeight ?? 0;
+
+    const rowsEl = term.element?.querySelector('.xterm-rows');
+    const firstRow = rowsEl?.firstElementChild as HTMLElement | null;
+    const cellHeight = firstRow?.getBoundingClientRect().height || 17;
+    const topRow = visibleStart - viewportStart;
+    const topPx = baseTop + (topRow * cellHeight);
+    const unclampedHeightPx = (visibleEnd - visibleStart + 1) * cellHeight;
+    
+    // Reuse existing element if possible, just update position
+    if (currentHighlight) {
+      const el = currentHighlight.element;
+      const leftPx = baseLeft - 10;
+      const clampedTop = Math.max(0, topPx);
+      const maxHeight = Math.max(0, Math.min(unclampedHeightPx - (clampedTop - topPx), containerHeight - clampedTop));
+      el.style.display = maxHeight > 0 ? '' : 'none';
+      el.style.top = `${clampedTop}px`;
+      el.style.left = `${leftPx}px`;
+      el.style.height = `${maxHeight}px`;
       return;
     }
-
-    clearHighlight();
-
-    // registerMarker() positions relative to the current cursor location.
-    // cursorY is relative to baseY (not viewportY), so compute an absolute buffer line via baseY.
-    const cursorLine = term.buffer.active.baseY + term.buffer.active.cursorY;
-    const highlightMarker = term.registerMarker(visible.visibleStart - cursorLine);
-    if (!highlightMarker) return;
-    currentHighlightMarker = highlightMarker;
-
-    const highlight = term.registerDecoration({
-      marker: highlightMarker,
-      x: 0,
-      width: term.cols,
-      height: visible.height,
-      layer: 'bottom',
+    
+    // Create a new vertical line indicator
+    const lineIndicator = document.createElement('div');
+    lineIndicator.className = 'command-block-indicator';
+    
+    // Position relative to the terminal container to avoid WebView clipping.
+    const leftPx = baseLeft - 10; // In the gutter
+    const clampedTop = Math.max(0, topPx);
+    const heightPx = Math.max(0, Math.min(unclampedHeightPx - (clampedTop - topPx), containerHeight - clampedTop));
+    if (heightPx <= 0) {
+      return;
+    }
+    
+    lineIndicator.style.cssText = `
+      position: absolute;
+      left: ${leftPx}px;
+      top: ${clampedTop}px;
+      width: 4px;
+      height: ${heightPx}px;
+      background: linear-gradient(180deg, #5b8de8 0%, #3d6dbf 100%);
+      border-radius: 2px;
+      cursor: pointer;
+      z-index: 100;
+      pointer-events: auto;
+      box-shadow: 0 0 4px rgba(91, 141, 232, 0.5);
+      transition: width 0.1s ease;
+    `;
+    
+    // Add hover effect
+    lineIndicator.addEventListener('mouseenter', () => {
+      lineIndicator.style.width = '6px';
+      lineIndicator.style.marginLeft = '-1px';
     });
-
-    if (!highlight) {
-      clearHighlight();
-      return;
-    }
-
-    highlight.onRender((element: HTMLElement) => {
-      element.style.backgroundColor = 'rgba(91, 141, 232, 0.1)';
-      element.style.border = '1px solid rgba(91, 141, 232, 0.3)';
-      element.style.borderRadius = '4px';
-      element.style.pointerEvents = 'none';
+    lineIndicator.addEventListener('mouseleave', () => {
+      lineIndicator.style.width = '4px';
+      lineIndicator.style.marginLeft = '0';
     });
-
-    currentHighlight = highlight;
-    currentHighlightVisibleStart = visible.visibleStart;
-    currentHighlightHeight = visible.height;
+    
+    // Click on the line shows popup menu
+    lineIndicator.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (currentHighlightOutputInfo) {
+        const rect = lineIndicator.getBoundingClientRect();
+        setOutputActions({
+          x: rect.right + 8,
+          y: e.clientY - 20,
+          startLine: currentHighlightOutputInfo.startLine,
+          endLine: currentHighlightOutputInfo.endLine,
+          lineCount: currentHighlightOutputInfo.endLine - currentHighlightOutputInfo.startLine + 1,
+          content: currentHighlightOutputInfo.content,
+        });
+      }
+    });
+    
+    (container ?? document.body).appendChild(lineIndicator);
+    
+    currentHighlight = { 
+      element: lineIndicator, 
+      dispose: () => lineIndicator.remove()
+    };
   };
 
   // Highlight a command block
@@ -546,7 +637,14 @@ export function createMarkerManager({
   };
 
   // Terminal click handler
+  let clickHandlerAttached = false;
+  
   const attachTerminalClickHandler = () => {
+    if (clickHandlerAttached) {
+      return () => {};
+    }
+    clickHandlerAttached = true;
+    
     // Keep highlight anchored to the visible portion while scrolling.
     const viewport = term.element?.querySelector('.xterm-viewport') as HTMLElement | null;
     let rafId: number | null = null;
@@ -566,13 +664,39 @@ export function createMarkerManager({
     xtermScrollDisposable = term.onScroll(() => scheduleHighlightRefresh());
     xtermResizeDisposable = term.onResize(() => scheduleHighlightRefresh());
 
+    // Track mouse down position to distinguish click from drag (selection)
+    let mouseDownPos: { x: number; y: number } | null = null;
+    const CLICK_THRESHOLD = 5; // pixels - if mouse moves more than this, it's a drag
+
+    const handleMouseDown = (e: MouseEvent) => {
+      suppressSelectionClearForClick();
+      mouseDownPos = { x: e.clientX, y: e.clientY };
+    };
+
     const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      
-      // Only handle clicks on terminal viewport
-      if (!target.closest('.xterm-viewport') && !target.closest('.xterm-screen')) {
+      // If there's an active selection, don't handle the click as a block highlight
+      // This prevents the command block from stealing focus when selecting text
+      if (term.hasSelection()) {
+        mouseDownPos = null;
         return;
       }
+
+      // Check if this was a drag (selection attempt) rather than a click
+      if (mouseDownPos) {
+        const dx = Math.abs(e.clientX - mouseDownPos.x);
+        const dy = Math.abs(e.clientY - mouseDownPos.y);
+        if (dx > CLICK_THRESHOLD || dy > CLICK_THRESHOLD) {
+          mouseDownPos = null;
+          return;
+        }
+      }
+      mouseDownPos = null;
+
+      const target = e.target as HTMLElement;
+      
+      // Only handle clicks on terminal viewport/screen area
+      const isInTerminal = target.closest('.xterm-viewport') || target.closest('.xterm-screen') || target.closest('.xterm-rows');
+      if (!isInTerminal) return;
 
       // Get click position relative to terminal
       const terminalElement = term.element;
@@ -591,7 +715,7 @@ export function createMarkerManager({
         // Clicked outside any command block - remove highlight and button
         clearHighlight();
         currentHighlightedMarker = null;
-        cleanupOutputButton();
+        clearOutputActions();
         return;
       }
 
@@ -601,37 +725,47 @@ export function createMarkerManager({
         // This is the current/pending command (gray marker) - don't highlight
         clearHighlight();
         currentHighlightedMarker = null;
-        cleanupOutputButton();
+        clearOutputActions();
         return;
       }
 
       // Highlight the command block
       const didHighlight = highlightCommandBlock(marker);
       if (!didHighlight) {
-        cleanupOutputButton();
+        clearOutputActions();
         return;
       }
 
       // Ensure highlight is consistent with the current viewport.
       scheduleHighlightRefresh();
 
-      // Show output button if there's output
+      // Store output info for when the vertical line is clicked
       const startLine = marker.marker.line;
       const endLine = computeEndLine(term, markers, marker, markerMeta);
       const outputStartLine = meta?.outputStartMarker?.line ?? null;
       const outputInfo = computeOutputInfo(startLine, endLine, outputStartLine);
 
       if (outputInfo.hasOutput) {
-        const outputLineCount = endLine - outputInfo.safeOutputStart + 1;
-        showOutputButton(outputInfo.safeOutputStart, endLine, outputLineCount);
+        const content = getRangeText([outputInfo.safeOutputStart, endLine]);
+        currentHighlightOutputInfo = {
+          startLine: outputInfo.safeOutputStart,
+          endLine,
+          content,
+        };
+      } else {
+        currentHighlightOutputInfo = null;
       }
+      // Clear any existing popup (user will click the line to show it)
+      clearOutputActions();
     };
 
+    term.element?.addEventListener('mousedown', handleMouseDown);
     term.element?.addEventListener('click', handleClick);
     viewport?.addEventListener('scroll', scheduleHighlightRefresh);
     window.addEventListener('resize', scheduleHighlightRefresh);
 
     return () => {
+      term.element?.removeEventListener('mousedown', handleMouseDown);
       term.element?.removeEventListener('click', handleClick);
       viewport?.removeEventListener('scroll', scheduleHighlightRefresh);
       window.removeEventListener('resize', scheduleHighlightRefresh);
@@ -645,93 +779,8 @@ export function createMarkerManager({
       }
       clearHighlight();
       currentHighlightedMarker = null;
-      cleanupOutputButton();
+      clearOutputActions();
     };
-  };
-
-  const showOutputButton = (startLine: number, endLine: number, lineCount: number) => {
-    // Remove existing button and cleanup
-    cleanupOutputButton();
-
-    // Create floating button
-    const button = document.createElement('div');
-    button.className = 'output-actions-button';
-    button.innerHTML = `
-      <button class="output-view-window">View in Window</button>
-      <button class="output-copy-clipboard">Copy to Clipboard</button>
-    `;
-
-    // Position in top-right corner of terminal
-    button.style.position = 'fixed';
-    button.style.top = '80px';
-    button.style.right = '20px';
-    button.style.zIndex = '1000';
-
-    // Add to body
-    document.body.appendChild(button);
-    currentOutputButton = button;
-
-    // Handle button click
-    const viewBtn = button.querySelector('.output-view-window');
-    viewBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openOutputWindow(startLine, endLine, lineCount);
-      cleanupOutputButton();
-    });
-
-    const copyBtn = button.querySelector('.output-copy-clipboard');
-    copyBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const content = getRangeText([startLine, endLine]);
-      navigator.clipboard.writeText(content).catch((err) => {
-        log.error('Failed to copy to clipboard', err);
-      });
-      cleanupOutputButton();
-    });
-
-    // Remove on outside click
-    const removeButton = (e: MouseEvent) => {
-      if (!button.contains(e.target as Node)) {
-        cleanupOutputButton();
-      }
-    };
-    currentOutputButtonRemoveListener = removeButton;
-    currentOutputButtonTimeoutId = setTimeout(() => {
-      document.addEventListener('mousedown', removeButton);
-      currentOutputButtonTimeoutId = null;
-    }, 100);
-  };
-
-  const openOutputWindow = async (startLine: number, endLine: number, lineCount: number) => {
-    // Get the output content
-    const content = getRangeText([startLine, endLine]);
-    
-    // Copy to clipboard
-    navigator.clipboard.writeText(content).catch(err => {
-      log.error('Failed to copy', err);
-    });
-    
-    // Open a new window with the content passed via URL
-    // Use base64 encoding to avoid URL length limits and special characters
-    try {
-      const contentBase64 = btoa(encodeURIComponent(content));
-      const label = `output-viewer-${Date.now()}`;
-      const outputWindow = new WebviewWindow(label, {
-        url: `#/output-viewer?lines=${lineCount}&content=${contentBase64}`,
-        title: `Output (${lineCount} lines)`,
-        width: 800,
-        height: 600,
-        center: true,
-        resizable: true,
-        decorations: true,
-      });
-
-      outputWindow.once('tauri://error', (event) => {
-        log.error('Failed to create output window', event);
-      });
-    } catch (err) {
-      log.error('Error opening output window', err);
-    }
   };
 
   const removeMarker = (marker: IDecoration) => {
@@ -1301,6 +1350,13 @@ export function createMarkerManager({
       .filter((tick): tick is { line: number; classes: string[] } => Boolean(tick));
   };
 
+  // Public method to clear command block highlight (e.g., when selection starts)
+  const clearCommandBlockHighlight = () => {
+    clearHighlight();
+    currentHighlightedMarker = null;
+    clearOutputActions();
+  };
+
   return { 
     captureLast, 
     cleanup, 
@@ -1314,5 +1370,7 @@ export function createMarkerManager({
     setRREPL,
     handlePromptDetected,
     noteUserCommandIssued,
+    clearCommandBlockHighlight,
+    shouldIgnoreSelectionClear,
   };
 }

@@ -40,7 +40,7 @@ function truncateToolResult(result: string, maxChars: number = TOOL_RESULT_MAX_C
   const lines = (result.match(/\n/g) || []).length;
   const truncatedLines = (truncated.match(/\n/g) || []).length;
   
-  return `${truncated}\n\n... [TRUNCATED: ${remaining} more characters, ~${lines - truncatedLines} more lines. Use get_file_info or tail_file for specific sections.]`;
+  return `${truncated}\n\n... [TRUNCATED: ${remaining} more characters, ~${lines - truncatedLines} more lines. Use file_sections to read specific line ranges, or tail_file for the end.]`;
 }
 
 // Commands that typically run quickly

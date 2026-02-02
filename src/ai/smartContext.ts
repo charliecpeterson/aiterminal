@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ContextItem } from '../context/AIContext';
 import type { AiSettings } from '../context/SettingsContext';
+import { formatContextItem, effectiveIncludeMode, getTextForModel } from './formatters/contextFormatter';
 
 export type SmartContextChunk = {
   chunk_id: string;
@@ -20,40 +21,6 @@ export type RetrievedChunk = {
   score: number;
   text: string;
 };
-
-function getTextForModel(item: ContextItem): string {
-  if (item.hasSecrets && item.secretsRedacted && item.redactedContent) {
-    return item.redactedContent;
-  }
-  return item.content;
-}
-
-function formatFullContextItem(item: ContextItem): string {
-  const content = getTextForModel(item);
-  if (item.type === 'command_output') {
-    const command = item.metadata?.command || '';
-    return `Type: command\nContent: ${command}\n\nType: output\nContent: ${content}`;
-  }
-
-  if (item.type === 'file') {
-    const pathLine = item.metadata?.path ? `\nPath: ${item.metadata.path}` : '';
-    const truncatedLine = item.metadata?.truncated ? '\nTruncated: true' : '';
-    return `Type: file\nContent: ${content}${pathLine}${truncatedLine}`;
-  }
-
-  if (item.metadata?.command) {
-    return `Type: ${item.type}\nContent: ${content}\nCommand: ${item.metadata.command}`;
-  }
-
-  return `Type: ${item.type}\nContent: ${content}`;
-}
-
-function effectiveIncludeMode(item: ContextItem, globalSmartMode: boolean): 'smart' | 'always' | 'exclude' {
-  if (globalSmartMode) return 'smart';
-  const mode = item.metadata?.includeMode;
-  if (mode === 'always' || mode === 'exclude' || mode === 'smart') return mode;
-  return 'smart';
-}
 
 function chunkLines(params: {
   text: string;
@@ -132,7 +99,7 @@ export function buildAlwaysIncludedContext(contextItems: ContextItem[], globalSm
   for (const item of contextItems) {
     const mode = effectiveIncludeMode(item, globalSmartMode);
     if (mode === 'always') {
-      out.push(formatFullContextItem(item));
+      out.push(formatContextItem(item));
     }
   }
   return out;

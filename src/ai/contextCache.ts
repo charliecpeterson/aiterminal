@@ -7,23 +7,28 @@
 
 import type { ContextItem } from '../context/AIContext';
 import type { RankedContext } from './contextRanker';
+import { LRUCache } from '../utils/cache';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('ContextCache');
 
-interface CacheEntry {
-  contextFingerprint: string;
-  query: string;
+interface CacheValue {
   ranked: RankedContext[];
   formatted: string[];
-  timestamp: number;
   tokenCount: number;
 }
 
 const CACHE_MAX_AGE_MS = 30000; // 30 seconds
 const CACHE_MAX_SIZE = 10;
 
-const cache: CacheEntry[] = [];
+// Use LRUCache with composite key (fingerprint:query)
+const cache = new LRUCache<string, CacheValue>({
+  maxSize: CACHE_MAX_SIZE,
+  maxAgeMs: CACHE_MAX_AGE_MS,
+  onEvict: (key, _value, reason) => {
+    log.debug('Cache entry evicted', { key: key.substring(0, 50), reason });
+  },
+});
 
 /**
  * Generate a fingerprint for the current context state
@@ -40,6 +45,13 @@ export function generateContextFingerprint(items: ContextItem[]): string {
 }
 
 /**
+ * Generate cache key from fingerprint and query
+ */
+function getCacheKey(fingerprint: string, query: string): string {
+  return `${fingerprint}||${query}`;
+}
+
+/**
  * Get cached formatted context if available
  */
 export function getCachedContext(
@@ -47,33 +59,18 @@ export function getCachedContext(
   query: string
 ): { ranked: RankedContext[]; formatted: string[]; tokenCount: number } | null {
   const fingerprint = generateContextFingerprint(contextItems);
+  const key = getCacheKey(fingerprint, query);
   
-  // Find matching cache entry
-  const entry = cache.find(
-    e => e.contextFingerprint === fingerprint && e.query === query
-  );
+  const entry = cache.get(key);
   
   if (!entry) return null;
   
-  // Check if expired
-  if (Date.now() - entry.timestamp > CACHE_MAX_AGE_MS) {
-    // Remove expired entry
-    const index = cache.indexOf(entry);
-    if (index > -1) cache.splice(index, 1);
-    return null;
-  }
-  
   log.debug('Cache hit', {
-    fingerprint,
+    fingerprint: fingerprint.substring(0, 50),
     itemCount: contextItems.length,
-    age: Date.now() - entry.timestamp,
   });
   
-  return {
-    ranked: entry.ranked,
-    formatted: entry.formatted,
-    tokenCount: entry.tokenCount,
-  };
+  return entry;
 }
 
 /**
@@ -87,32 +84,12 @@ export function setCachedContext(
   tokenCount: number
 ): void {
   const fingerprint = generateContextFingerprint(contextItems);
+  const key = getCacheKey(fingerprint, query);
   
-  // Remove any existing entry for this fingerprint+query
-  const existingIndex = cache.findIndex(
-    e => e.contextFingerprint === fingerprint && e.query === query
-  );
-  if (existingIndex > -1) {
-    cache.splice(existingIndex, 1);
-  }
-  
-  // Add new entry
-  cache.unshift({
-    contextFingerprint: fingerprint,
-    query,
-    ranked,
-    formatted,
-    timestamp: Date.now(),
-    tokenCount,
-  });
-  
-  // Evict oldest entries if cache is full
-  while (cache.length > CACHE_MAX_SIZE) {
-    cache.pop();
-  }
+  cache.set(key, { ranked, formatted, tokenCount });
   
   log.debug('Cache set', {
-    fingerprint,
+    fingerprint: fingerprint.substring(0, 50),
     itemCount: contextItems.length,
     formattedCount: formatted.length,
     tokenCount,
@@ -123,7 +100,7 @@ export function setCachedContext(
  * Invalidate all cache entries
  */
 export function invalidateContextCache(): void {
-  cache.length = 0;
+  cache.clear();
   log.debug('Cache invalidated');
 }
 
@@ -135,16 +112,10 @@ export function getContextCacheStats(): {
   oldestAge: number;
   newestAge: number;
 } {
-  if (cache.length === 0) {
-    return { entries: 0, oldestAge: 0, newestAge: 0 };
-  }
-  
-  const now = Date.now();
-  const ages = cache.map(e => now - e.timestamp);
-  
+  const stats = cache.getStats();
   return {
-    entries: cache.length,
-    oldestAge: Math.max(...ages),
-    newestAge: Math.min(...ages),
+    entries: stats.size,
+    oldestAge: stats.oldestAgeMs,
+    newestAge: stats.newestAgeMs,
   };
 }

@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { formatElapsedTime } from "../utils/time";
 
 interface Tab {
   id: number;
@@ -43,13 +44,6 @@ export function TabBar(props: TabBarProps) {
   const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
-
-  const formatElapsedTime = (ms: number): string => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
-  };
 
   return (
     <>

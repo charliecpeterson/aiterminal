@@ -86,6 +86,9 @@ export interface SSHProfile {
   
   // Metadata
   
+  /** Display order within the group (for drag/drop sorting) */
+  order?: number;
+  
   /** Timestamp of profile creation */
   createdAt?: string;
   
@@ -203,4 +206,15 @@ export interface ProfileGroup {
   name: string;
   profiles: SSHProfile[];
   collapsed?: boolean;
+  order?: number;
+}
+
+/**
+ * Group ordering configuration (stored separately from profiles)
+ */
+export interface GroupOrder {
+  /** Group name */
+  name: string;
+  /** Display order */
+  order: number;
 }

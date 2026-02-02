@@ -7,6 +7,7 @@
 import { useState, useMemo } from 'react';
 import type { ToolProgress } from '../context/AIContext';
 import { tokens } from '../styles/tokens';
+import { formatExecutionTime } from '../utils/time';
 
 interface ToolProgressDisplayProps {
   toolProgress?: ToolProgress[];
@@ -98,12 +99,7 @@ function getStatusColor(status: ToolProgress['status']): string {
 function getExecutionTime(tool: ToolProgress): string {
   const endTime = tool.endTime || Date.now();
   const duration = endTime - tool.startTime;
-  
-  if (duration < 1000) {
-    return `${duration}ms`;
-  }
-  
-  return `${(duration / 1000).toFixed(1)}s`;
+  return formatExecutionTime(duration);
 }
 
 export function ToolProgressDisplay({ toolProgress }: ToolProgressDisplayProps) {

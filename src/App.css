@@ -439,27 +439,73 @@ body, html, #root {
   margin: 4px 0;
 }
 
-.selection-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 210;
+/* Selection context button in status bar */
+.status-selection {
+  display: flex;
+  align-items: center;
+  animation: fadeIn 0.15s ease-out;
 }
 
-.selection-badge button {
-  background: rgba(106, 167, 255, 0.32);
-  border: 1px solid rgba(106, 167, 255, 0.7);
-  color: #dbe5ff;
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 12px;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.status-selection button {
+  background: rgba(106, 167, 255, 0.15);
+  border: 1px solid rgba(106, 167, 255, 0.4);
+  color: rgba(200, 220, 255, 0.7);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(33, 91, 200, 0.25);
+  transition: all 0.15s ease;
 }
 
-.selection-badge button:hover {
-  border-color: rgba(106, 167, 255, 0.9);
-  background: rgba(106, 167, 255, 0.4);
+.status-selection button:hover {
+  background: rgba(106, 167, 255, 0.3);
+  border-color: rgba(106, 167, 255, 0.7);
+  color: #dbe5ff;
+}
+
+/* Output actions popup (when clicking the vertical line indicator) */
+.output-actions-popup {
+  position: fixed;
+  background: #1e1e1e;
+  border: 1px solid rgba(91, 141, 232, 0.5);
+  border-radius: 6px;
+  padding: 6px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: fadeIn 0.1s ease-out;
+  min-width: 140px;
+}
+
+.output-actions-popup .output-actions-header {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 2px 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 2px;
+}
+
+.output-actions-popup button {
+  background: transparent;
+  border: none;
+  color: #dddddd;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.1s ease;
+}
+
+.output-actions-popup button:hover {
+  background: rgba(91, 141, 232, 0.2);
 }
 
 .marker-copy-menu button {

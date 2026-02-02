@@ -3,6 +3,7 @@
  */
 
 import type { ContextItem } from '../context/AIContext';
+import type { QueryType } from '../types/routing';
 
 export interface PromptConfig {
   userLevel?: 'beginner' | 'intermediate' | 'expert';
@@ -35,10 +36,12 @@ export function detectPlatform(): PromptConfig['platform'] {
 }
 
 /**
- * Few-shot examples for common terminal tasks
+ * Few-shot examples categorized by query type for more efficient token usage.
+ * Previously all 5 examples (~400 tokens) were always included for moderate+ queries.
+ * Now we select only 1-2 relevant examples (~80-160 tokens) based on query type.
  */
-const FEW_SHOT_EXAMPLES = `
-EXAMPLE 1: Debugging Command Errors
+const FEW_SHOT_EXAMPLES_BY_TYPE: Record<string, string> = {
+  debug: `EXAMPLE: Debugging Command Errors
 User: "Why did 'npm install' fail?"
 Assistant: Let me check the error. First, I'll examine the output you provided.
 [After reading context]
@@ -47,25 +50,20 @@ The error shows "EACCES: permission denied". This typically means:
 2. npm's cache has incorrect permissions
 
 Try: \`npm install --prefix ~/.npm-global\`
-Or fix permissions: \`sudo chown -R $(whoami) ~/.npm\`
+Or fix permissions: \`sudo chown -R $(whoami) ~/.npm\``,
 
-EXAMPLE 2: System Analysis
+  system: `EXAMPLE: System Analysis
 User: "System is slow, what's using resources?"
 Assistant: I'll check multiple things:
 \`\`\`bash
-# CPU usage
-top -l 1 | head -n 10
-
-# Memory
-vm_stat
-
-# Disk usage
-df -h
+top -l 1 | head -n 10  # CPU usage
+vm_stat                 # Memory
+df -h                   # Disk usage
 \`\`\`
 [After seeing results]
-Chrome is using 8GB RAM (PID 12345). You can restart it or kill heavy tabs.
+Chrome is using 8GB RAM (PID 12345). You can restart it or kill heavy tabs.`,
 
-EXAMPLE 3: File Operations
+  file: `EXAMPLE: File Operations
 User: "Find all Python files modified today"
 Assistant: I'll search for Python files with today's modification date:
 \`\`\`bash
@@ -75,9 +73,9 @@ find . -name "*.py" -mtime 0 -type f
 To see them with details:
 \`\`\`bash
 find . -name "*.py" -mtime 0 -type f -exec ls -lh {} \\;
-\`\`\`
+\`\`\``,
 
-EXAMPLE 4: File Creation
+  code: `EXAMPLE: File Creation
 User: "Create a config.json file with default settings"
 Assistant: [Uses get_current_directory tool]
 [Uses write_file tool to create config.json]
@@ -86,35 +84,54 @@ Created \`config.json\` in /path/to/current/dir:
 {
   "name": "my-project",
   "version": "1.0.0",
-  "settings": {
-    "debug": false,
-    "logLevel": "info"
-  }
+  "settings": { "debug": false, "logLevel": "info" }
 }
-\`\`\`
+\`\`\``,
+};
 
-EXAMPLE 5: File Creation (Domain-Specific)
-User: "Can you create a nwchem.inp file for water molecule?"
-Assistant: [Uses get_current_directory tool]
-[Uses write_file tool to create nwchem.inp]
-Created \`nwchem.inp\` in /path/to/current/dir:
-\`\`\`
-title "Water molecule optimization"
-geometry
-  O  0.000  0.000  0.117
-  H  0.000  0.756 -0.469
-  H  0.000 -0.756 -0.469
-end
-basis
-  * library 6-31g*
-end
-task scf optimize
-\`\`\`
-`;
+/**
+ * Maps QueryType to relevant example categories.
+ * 'factual' and 'explanation' queries don't benefit from examples (simple responses).
+ */
+const QUERY_TYPE_TO_EXAMPLES: Record<QueryType, string[]> = {
+  debug: ['debug'],           // Error analysis, debugging
+  code: ['code', 'file'],     // Code/file creation
+  complex: ['debug', 'system'], // Complex analysis often involves debugging or system
+  creative: ['code'],         // Creative solutions often involve file creation
+  factual: [],                // Simple facts don't need examples
+  explanation: [],            // Explanations don't need examples
+};
+
+/**
+ * Select appropriate few-shot examples based on query type and complexity.
+ * This reduces token usage from ~400 tokens to ~80-160 tokens on average.
+ */
+function selectFewShotExamples(queryType?: QueryType, complexityScore?: number): string {
+  // Simple queries (score < 40) don't need examples at all
+  if (complexityScore !== undefined && complexityScore < 40) {
+    return '';
+  }
+  
+  // No query type detected = use debug example as most useful default
+  if (!queryType) {
+    return FEW_SHOT_EXAMPLES_BY_TYPE.debug;
+  }
+  
+  // Get relevant example categories for this query type
+  const categories = QUERY_TYPE_TO_EXAMPLES[queryType] || [];
+  if (categories.length === 0) {
+    return ''; // factual/explanation queries don't need examples
+  }
+  
+  // Return first relevant example only (1 example = ~80 tokens vs 5 = ~400)
+  const firstCategory = categories[0];
+  return FEW_SHOT_EXAMPLES_BY_TYPE[firstCategory] || '';
+}
 
 /**
  * Build enhanced system prompt with few-shot examples
  * Examples are only included for uncertain/complex queries (score >= 40) to save tokens.
+ * Query-specific examples are selected based on queryType to further reduce tokens.
  */
 export function buildEnhancedSystemPrompt(params: {
   mode: 'agent' | 'chat';
@@ -122,8 +139,9 @@ export function buildEnhancedSystemPrompt(params: {
   config?: PromptConfig;
   contextSummary?: string;
   complexityScore?: number; // Routing score 0-100, used to decide if examples are needed
+  queryType?: QueryType; // Query type from router, used to select relevant examples
 }): string {
-  const { mode, terminalId, config = {}, contextSummary, complexityScore } = params;
+  const { mode, terminalId, config = {}, contextSummary, complexityScore, queryType } = params;
   const isAgent = mode === 'agent';
   
   // Auto-detect platform if not provided
@@ -133,10 +151,9 @@ export function buildEnhancedSystemPrompt(params: {
   const shellHints = getShellHints(config.shellType);
   const platformHints = getPlatformHints(platform);
   
-  // Only include few-shot examples for moderate+ complexity queries
-  // This saves ~400 tokens on simple queries like "list files" or "what directory"
-  const includeExamples = complexityScore === undefined || complexityScore >= 40;
-  const examplesSection = includeExamples ? FEW_SHOT_EXAMPLES : '';
+  // Select relevant few-shot examples based on query type and complexity
+  // This saves ~240-320 tokens compared to always including all 5 examples
+  const examplesSection = selectFewShotExamples(queryType, complexityScore);
 
   if (isAgent) {
     return `You are an expert AI assistant embedded in a terminal emulator with tool execution capabilities.
@@ -316,13 +333,12 @@ function getPlatformHints(platform?: PromptConfig['platform']): string {
 
 /**
  * Generate context summary for system prompt
- * Reduces token usage by summarizing large context
+ * Reduces token usage by providing a brief overview instead of details.
+ * Format optimized for minimal tokens while preserving key info.
  */
 export function summarizeContext(contextItems: ContextItem[]): string {
   if (contextItems.length === 0) return '';
 
-  const summary: string[] = [];
-  
   // Count by type
   const typeCounts = new Map<string, number>();
   let hasErrors = false;
@@ -341,22 +357,25 @@ export function summarizeContext(contextItems: ContextItem[]): string {
     }
   }
 
-  summary.push(`${contextItems.length} context items available`);
+  // Build compact single-line summary (saves ~20-30 tokens vs multi-line)
+  const parts: string[] = [];
   
   const typeStr = Array.from(typeCounts.entries())
     .map(([type, count]) => `${count} ${type}`)
     .join(', ');
-  summary.push(`Types: ${typeStr}`);
+  parts.push(typeStr);
   
   if (hasErrors) {
-    summary.push('⚠️ Context includes command failures');
+    parts.push('includes errors');
   }
   
   if (lastCommand) {
-    summary.push(`Most recent command: ${lastCommand.substring(0, 60)}`);
+    // Truncate command more aggressively
+    const truncatedCmd = lastCommand.length > 40 ? lastCommand.substring(0, 40) + '...' : lastCommand;
+    parts.push(`last: ${truncatedCmd}`);
   }
 
-  return summary.join('\n');
+  return parts.join(' | ');
 }
 
 /**

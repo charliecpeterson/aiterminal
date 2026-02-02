@@ -171,19 +171,8 @@ export function useSessionPersistence({
     };
   }, [enabled, saveSession]);
 
-  /**
-   * Save session when component unmounts (app closes)
-   */
-  useEffect(() => {
-    return () => {
-      // This will run on component unmount
-      // Note: In a Tauri app, this may not be reliable for app close events
-      // Better to use window close listener in App.tsx
-      if (enabled && tabs.length > 0) {
-        saveSession();
-      }
-    };
-  }, [enabled, tabs.length, saveSession]);
+  // Note: Session saving on app close is handled by useWindowCloseHandler in App.tsx
+  // which properly awaits the async saveSession() call via Tauri's onCloseRequested
 
   return {
     saveSession,

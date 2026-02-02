@@ -200,21 +200,12 @@ function calculateRelevanceScoreWithBreakdown(
         conversationMemory = -5;
       }
       
-      // Exception: If query is highly relevant (lots of term matches), reduce penalty
-      // The user is asking specifically about this context, so resend it
-      const queryRelevanceThreshold = 30;
-      if (queryMatch > queryRelevanceThreshold) {
-        conversationMemory = Math.floor(conversationMemory * 0.5); // Cut penalty in half
-      }
-      
-      // Debug logging
+      // Debug logging for conversation memory (query relevance check moved to after QUERY TERM MATCHING)
       const displayName = item.metadata?.path || item.id.substring(0, 40);
       log.debug(`Conversation memory: context "${displayName}" was sent ${messagesSinceUsed} messages ago`, {
         itemId: item.id,
         messagesSinceUsed,
         penalty: conversationMemory,
-        queryMatch,
-        queryRelevanceOverride: queryMatch > queryRelevanceThreshold
       });
     }
   }
@@ -253,6 +244,20 @@ function calculateRelevanceScoreWithBreakdown(
   // Boost if multiple terms match
   if (termMatches > 1) {
     queryMatch += termMatches * 8;
+  }
+
+  // 4B. QUERY RELEVANCE OVERRIDE for conversation memory penalty
+  // If the user is asking specifically about this context (high query match), reduce the penalty
+  // This check MUST happen after queryMatch is calculated above
+  if (conversationMemory < 0 && queryMatch > 30) {
+    const originalPenalty = conversationMemory;
+    conversationMemory = Math.floor(conversationMemory * 0.5); // Cut penalty in half
+    log.debug(`Query relevance override: reduced conversation memory penalty`, {
+      itemId: item.id,
+      queryMatch,
+      originalPenalty,
+      newPenalty: conversationMemory
+    });
   }
 
   // 5. CONVERSATION RELEVANCE - based on recent topics

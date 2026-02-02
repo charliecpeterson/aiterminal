@@ -88,7 +88,9 @@ export function useSSHConnection(options: UseSSHConnectionOptions) {
     const monitorConnections = async () => {
       if (!isRunning) return;
 
-      for (const [ptyId, profileId] of ptyToProfileMap.entries()) {
+      // Snapshot entries to avoid issues if map changes during async operations
+      const entries = Array.from(ptyToProfileMap.entries());
+      for (const [ptyId, profileId] of entries) {
         if (!isRunning) break;
 
         try {

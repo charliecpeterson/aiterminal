@@ -114,10 +114,9 @@ SUMMARY:`;
       baseURL: settings.url || 'https://api.openai.com/v1',
     });
     
-    // Use faster, cheaper model for summarization (gpt-4o-mini or fallback to user's model)
-    const summaryModel = settings.model.includes('gpt-4') 
-      ? 'gpt-4o-mini' 
-      : settings.model;
+    // Use configured simple_model from auto-routing settings, or fall back to gpt-4o-mini for gpt-4 users
+    const summaryModel = settings.auto_routing?.simple_model 
+      || (settings.model.includes('gpt-4') ? 'gpt-4o-mini' : settings.model);
     
     const result = await generateText({
       model: openai(summaryModel),

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSSHProfiles } from '../context/SSHProfilesContext';
 import { SSHProfile, ProfileGroup, PortForwardHealth } from '../types/ssh';
@@ -19,9 +19,20 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
   onGoToTab,
   standalone = false,
 }) => {
-  const { profiles, deleteProfile, isLoading, getProfileConnections } = useSSHProfiles();
+  const { profiles, deleteProfile, isLoading, getProfileConnections, reorderProfile, reorderGroup, groupOrders } = useSSHProfiles();
+  
+  // Start with all groups collapsed - use a ref to track if we've initialized
+  const initializedRef = useRef(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [showActive, setShowActive] = useState(true);
+  
+  // Drag state for groups
+  const [draggedGroup, setDraggedGroup] = useState<string | null>(null);
+  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  
+  // Drag state for profiles
+  const [draggedProfile, setDraggedProfile] = useState<string | null>(null);
+  const [dragOverProfile, setDragOverProfile] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
   
   // Hover states for interactive elements
   const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
@@ -90,7 +101,17 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
     return () => clearInterval(intervalId);
   }, [checkPortHealth, activeConnections.length]);
 
-  // Group profiles
+  // Initialize collapsed groups - collapse all groups by default on first load
+  useEffect(() => {
+    if (initializedRef.current || profiles.length === 0) return;
+    
+    // Get all unique group names
+    const groupNames = new Set(profiles.map(p => p.group || 'Ungrouped'));
+    setCollapsedGroups(groupNames);
+    initializedRef.current = true;
+  }, [profiles]);
+
+  // Group profiles with sorting by order
   const profileGroups = useMemo<ProfileGroup[]>(() => {
     const grouped = new Map<string, SSHProfile[]>();
     
@@ -102,12 +123,32 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
       grouped.get(groupName)!.push(profile);
     });
 
-    return Array.from(grouped.entries()).map(([name, profs]) => ({
-      name,
-      profiles: profs.sort((a, b) => a.name.localeCompare(b.name)),
-      collapsed: collapsedGroups.has(name),
-    }));
-  }, [profiles, collapsedGroups]);
+    // Build groups with proper sorting
+    const groups = Array.from(grouped.entries()).map(([name, profs]) => {
+      // Find group order from groupOrders, default to Infinity for unlisted groups
+      const groupOrder = groupOrders.find(g => g.name === name)?.order ?? Infinity;
+      
+      return {
+        name,
+        // Sort profiles by order first, then by name
+        profiles: profs.sort((a, b) => {
+          const orderA = a.order ?? Infinity;
+          const orderB = b.order ?? Infinity;
+          if (orderA !== orderB) return orderA - orderB;
+          return a.name.localeCompare(b.name);
+        }),
+        collapsed: collapsedGroups.has(name),
+        order: groupOrder,
+      };
+    });
+
+    // Sort groups: "Ungrouped" always last, otherwise by order
+    return groups.sort((a, b) => {
+      if (a.name === 'Ungrouped') return 1;
+      if (b.name === 'Ungrouped') return -1;
+      return (a.order ?? Infinity) - (b.order ?? Infinity);
+    });
+  }, [profiles, collapsedGroups, groupOrders]);
 
   const toggleGroup = (groupName: string) => {
     setCollapsedGroups(prev => {
@@ -119,6 +160,141 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
       }
       return next;
     });
+  };
+
+  // Group drag handlers
+  const handleGroupDragStart = (e: React.DragEvent, groupName: string) => {
+    if (groupName === 'Ungrouped') {
+      e.preventDefault();
+      return;
+    }
+    setDraggedGroup(groupName);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', groupName);
+  };
+
+  const handleGroupDragOver = (e: React.DragEvent, groupName: string) => {
+    if (!draggedGroup || groupName === 'Ungrouped' || draggedGroup === groupName) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverGroup(groupName);
+  };
+
+  const handleGroupDragLeave = () => {
+    setDragOverGroup(null);
+  };
+
+  const handleGroupDrop = (e: React.DragEvent, targetGroupName: string) => {
+    e.preventDefault();
+    if (!draggedGroup || targetGroupName === 'Ungrouped' || draggedGroup === targetGroupName) {
+      setDraggedGroup(null);
+      setDragOverGroup(null);
+      return;
+    }
+
+    // Find the target group's current order
+    const targetIndex = profileGroups.findIndex(g => g.name === targetGroupName);
+    console.log('Group drop:', { draggedGroup, targetGroupName, targetIndex });
+    
+    if (targetIndex >= 0) {
+      reorderGroup(draggedGroup, targetIndex);
+    }
+
+    setDraggedGroup(null);
+    setDragOverGroup(null);
+  };
+
+  const handleGroupDragEnd = () => {
+    setDraggedGroup(null);
+    setDragOverGroup(null);
+  };
+
+  // Profile drag handlers
+  const handleProfileDragStart = (e: React.DragEvent, profileId: string) => {
+    e.stopPropagation(); // Prevent group drag from triggering
+    setDraggedProfile(profileId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', profileId);
+  };
+
+  const handleProfileDragOver = (e: React.DragEvent, profileId: string, rect: DOMRect) => {
+    if (!draggedProfile || draggedProfile === profileId) return;
+    e.preventDefault();
+    e.stopPropagation(); // Prevent group drag over from triggering
+    e.dataTransfer.dropEffect = 'move';
+    
+    // Determine if dropping before or after based on mouse position
+    const midY = rect.top + rect.height / 2;
+    const position = e.clientY < midY ? 'before' : 'after';
+    setDragOverProfile({ id: profileId, position });
+  };
+
+  const handleProfileDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setDragOverProfile(null);
+  };
+
+  const handleProfileDrop = (e: React.DragEvent, targetProfileId: string, targetGroup: string) => {
+    e.preventDefault();
+    e.stopPropagation(); // Prevent group drop from triggering
+    
+    if (!draggedProfile || draggedProfile === targetProfileId) {
+      setDraggedProfile(null);
+      setDragOverProfile(null);
+      return;
+    }
+
+    // Calculate drop position based on mouse position at drop time
+    // (don't rely on dragOverProfile state which may be stale)
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const dropPosition = e.clientY < midY ? 'before' : 'after';
+
+    // Find the target position
+    const groupProfiles = profileGroups.find(g => g.name === targetGroup)?.profiles || [];
+    let targetIndex = groupProfiles.findIndex(p => p.id === targetProfileId);
+    
+    if (targetIndex >= 0 && dropPosition === 'after') {
+      targetIndex += 1;
+    }
+
+    // Get source profile's group
+    const sourceProfile = profiles.find(p => p.id === draggedProfile);
+    const sourceGroup = sourceProfile?.group || 'Ungrouped';
+
+    // If moving within the same group, adjust index if source is before target
+    if (sourceGroup === targetGroup) {
+      const sourceIndex = groupProfiles.findIndex(p => p.id === draggedProfile);
+      if (sourceIndex < targetIndex) {
+        targetIndex -= 1;
+      }
+    }
+
+    console.log('Profile drop:', { 
+      draggedProfile, 
+      targetProfileId, 
+      targetGroup, 
+      targetIndex, 
+      dropPosition,
+      sourceGroup 
+    });
+    
+    // Call reorderProfile and handle any errors
+    reorderProfile(draggedProfile, Math.max(0, targetIndex), targetGroup === 'Ungrouped' ? undefined : targetGroup)
+      .then(() => {
+        console.log('Profile reorder completed successfully');
+      })
+      .catch((err) => {
+        console.error('Profile reorder failed:', err);
+      });
+
+    setDraggedProfile(null);
+    setDragOverProfile(null);
+  };
+
+  const handleProfileDragEnd = () => {
+    setDraggedProfile(null);
+    setDragOverProfile(null);
   };
 
   const getStatusIcon = (profile: SSHProfile): string => {
@@ -165,25 +341,40 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
     }
   };
 
-  const renderProfile = (profile: SSHProfile) => {
+  const renderProfile = (profile: SSHProfile, groupName: string) => {
     const statusIcon = getStatusIcon(profile);
     const connectionInfo = getConnectionInfo(profile);
     const profileConns = getProfileConnections(profile.id);
     const connectedConns = profileConns.filter(c => c.status === 'connected');
     const isConnected = connectedConns.length > 0;
+    
+    const isDragging = draggedProfile === profile.id;
+    const isDragOver = dragOverProfile?.id === profile.id;
+    const dragPosition = dragOverProfile?.position;
 
     return (
       <div 
         key={profile.id}
-        style={
-          hoverStates[`profile-${profile.id}`]
+        draggable
+        onDragStart={(e) => handleProfileDragStart(e, profile.id)}
+        onDragOver={(e) => handleProfileDragOver(e, profile.id, e.currentTarget.getBoundingClientRect())}
+        onDragLeave={handleProfileDragLeave}
+        onDrop={(e) => handleProfileDrop(e, profile.id, groupName)}
+        onDragEnd={handleProfileDragEnd}
+        style={{
+          ...(hoverStates[`profile-${profile.id}`]
             ? { ...sshSessionPanelStyles.profileItem, ...sshSessionPanelStyles.profileItemHover }
-            : sshSessionPanelStyles.profileItem
-        }
+            : sshSessionPanelStyles.profileItem),
+          opacity: isDragging ? 0.5 : 1,
+          borderTop: isDragOver && dragPosition === 'before' ? '2px solid #007acc' : undefined,
+          borderBottom: isDragOver && dragPosition === 'after' ? '2px solid #007acc' : undefined,
+          cursor: 'grab',
+        }}
         onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`profile-${profile.id}`]: true }))}
         onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`profile-${profile.id}`]: false }))}
       >
         <div style={sshSessionPanelStyles.profileHeader}>
+          <span style={{ ...sshSessionPanelStyles.statusIcon, cursor: 'grab' }}>⋮⋮</span>
           <span style={sshSessionPanelStyles.statusIcon}>{statusIcon}</span>
           <span style={sshSessionPanelStyles.profileName}>{profile.name}</span>
           <button
@@ -418,8 +609,21 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
         )}
 
         {/* Groups */}
-        {profileGroups.map(group => (
-          <div key={group.name} style={sshSessionPanelStyles.group}>
+        {profileGroups.map((group) => (
+          <div 
+            key={group.name} 
+            style={{
+              ...sshSessionPanelStyles.group,
+              opacity: draggedGroup === group.name ? 0.5 : 1,
+              borderTop: dragOverGroup === group.name ? '2px solid #007acc' : undefined,
+            }}
+            draggable={group.name !== 'Ungrouped'}
+            onDragStart={(e) => handleGroupDragStart(e, group.name)}
+            onDragOver={(e) => handleGroupDragOver(e, group.name)}
+            onDragLeave={handleGroupDragLeave}
+            onDrop={(e) => handleGroupDrop(e, group.name)}
+            onDragEnd={handleGroupDragEnd}
+          >
             <div 
               style={
                 hoverStates[`group-${group.name}`]
@@ -429,6 +633,9 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
               onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`group-${group.name}`]: true }))}
               onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`group-${group.name}`]: false }))}
             >
+              {group.name !== 'Ungrouped' && (
+                <span style={{ cursor: 'grab', marginRight: '4px', color: '#666' }}>⋮⋮</span>
+              )}
               <span 
                 style={sshSessionPanelStyles.groupToggle}
                 onClick={() => toggleGroup(group.name)}
@@ -473,7 +680,7 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
             
             {!collapsedGroups.has(group.name) && (
               <div style={sshSessionPanelStyles.groupProfiles}>
-                {group.profiles.map(renderProfile)}
+                {group.profiles.map(profile => renderProfile(profile, group.name))}
               </div>
             )}
           </div>

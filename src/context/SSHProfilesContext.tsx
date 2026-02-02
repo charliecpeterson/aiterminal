@@ -6,7 +6,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { SSHProfile, SSHConfigHost, ConnectionHealth } from '../types/ssh';
+import { SSHProfile, SSHConfigHost, ConnectionHealth, GroupOrder } from '../types/ssh';
 import { createLogger } from '../utils/logger';
 import { ContextErrorBoundary } from '../components/ContextErrorBoundary';
 
@@ -21,6 +21,11 @@ interface SSHProfilesContextType {
   updateProfile: (id: string, updates: Partial<SSHProfile>) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
   getProfileById: (id: string) => SSHProfile | undefined;
+  
+  // Ordering
+  reorderProfile: (profileId: string, newOrder: number, newGroup?: string) => Promise<void>;
+  reorderGroup: (groupName: string, newOrder: number) => void;
+  groupOrders: GroupOrder[];
   
   // SSH config integration
   sshConfigHosts: SSHConfigHost[];
@@ -57,6 +62,7 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
   const [profiles, setProfiles] = useState<SSHProfile[]>([]);
   const [sshConfigHosts, setSSHConfigHosts] = useState<SSHConfigHost[]>([]);
   const [connections, setConnections] = useState<Map<string, ConnectionHealth>>(new Map());
+  const [groupOrders, setGroupOrders] = useState<GroupOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -161,6 +167,149 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     return operationQueueRef.current;
   }, []);
 
+  // Reorder a profile within its group or move to a new group
+  const reorderProfile = useCallback(async (profileId: string, newOrder: number, newGroup?: string) => {
+    const operation = async () => {
+      setError(null);
+      log.debug('reorderProfile operation starting', { profileId, newOrder, newGroup });
+      
+      const currentProfiles = await invoke<SSHProfile[]>('load_ssh_profiles');
+      log.debug('Loaded current profiles', { count: currentProfiles.length });
+      
+      const profile = currentProfiles.find(p => p.id === profileId);
+      if (!profile) {
+        log.error('Profile not found for reorder', { profileId });
+        return;
+      }
+      
+      // Determine target group - undefined/null means 'Ungrouped'
+      const sourceGroup = profile.group || 'Ungrouped';
+      const targetGroup = newGroup === undefined ? sourceGroup : (newGroup || 'Ungrouped');
+      
+      log.debug('Reordering profile', { profileId, profileName: profile.name, sourceGroup, targetGroup, newOrder });
+      
+      // Get all profiles in the target group (excluding the one being moved)
+      const groupProfiles = currentProfiles.filter(p => 
+        (p.group || 'Ungrouped') === targetGroup && p.id !== profileId
+      );
+      
+      log.debug('Profiles in target group (excluding moved)', { 
+        count: groupProfiles.length, 
+        names: groupProfiles.map(p => p.name)
+      });
+      
+      // Sort by current order
+      groupProfiles.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
+      
+      // Prepare the moved profile with updated group
+      const movedProfile = { 
+        ...profile, 
+        group: targetGroup === 'Ungrouped' ? undefined : targetGroup 
+      };
+      
+      // Insert the profile at the new position
+      const clampedIndex = Math.max(0, Math.min(newOrder, groupProfiles.length));
+      log.debug('Inserting at index', { clampedIndex, totalInGroup: groupProfiles.length });
+      groupProfiles.splice(clampedIndex, 0, movedProfile);
+      
+      // Update order values for all profiles in the group
+      const updatedGroupProfiles = groupProfiles.map((p, idx) => ({ ...p, order: idx }));
+      
+      log.debug('Updated group order', { 
+        profiles: updatedGroupProfiles.map(p => ({ name: p.name, order: p.order }))
+      });
+      
+      // Merge back with profiles from other groups
+      const otherProfiles = currentProfiles.filter(p => 
+        (p.group || 'Ungrouped') !== targetGroup && p.id !== profileId
+      );
+      
+      const newProfiles = [...otherProfiles, ...updatedGroupProfiles];
+      log.debug('Saving reordered profiles', { count: newProfiles.length });
+      
+      try {
+        await invoke('save_ssh_profiles', { profiles: newProfiles });
+        log.debug('Backend save successful');
+        setProfiles(newProfiles);
+        log.debug('Local state updated');
+      } catch (saveErr) {
+        log.error('Failed to save reordered profiles to backend', saveErr);
+        throw saveErr;
+      }
+    };
+    
+    operationQueueRef.current = operationQueueRef.current
+      .then(operation)
+      .catch(err => {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        log.error('Failed to reorder SSH profile', err);
+        throw err;
+      });
+    
+    return operationQueueRef.current;
+  }, []);
+
+  // Reorder a group
+  const reorderGroup = useCallback((groupName: string, newOrder: number) => {
+    log.debug('Reordering group', { groupName, newOrder });
+    
+    setGroupOrders(prev => {
+      // Get all current group names from profiles
+      const allGroupNames = new Set<string>();
+      profiles.forEach(p => allGroupNames.add(p.group || 'Ungrouped'));
+      
+      // Ensure all groups have an order entry
+      const existingOrders = new Map(prev.map(g => [g.name, g.order]));
+      const allOrders: GroupOrder[] = [];
+      
+      let nextOrder = 0;
+      allGroupNames.forEach(name => {
+        if (name !== 'Ungrouped') { // Ungrouped is always last
+          allOrders.push({ 
+            name, 
+            order: existingOrders.get(name) ?? nextOrder++ 
+          });
+        }
+      });
+      
+      // Sort by existing order
+      allOrders.sort((a, b) => a.order - b.order);
+      
+      // Remove the group being moved
+      const filtered = allOrders.filter(g => g.name !== groupName);
+      
+      // Insert at new position
+      const clampedIndex = Math.max(0, Math.min(newOrder, filtered.length));
+      filtered.splice(clampedIndex, 0, { name: groupName, order: newOrder });
+      
+      // Renumber
+      const renumbered = filtered.map((g, idx) => ({ ...g, order: idx }));
+      
+      // Persist to localStorage
+      try {
+        localStorage.setItem('ssh-group-orders', JSON.stringify(renumbered));
+        log.debug('Saved group orders', { orders: renumbered });
+      } catch (err) {
+        log.error('Failed to save group orders', err);
+      }
+      
+      return renumbered;
+    });
+  }, [profiles]);
+
+  // Load group orders from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('ssh-group-orders');
+      if (stored) {
+        setGroupOrders(JSON.parse(stored));
+      }
+    } catch (err) {
+      log.error('Failed to load group orders', err);
+    }
+  }, []);
+
   // Load SSH config hosts
   const loadSSHConfig = useCallback(async () => {
     try {
@@ -229,6 +378,9 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     updateProfile,
     deleteProfile,
     getProfileById,
+    reorderProfile,
+    reorderGroup,
+    groupOrders,
     sshConfigHosts,
     loadSSHConfig,
     connections,
@@ -245,6 +397,9 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     updateProfile,
     deleteProfile,
     getProfileById,
+    reorderProfile,
+    reorderGroup,
+    groupOrders,
     sshConfigHosts,
     loadSSHConfig,
     connections,

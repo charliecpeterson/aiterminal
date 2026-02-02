@@ -10,7 +10,7 @@ import type { AppearanceSettings } from './ui/appearance';
 import { attachScrollbarOverlay } from './ui/scrollbarOverlay';
 import type { SelectionMenuState } from './ui/selectionMenu';
 import { attachSelectionMenu } from './ui/selectionMenu';
-import type { CopyMenuState, MarkerManager } from './ui/markers';
+import type { CopyMenuState, MarkerManager, OutputActionsState } from './ui/markers';
 import { createMarkerManager } from './ui/markers';
 import { attachFileCaptureListener, type PendingFileCapture } from './core/fileCapture';
 import { attachHostLabelOsc } from './core/hostLabel';
@@ -56,6 +56,7 @@ export function createTerminalWiring(params: {
     pendingFileCaptureRef: MutableRefObject<PendingFileCapture | null>;
 
     setCopyMenu: (value: CopyMenuState | null) => void;
+    setOutputActions: (value: OutputActionsState | null) => void;
     setSelectionMenu: (value: SelectionMenuState | null) => void;
     setShowSearch: (updater: boolean | ((prev: boolean) => boolean)) => void;
     setHostLabel: (value: string) => void;
@@ -83,6 +84,7 @@ export function createTerminalWiring(params: {
         selectionPointRef,
         pendingFileCaptureRef,
         setCopyMenu,
+        setOutputActions,
         setSelectionMenu,
         setShowSearch,
         setHostLabel,
@@ -137,12 +139,27 @@ export function createTerminalWiring(params: {
         container,
         selectionPointRef,
         setSelectionMenu,
+        onSelectionStart: () => {
+            // Clear command block highlight and output actions when user starts selecting text
+            // Selection takes priority over command block highlight
+            console.log('[WIRING] onSelectionStart called - clearing highlight');
+            if (markerManagerRef.current) {
+                if (markerManagerRef.current.shouldIgnoreSelectionClear?.()) {
+                    return;
+                }
+                markerManagerRef.current.clearCommandBlockHighlight();
+            } else {
+                // Fallback if marker manager not yet initialized
+                setOutputActions(null);
+            }
+        },
     });
 
     const markerManager = createMarkerManager({
         term,
         maxMarkers,
         setCopyMenu,
+        setOutputActions,
         getRangeText: (range) => getRangeText(term, range),
         addContextItem,
         addContextItemWithScan,

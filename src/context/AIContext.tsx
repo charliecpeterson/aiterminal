@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createLogger } from "../utils/logger";
 import { clearSummaryCache } from "../ai/conversationHistory";
 import { ContextErrorBoundary } from "../components/ContextErrorBoundary";
+import { formatContextItem } from "../ai/formatters/contextFormatter";
 import type { RoutingDecision, PromptEnhancement } from "../types/routing";
 
 const log = createLogger('AIContext');
@@ -542,29 +543,7 @@ const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
       ? state.contextItems
       : state.contextItems.filter((item) => item.metadata?.includeMode !== 'exclude');
 
-    return itemsForPrompt.map((item) => {
-      // Use redacted content if secrets exist and redaction is enabled
-      const contentToUse = (item.hasSecrets && item.secretsRedacted && item.redactedContent)
-        ? item.redactedContent
-        : item.content;
-
-      if (item.type === "command_output") {
-        // For command_output, extract command and output from redacted content
-        const command = item.metadata?.command || "";
-        const output = contentToUse; // This already has secrets redacted if needed
-        return `Type: command\nContent: ${command}\n\nType: output\nContent: ${output}`;
-      }
-      if (item.type === "file") {
-        const pathLine = item.metadata?.path ? `\nPath: ${item.metadata.path}` : "";
-        const truncatedLine =
-          item.metadata?.truncated ? "\nTruncated: true" : "";
-        return `Type: file\nContent: ${contentToUse}${pathLine}${truncatedLine}`;
-      }
-      if (item.metadata?.command) {
-        return `Type: ${item.type}\nContent: ${contentToUse}\nCommand: ${item.metadata.command}`;
-      }
-      return `Type: ${item.type}\nContent: ${contentToUse}`;
-    });
+    return itemsForPrompt.map(formatContextItem);
   }, [state.contextItems, state.contextSmartMode]);
 
   const buildPrompt = useCallback(

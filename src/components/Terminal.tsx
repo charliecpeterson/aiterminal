@@ -4,15 +4,17 @@ import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { invoke } from '@tauri-apps/api/core';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
-import type { CopyMenuState } from '../terminal/ui/markers';
+import type { CopyMenuState, OutputActionsState } from '../terminal/ui/markers';
 import type { SelectionMenuState } from '../terminal/ui/selectionMenu';
 import { QUICK_ACTIONS, buildQuickActionPrompt, shouldShowAction, type QuickActionType } from '../ai/quickActions';
 import { useFloatingMenu } from '../terminal/hooks/useFloatingMenu';
 import { createSearchController } from '../terminal/ui/search';
 import { handleTerminalVisibilityChange } from '../terminal/visibility';
 import { createTerminalWiring } from '../terminal/createTerminalWiring';
+import { formatDuration } from '../utils/time';
 import type { PendingFileCapture } from '../terminal/core/fileCapture';
 import { createTerminalActions } from '../terminal/terminalActions';
 import { usePtyAutoClose } from '../terminal/hooks/usePtyAutoClose';
@@ -27,15 +29,6 @@ import type { MarkerManager } from '../terminal/ui/markers';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('Terminal');
-
-// Format duration in ms to human-readable string
-function formatDuration(ms: number): string {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
-    const minutes = Math.floor(ms / 60000);
-    const seconds = ((ms % 60000) / 1000).toFixed(0);
-    return `${minutes}m ${seconds}s`;
-}
 
 interface TerminalProps {
     id: number;
@@ -71,6 +64,8 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
     const copyMenuRef = useRef<HTMLDivElement | null>(null);
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
     const selectionMenuRef = useRef<HTMLDivElement | null>(null);
+    const [outputActions, setOutputActions] = useState<OutputActionsState | null>(null);
+    const outputActionsRef = useRef<HTMLDivElement | null>(null);
     const selectionPointRef = useRef<{ x: number; y: number } | null>(null);
     const pendingFileCaptureRef = useRef<PendingFileCapture | null>(null);
     const [commandHistoryOpen, setCommandHistoryOpen] = useState(false);
@@ -78,6 +73,40 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
 
     const hideCopyMenu = useCallback(() => setCopyMenu(null), []);
     const hideSelectionMenu = useCallback(() => setSelectionMenu(null), []);
+    const hideOutputActions = useCallback(() => setOutputActions(null), []);
+
+    // Output actions handlers
+    const handleCopyOutput = useCallback(() => {
+        if (!outputActions) return;
+        navigator.clipboard.writeText(outputActions.content).catch((err) => {
+            log.error('Failed to copy output to clipboard', err);
+        });
+        hideOutputActions();
+    }, [outputActions, hideOutputActions]);
+
+    const handleViewInWindow = useCallback(async () => {
+        if (!outputActions) return;
+        try {
+            const contentBase64 = btoa(encodeURIComponent(outputActions.content));
+            const label = `output-viewer-${Date.now()}`;
+            const outputWindow = new WebviewWindow(label, {
+                url: `#/output-viewer?lines=${outputActions.lineCount}&content=${contentBase64}`,
+                title: `Output (${outputActions.lineCount} lines)`,
+                width: 800,
+                height: 600,
+                center: true,
+                resizable: true,
+                decorations: true,
+            });
+
+            outputWindow.once('tauri://error', (event) => {
+                log.error('Failed to create output window', event);
+            });
+        } catch (err) {
+            log.error('Error opening output window', err);
+        }
+        hideOutputActions();
+    }, [outputActions, hideOutputActions]);
 
     // Use refs to avoid recreating terminal wiring when callbacks change
     const onCommandRunningRef = useRef(onCommandRunning);
@@ -255,6 +284,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         selectionPointRef,
         pendingFileCaptureRef,
         setCopyMenu,
+        setOutputActions,
         setSelectionMenu,
         setShowSearch,
         setHostLabel: (label: string) => setHostLabelAndRemoteStateRef.current(label),
@@ -327,7 +357,9 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
   });
 
   useFloatingMenu(copyMenu, setCopyMenu, copyMenuRef);
-  useFloatingMenu(selectionMenu, setSelectionMenu, selectionMenuRef);
+  useFloatingMenu(outputActions, setOutputActions, outputActionsRef);
+  // Note: selectionMenu no longer uses useFloatingMenu since it's in the status bar
+  // and should only be dismissed when selection is cleared, not on click
 
   if (loading) return null;
 
@@ -499,12 +531,22 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                     )}
                 </div>
             )}
-            {selectionMenu && (
+            {/* Output actions popup - appears when clicking the vertical line indicator */}
+            {outputActions && (
                 <div
-                    className="selection-badge"
-                    ref={selectionMenuRef}
+                    className="output-actions-popup"
+                    style={{ top: outputActions.y, left: outputActions.x }}
+                    ref={outputActionsRef}
                 >
-                    <button onClick={addSelection}>+ Context</button>
+                    <div className="output-actions-header">
+                        {outputActions.lineCount} lines
+                    </div>
+                    <button onClick={handleViewInWindow} title="Open output in new window">
+                        📄 View in Window
+                    </button>
+                    <button onClick={handleCopyOutput} title="Copy output to clipboard">
+                        📋 Copy Output
+                    </button>
                 </div>
             )}
             <div className="terminal-status">
@@ -550,6 +592,15 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
 
                 {/* Spacer */}
                 <div style={{ flex: 1 }} />
+
+                {/* Selection context button - appears when text is selected */}
+                {selectionMenu && (
+                    <div className="status-selection" ref={selectionMenuRef}>
+                        <button onClick={addSelection} title="Add selected text to AI context">
+                            + Context
+                        </button>
+                    </div>
+                )}
 
                 {/* Host/SSH info (right side) */}
                 <div className="status-host" title={hostLabel}>

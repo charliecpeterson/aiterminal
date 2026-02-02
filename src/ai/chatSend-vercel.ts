@@ -30,6 +30,7 @@ import {
 import { createLogger } from '../utils/logger';
 import { estimateTokens } from '../utils/tokens';
 import { prepareConversationHistory } from './conversationHistory';
+import { buildConversationMemory } from './conversationMemory';
 import { createStreamingBuffer } from './streamingBuffer';
 
 const log = createLogger('ChatSend');
@@ -76,6 +77,25 @@ function convertToCoreMessages(messages: ChatMessage[]): CoreMessage[] {
         };
       }
     });
+}
+
+/**
+ * Detect shell type from context items by examining prompts, commands, and output
+ */
+function detectShellFromContext(contextItems: ContextItem[]): 'bash' | 'zsh' | 'fish' {
+  for (const item of contextItems) {
+    const content = item.content.toLowerCase();
+    // Check for zsh indicators in prompts/output
+    if (content.includes('zsh') || content.includes('oh-my-zsh') || content.includes('powerlevel')) {
+      return 'zsh';
+    }
+    // Check for fish indicators
+    if (content.includes('fish') || content.includes('fisher') || content.includes('omf ')) {
+      return 'fish';
+    }
+  }
+  // Default to bash (most common)
+  return 'bash';
 }
 
 /**
@@ -347,17 +367,26 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       undefined // Token count not calculated yet
     );
 
+    // Detect user skill level from conversation history (instead of hardcoding 'intermediate')
+    const conversationMemory = buildConversationMemory(messages);
+    const detectedUserLevel = conversationMemory.userPreferences.skillLevel || 'intermediate';
+    
+    // Detect shell type from terminal context (instead of hardcoding 'bash')
+    const detectedShellType = detectShellFromContext(deps.contextItems);
+
     // Build enhanced system prompt
     // Pass complexity score to conditionally include few-shot examples (saves ~400 tokens on simple queries)
+    // Pass queryType to select only relevant few-shot examples (saves additional ~240-320 tokens)
     const systemPrompt = buildEnhancedSystemPrompt({
       mode: aiMode,
       terminalId,
       config: {
-        userLevel: 'intermediate', // Could be detected or set in settings
-        shellType: 'bash', // Could be detected from terminal
+        userLevel: detectedUserLevel,
+        shellType: detectedShellType,
       },
       contextSummary,
       complexityScore: routingDecision?.reasoning.score,
+      queryType: routingDecision?.reasoning.queryType,
     });
     
     // Add context to system prompt if available
