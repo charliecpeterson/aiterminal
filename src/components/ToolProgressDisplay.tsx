@@ -4,7 +4,7 @@
  * Shows real-time progress of AI tool executions during multi-step operations.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { ToolProgress } from '../context/AIContext';
 import { tokens } from '../styles/tokens';
 
@@ -25,6 +25,10 @@ function getToolDisplayName(toolName: string): string {
     get_environment_variable: 'Getting env variable',
     write_file: 'Writing file',
     append_to_file: 'Appending to file',
+    replace_in_file: 'Replacing in file',
+    undo_file_change: 'Undoing file change',
+    list_file_backups: 'Listing file backups',
+    diff_files: 'Comparing files',
     git_status: 'Checking git status',
     find_process: 'Finding process',
     check_port: 'Checking port',
@@ -34,6 +38,13 @@ function getToolDisplayName(toolName: string): string {
     get_git_diff: 'Getting git diff',
     calculate: 'Calculating',
     web_search: 'Searching web',
+    get_file_info: 'Getting file info',
+    read_multiple_files: 'Reading multiple files',
+    grep_in_files: 'Searching in files',
+    analyze_error: 'Analyzing error',
+    find_errors_in_file: 'Scanning for errors',
+    file_sections: 'Reading file section',
+    get_shell_history: 'Getting shell history',
   };
   
   return names[toolName] || toolName;
@@ -100,8 +111,10 @@ export function ToolProgressDisplay({ toolProgress }: ToolProgressDisplayProps) 
 
   if (!toolProgress || toolProgress.length === 0) return null;
 
-  const runningCount = toolProgress.filter(t => t.status === 'running').length;
-  const failedCount = toolProgress.filter(t => t.status === 'failed').length;
+  const { runningCount, failedCount } = useMemo(() => ({
+    runningCount: toolProgress?.filter(t => t.status === 'running').length ?? 0,
+    failedCount: toolProgress?.filter(t => t.status === 'failed').length ?? 0,
+  }), [toolProgress]);
 
   return (
     <details 

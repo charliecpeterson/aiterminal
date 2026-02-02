@@ -10,12 +10,15 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { CoreMessage } from 'ai';
 import type { AiSettings } from '../context/SettingsContext';
 import type { ChatMessage, PendingApproval, ContextItem, ToolProgress } from '../context/AIContext';
+import type { RoutingDecision, PromptEnhancement } from '../types/routing';
 import { createTools } from './tools-vercel';
 import { buildEnhancedSystemPrompt, summarizeContext, addChainOfThought } from './prompts';
 import { rankContextByRelevance, deduplicateContext, formatRankedContext } from './contextRanker';
 import { extractRecentTopics } from './contextTracking';
 import { getCachedContext, setCachedContext } from './contextCache';
 import { getSmartContextForPrompt } from './smartContext';
+import { classifyAndRoute, isAutoRoutingEnabled } from './queryRouter';
+import { enhancePromptIfNeeded } from './promptEnhancer';
 import {
   startRequestMetrics,
   recordContextProcessing,
@@ -25,6 +28,7 @@ import {
   finishRequestMetrics,
 } from './metrics';
 import { createLogger } from '../utils/logger';
+import { estimateTokens } from '../utils/tokens';
 import { prepareConversationHistory } from './conversationHistory';
 import { createStreamingBuffer } from './streamingBuffer';
 
@@ -123,7 +127,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
   setIsSending(true);
 
   // Start performance metrics tracking
-  startRequestMetrics(settingsAi.model, settingsAi.mode || 'agent');
+  startRequestMetrics(settingsAi.model, settingsAi.mode || 'agent'); // Initial model, may be overridden by routing
   let firstTokenRecorded = false;
   
   // Track context selection timing
@@ -143,8 +147,66 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       });
     }
 
-    // Enhance user prompt with chain-of-thought for complex queries
-    const enhancedUserPrompt = addChainOfThought(trimmed);
+    const aiMode = settingsAi.mode || 'agent';
+    const enableTools = aiMode === 'agent';
+
+    // LAYER 1: Prompt Enhancement (if enabled)
+    let enhancedPrompt = trimmed;
+    let promptEnhancement: PromptEnhancement | undefined;
+    
+    if (settingsAi.auto_routing?.enable_prompt_enhancement !== false) {
+      const enhancement = await enhancePromptIfNeeded(
+        trimmed,
+        deps.contextItems,
+        settingsAi
+      );
+      
+      if (enhancement.wasEnhanced) {
+        enhancedPrompt = enhancement.enhanced;
+        promptEnhancement = enhancement;
+        
+        log.info('Prompt enhanced', {
+          original: trimmed.substring(0, 50),
+          enhanced: enhancedPrompt.substring(0, 50),
+          reason: enhancement.reason
+        });
+      }
+    }
+
+    // LAYER 2: Complexity Classification & Routing
+    let model = settingsAi.model; // Fallback
+    let contextTokenBudget = aiMode === 'chat' 
+      ? (settingsAi.context_token_budget_chat ?? 12000)
+      : (settingsAi.context_token_budget_agent ?? 6000);
+    let temperature = 0.7; // Fallback
+    let routingDecision: RoutingDecision | undefined;
+
+    if (isAutoRoutingEnabled(settingsAi)) {
+      routingDecision = classifyAndRoute(
+        enhancedPrompt,
+        deps.contextItems,
+        settingsAi,
+        aiMode
+      );
+      
+      model = routingDecision.model;
+      contextTokenBudget = routingDecision.contextBudget;
+      temperature = routingDecision.temperature;
+      
+      log.info('Auto-routing decision', {
+        tier: routingDecision.tier,
+        model,
+        complexity: routingDecision.complexity,
+        score: routingDecision.reasoning.score,
+        queryType: routingDecision.reasoning.queryType,
+      });
+    } else {
+      log.debug('Auto-routing disabled, using manual model selection');
+    }
+
+    // Enhance user prompt with chain-of-thought for complex queries only
+    // Pass complexity level so CoT is only added for moderate+ queries (saves ~30 tokens on simple queries)
+    const enhancedUserPrompt = addChainOfThought(enhancedPrompt, routingDecision?.complexity);
 
     // Create OpenAI client with user's settings
     const openai = createOpenAI({
@@ -174,22 +236,16 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     // Convert to core messages format
     const coreMessages = convertToCoreMessages(messagesToSend);
 
-    const aiMode = settingsAi.mode || 'agent';
-    const enableTools = aiMode === 'agent';
-
     // Mode-specific context strategies
     // Chat mode: Front-load context (can't fetch files later)
     // Agent mode: Just-in-time context (can use tools to fetch more)
-    const contextTokenBudget = aiMode === 'chat' 
-      ? (settingsAi.context_token_budget_chat ?? 12000)
-      : (settingsAi.context_token_budget_agent ?? 6000);
+    // Note: contextTokenBudget may already be set by auto-routing above
     
     log.debug(`Using ${aiMode} mode with ${contextTokenBudget} token budget for context`, {
       mode: aiMode,
       budget: contextTokenBudget,
-      isDefault: aiMode === 'chat' 
-        ? settingsAi.context_token_budget_chat === undefined
-        : settingsAi.context_token_budget_agent === undefined
+      routingEnabled: isAutoRoutingEnabled(settingsAi),
+      tier: routingDecision?.tier,
     });
 
     // Extract recent conversation topics for better relevance scoring
@@ -273,9 +329,8 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       
       // Cache the results for future requests (only cache keyword ranking for now)
       if (!useSmartContext && rankedContext) {
-        // Estimate token count (rough approximation: ~4 chars per token)
-        const estimatedTokens = Math.ceil(contextForPrompt.length / 4);
-        setCachedContext(deps.contextItems, trimmed, rankedContext, formattedContextArray, estimatedTokens);
+        const cachedTokens = estimateTokens(contextForPrompt);
+        setCachedContext(deps.contextItems, trimmed, rankedContext, formattedContextArray, cachedTokens);
         log.debug('Cached new context', { items: rankedContext.length });
       }
     }
@@ -293,6 +348,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     );
 
     // Build enhanced system prompt
+    // Pass complexity score to conditionally include few-shot examples (saves ~400 tokens on simple queries)
     const systemPrompt = buildEnhancedSystemPrompt({
       mode: aiMode,
       terminalId,
@@ -301,6 +357,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         shellType: 'bash', // Could be detected from terminal
       },
       contextSummary,
+      complexityScore: routingDecision?.reasoning.score,
     });
     
     // Add context to system prompt if available
@@ -308,11 +365,17 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       ? `${systemPrompt}\n\nTERMINAL CONTEXT PROVIDED BY USER:\n${contextForPrompt}`
       : systemPrompt;
     
+    log.debug('System prompt prepared', {
+      length: finalSystemPrompt.length,
+      estimatedTokens: estimateTokens(finalSystemPrompt),
+      hasContext: !!contextForPrompt,
+    });
+    
     // Now add user message with verbose metadata for export
     addMessage({
       id: userMsgId,
       role: 'user',
-      content: trimmed,
+      content: trimmed, // Store original, not enhanced
       timestamp: Date.now(),
       usedContext: {
         mode: useSmartContext ? 'smart' : 'full',
@@ -331,6 +394,8 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         })),
       },
       systemPrompt: finalSystemPrompt, // Store system prompt for verbose export
+      routingDecision,    // Routing information for intelligent model selection
+      promptEnhancement,  // Prompt enhancement details
     });
 
     // Create tools only when enabled (Agent mode)
@@ -342,8 +407,14 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         )
       : undefined;
 
+    log.debug('Sending to AI', {
+      messageCount: coreMessages.length,
+      toolsEnabled: enableTools,
+      model,
+    });
+
     const result = await streamText({
-      model: openai(settingsAi.model),
+      model: openai(model),  // Use routed model (may differ from settingsAi.model)
       messages: coreMessages,
       ...(enableTools
         ? {
@@ -353,7 +424,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         : {}),
       abortSignal: abortController?.signal, // Enable cancellation
       system: finalSystemPrompt,
-      temperature: 0.7, // Balanced creativity
+      temperature,  // Use routed temperature (may differ based on query type)
       // Note: maxTokens not specified - uses model default
     });
 
@@ -471,7 +542,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     // Update the assistant message with metrics
     if (requestMetrics) {
       updateMessageMetrics(assistantMsgId, {
-        model: requestMetrics.model,
+        model: model, // Use actual routed model, not requestMetrics.model which is the initial one
         mode: requestMetrics.mode,
         timings: {
           total: requestMetrics.totalDurationMs || 0,

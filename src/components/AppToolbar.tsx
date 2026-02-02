@@ -1,24 +1,17 @@
 /**
  * AppToolbar Component
- * Renders the top toolbar with action buttons
+ * Renders a minimal top toolbar with essential actions.
+ * Additional actions are available via Command Palette (Cmd/Ctrl+Shift+P)
  */
 
 interface AppToolbarProps {
   onSSHClick: () => void;
   onAIPanelClick: () => void;
-  onQuickActionsClick: () => void;
-  onHistoryClick: () => void;
-  onSettingsClick: () => void;
+  onCommandPaletteClick: () => void;
 }
 
 export function AppToolbar(props: AppToolbarProps) {
-  const {
-    onSSHClick,
-    onAIPanelClick,
-    onQuickActionsClick,
-    onHistoryClick,
-    onSettingsClick,
-  } = props;
+  const { onSSHClick, onAIPanelClick, onCommandPaletteClick } = props;
 
   return (
     <div className="top-segmented" role="group" aria-label="Top actions">
@@ -37,25 +30,11 @@ export function AppToolbar(props: AppToolbarProps) {
         AI Panel
       </div>
       <div
-        className="segmented-button"
-        onClick={onQuickActionsClick}
-        title="Quick Actions"
+        className="segmented-button segmented-button-subtle"
+        onClick={onCommandPaletteClick}
+        title="Command Palette (Cmd/Ctrl+Shift+P)"
       >
-        Quick Actions
-      </div>
-      <div
-        className="segmented-button"
-        onClick={onHistoryClick}
-        title="Command History (Cmd+R)"
-      >
-        History
-      </div>
-      <div 
-        className="segmented-button"
-        onClick={onSettingsClick}
-        title="Settings (Cmd+,)"
-      >
-        Settings
+        ⌘P
       </div>
     </div>
   );

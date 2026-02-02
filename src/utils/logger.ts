@@ -138,14 +138,3 @@ export function createLogger(context: string): Logger {
     error: (message: string, ...args: unknown[]) => log('error', message, ...args),
   };
 }
-
-// Create a default logger for general use
-export const log = createLogger('App');
-
-// Export commonly used loggers
-export const logAI = createLogger('AI');
-export const logTerminal = createLogger('Terminal');
-export const logSSH = createLogger('SSH');
-export const logPTY = createLogger('PTY');
-export const logSettings = createLogger('Settings');
-export const logContext = createLogger('Context');

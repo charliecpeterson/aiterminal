@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createLogger } from "../utils/logger";
 import { clearSummaryCache } from "../ai/conversationHistory";
 import { ContextErrorBoundary } from "../components/ContextErrorBoundary";
+import type { RoutingDecision, PromptEnhancement } from "../types/routing";
 
 const log = createLogger('AIContext');
 
@@ -104,6 +105,9 @@ export interface ChatMessage {
   toolProgress?: ToolProgress[];
   // For verbose export: full system prompt sent to API
   systemPrompt?: string;
+  // Routing information for intelligent model selection
+  routingDecision?: RoutingDecision;
+  promptEnhancement?: PromptEnhancement;
 }
 
 export interface PendingApproval {

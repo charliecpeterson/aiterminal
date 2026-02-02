@@ -1,15 +1,16 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { aiPanelStyles } from "./AIPanel.styles";
 import { useAIContext } from "../context/AIContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendChatMessage } from "../ai/chatSend-vercel";
 import { requestCaptureLast } from "../ai/contextCapture";
 import { getSmartContextForPrompt } from "../ai/smartContext";
-import { AIChatTab } from "./AIChatTab";
+import { AIChatTab, type QuickActionType } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveApproval, rejectApproval } from "../ai/tools-vercel";
 import { createLogger } from "../utils/logger";
+import { estimateTokens, formatTokenCount } from "../utils/tokens";
 
 const log = createLogger('AIPanel');
 
@@ -44,6 +45,14 @@ function exportDetailed(messages: any[]): string {
         content += `\n`;
       }
       
+      // Add routing info for user messages (standard detail)
+      if (msg.role === 'user' && msg.routingDecision) {
+        const rd = msg.routingDecision;
+        content += `**Routing**: ${rd.tier} tier → ${rd.model}`;
+        if (rd.fallbackUsed) content += ` (fallback from ${rd.originalTier})`;
+        content += `\n`;
+      }
+      
       // Add metrics for assistant messages
       if (msg.role === 'assistant' && msg.metrics) {
         const m = msg.metrics;
@@ -75,16 +84,29 @@ function exportVerbose(messages: any[]): string {
       // Verbose context details for user messages
       if (msg.role === 'user' && msg.usedContext) {
         const ctx = msg.usedContext;
+        
+        // Calculate total context tokens
+        let totalContextTokens = 0;
+        if (ctx.contextItems && ctx.contextItems.length > 0) {
+          ctx.contextItems.forEach((item: any) => {
+            totalContextTokens += estimateTokens(item.content || '');
+          });
+        }
+        
         content += `### Request Metadata\n`;
         content += `- **Context Strategy**: ${ctx.contextStrategy || 'unknown'}\n`;
         content += `- **Context Budget**: ${ctx.contextBudget || 'unknown'} tokens\n`;
-        content += `- **Items Sent**: ${ctx.chunkCount || 0}\n\n`;
+        content += `- **Items Sent**: ${ctx.chunkCount || 0}\n`;
+        content += `- **Total Context Tokens** (est.): ~${formatTokenCount(totalContextTokens)}\n\n`;
         
-        // List context items with details
+        // List context items with details and token counts
         if (ctx.contextItems && ctx.contextItems.length > 0) {
-          content += `### Context Items Sent\n`;
+          content += `### Context Items Selected\n`;
+          content += `> These items were ranked and selected for inclusion. Their content is embedded in the System Prompt below.\n\n`;
+          
           ctx.contextItems.forEach((item: any, idx: number) => {
-            content += `${idx + 1}. **${item.label || item.path || item.id}**\n`;
+            const itemTokens = estimateTokens(item.content || '');
+            content += `${idx + 1}. **${item.label || item.path || item.id}** (~${formatTokenCount(itemTokens)} tokens)\n`;
             content += `   - Type: ${item.type}\n`;
             if (item.usageCount) content += `   - Usage count: ${item.usageCount}\n`;
             if (item.conversationMemoryPenalty !== undefined) {
@@ -93,18 +115,88 @@ function exportVerbose(messages: any[]): string {
             content += `\n`;
           });
           
-          // Show full context content
-          content += `### Full Context Content\n\n`;
+          // Show full context content with token counts
+          content += `### Full Context Content\n`;
+          content += `> Raw content of each context item before embedding into the system prompt.\n\n`;
+          
           ctx.contextItems.forEach((item: any, idx: number) => {
-            content += `#### ${idx + 1}. ${item.label || item.path || item.id}\n`;
-            content += `\`\`\`\n${item.content.substring(0, 5000)}${item.content.length > 5000 ? '\n... (truncated)' : ''}\n\`\`\`\n\n`;
+            const itemTokens = estimateTokens(item.content || '');
+            const truncated = item.content && item.content.length > 5000;
+            content += `#### ${idx + 1}. ${item.label || item.path || item.id} (~${formatTokenCount(itemTokens)} tokens)\n`;
+            content += `\`\`\`\n${item.content ? item.content.substring(0, 5000) : '(empty)'}${truncated ? '\n... (truncated for export, full content sent to AI)' : ''}\n\`\`\`\n\n`;
           });
         }
         
         // Show system prompt if available
         if (msg.systemPrompt) {
-          content += `### System Prompt\n\`\`\`\n${msg.systemPrompt}\n\`\`\`\n\n`;
+          const systemPromptTokens = estimateTokens(msg.systemPrompt);
+          content += `### System Prompt (~${formatTokenCount(systemPromptTokens)} tokens)\n`;
+          content += `> This is the EXACT prompt sent to the AI. It includes the base system prompt + context items embedded above.\n`;
+          content += `> The context appears both above (for readability) and here (showing exactly what the AI receives).\n\n`;
+          content += `\`\`\`\n${msg.systemPrompt}\n\`\`\`\n\n`;
         }
+        
+        // Add token summary for the request
+        const userMessageTokens = estimateTokens(msg.content || '');
+        const systemPromptTokens = msg.systemPrompt ? estimateTokens(msg.systemPrompt) : 0;
+        content += `### Token Summary (Estimated)\n`;
+        content += `| Component | Tokens |\n`;
+        content += `|-----------|--------|\n`;
+        content += `| System Prompt | ~${formatTokenCount(systemPromptTokens)} |\n`;
+        content += `| User Message | ~${formatTokenCount(userMessageTokens)} |\n`;
+        content += `| **Total Input** | ~${formatTokenCount(systemPromptTokens + userMessageTokens)} |\n\n`;
+      }
+      
+      // Verbose routing details for user messages
+      if (msg.role === 'user' && msg.routingDecision) {
+        const rd = msg.routingDecision;
+        content += `### Routing Decision\n`;
+        content += `- **Tier**: ${rd.tier}\n`;
+        content += `- **Complexity Level**: ${rd.complexity}/3\n`;
+        content += `- **Model Selected**: ${rd.model}\n`;
+        content += `- **Context Budget**: ${rd.contextBudget} tokens\n`;
+        content += `- **Temperature**: ${rd.temperature}\n`;
+        if (rd.fallbackUsed) {
+          content += `- **Fallback Used**: Yes (from ${rd.originalTier})\n`;
+        }
+        content += `\n`;
+        
+        // Routing reasoning
+        if (rd.reasoning) {
+          content += `#### Routing Reasoning\n`;
+          content += `- **Query Type**: ${rd.reasoning.queryType}\n`;
+          content += `- **Complexity Score**: ${rd.reasoning.score}/100\n\n`;
+          
+          // Scoring factors
+          if (rd.reasoning.factors && rd.reasoning.factors.length > 0) {
+            content += `##### Scoring Factors\n`;
+            rd.reasoning.factors.forEach((factor: any) => {
+              content += `- **${factor.name}**: ${factor.value} (weight: ${factor.weight})`;
+              if (factor.description) content += ` - ${factor.description}`;
+              content += `\n`;
+            });
+            content += `\n`;
+          }
+          
+          // Alternatives considered
+          if (rd.reasoning.alternatives && rd.reasoning.alternatives.length > 0) {
+            content += `##### Alternatives Considered\n`;
+            rd.reasoning.alternatives.forEach((alt: any) => {
+              content += `- **${alt.tier}**: score ${alt.score} - ${alt.reason}\n`;
+            });
+            content += `\n`;
+          }
+        }
+      }
+      
+      // Verbose prompt enhancement for user messages
+      if (msg.role === 'user' && msg.promptEnhancement && msg.promptEnhancement.wasEnhanced) {
+        const pe = msg.promptEnhancement;
+        content += `### Prompt Enhancement\n`;
+        content += `- **Pattern Matched**: ${pe.pattern || 'unknown'}\n`;
+        content += `- **Reason**: ${pe.reason || 'N/A'}\n`;
+        content += `- **Original Prompt**:\n\`\`\`\n${pe.original}\n\`\`\`\n`;
+        content += `- **Enhanced Prompt**:\n\`\`\`\n${pe.enhanced}\n\`\`\`\n\n`;
       }
       
       // Verbose metrics for assistant messages
@@ -263,7 +355,18 @@ const AIPanel = ({
     removePendingApproval(id);
   }, [pendingApprovals, removePendingApproval]);
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (promptOverride?: string) => {
+    // Guard against duplicate sends while already processing
+    if (isSending) {
+      return;
+    }
+    
+    // Use override if provided, otherwise use state
+    const promptToSend = promptOverride ?? prompt;
+    if (!promptToSend.trim()) {
+      return;
+    }
+    
     const controller = new AbortController();
     setAbortController(controller);
 
@@ -278,7 +381,7 @@ const AIPanel = ({
         const smart = await getSmartContextForPrompt({
           ai: settings.ai,
           contextItems,
-          query: prompt,
+          query: promptToSend,
           topK: 8,
           globalSmartMode: contextSmartMode,
         });
@@ -311,8 +414,13 @@ const AIPanel = ({
       setSmartContextStatus(null);
     }
     
+    // If we used an override, also update the prompt state for display
+    if (promptOverride) {
+      setPrompt(promptOverride);
+    }
+    
     sendChatMessage({
-      prompt,
+      prompt: promptToSend,
       settingsAi: settings?.ai,
       messages,
       contextItems,
@@ -335,7 +443,7 @@ const AIPanel = ({
       setSendError(message);
       setIsSending(false);
     });
-  }, [prompt, settings?.ai, settings, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, updateMessageMetrics, updateToolProgress, setPrompt, addPendingApproval, contextSmartMode]);
+  }, [isSending, prompt, settings?.ai, settings, messages, contextItems, formattedContextItems, activeTerminalId, addMessage, appendMessage, updateMessageMetrics, updateToolProgress, setPrompt, addPendingApproval, contextSmartMode, markContextAsUsed]);
 
   const handleCancel = useCallback(() => {
     if (abortController) {
@@ -350,6 +458,58 @@ const AIPanel = ({
       log.error('Failed to request capture', err);
     });
   };
+
+  // Track pending quick action to auto-send after context arrives
+  const pendingQuickActionRef = useRef<{ prompt: string; contextCount: number } | null>(null);
+  
+  // Store handleSend in a ref so the effect can call it with the latest closure
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+
+  // Quick action prompts mapping
+  const quickActionPrompts: Record<QuickActionType, string> = {
+    'summarize': 'Summarize the last command and its output.',
+    'explain-error': 'Explain this error and suggest a fix.',
+    'draft-fix': 'Draft a fix for the issue shown in the output above.',
+  };
+
+  // Handle quick action: capture context, set prompt, and auto-send
+  const handleQuickAction = useCallback(async (action: QuickActionType) => {
+    if (isSending) return;
+    
+    const actionPrompt = quickActionPrompts[action];
+    const currentContextCount = contextItems.length;
+    
+    // Store the pending action
+    pendingQuickActionRef.current = {
+      prompt: actionPrompt,
+      contextCount: currentContextCount,
+    };
+    
+    // Request capture of last command
+    try {
+      await requestCaptureLast(1);
+    } catch (err) {
+      log.error('Failed to capture last command for quick action', err);
+      pendingQuickActionRef.current = null;
+    }
+  }, [isSending, contextItems.length]);
+
+  // Watch for context changes after quick action is triggered
+  useEffect(() => {
+    const pending = pendingQuickActionRef.current;
+    if (!pending) return;
+    
+    // Check if new context has arrived (context count increased)
+    if (contextItems.length > pending.contextCount) {
+      // Context arrived! Send with the stored prompt
+      const promptToSend = pending.prompt;
+      pendingQuickActionRef.current = null;
+      
+      // Call handleSend with the prompt override
+      handleSendRef.current(promptToSend);
+    }
+  }, [contextItems.length]);
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -559,6 +719,7 @@ const AIPanel = ({
             pendingApprovals={pendingApprovals}
             onApprove={handleApprove}
             onDeny={handleDeny}
+            onQuickAction={handleQuickAction}
           />
         )}
         {activeTab === "context" && (

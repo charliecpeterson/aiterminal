@@ -30,8 +30,6 @@ export type AddContextItemWithScan = (content: string, type: ContextType, metada
 export interface MarkerManagerParams {
   term: XTermTerminal;
   maxMarkers: number;
-  foldThreshold: number;
-  foldEnabled: boolean;
   setCopyMenu: (value: CopyMenuState | null) => void;
   getRangeText: (range: [number, number]) => string;
   addContextItem: AddContextItem;
@@ -52,8 +50,6 @@ interface MarkerMeta {
   pythonCommandId?: string;
   exitCode?: number;
   streamingOutput?: boolean;
-  foldDecoration?: IDecoration;
-  foldExpanded?: boolean;
   startTime?: number;  // When command started (ms timestamp)
   endTime?: number;    // When command finished (ms timestamp)
   duration?: number;   // Duration in ms
@@ -139,8 +135,6 @@ export interface MarkerManager {
 export function createMarkerManager({
   term,
   maxMarkers,
-  foldThreshold: _foldThreshold,
-  foldEnabled: _foldEnabled,
   setCopyMenu,
   getRangeText,
   addContextItem,
@@ -209,6 +203,21 @@ export function createMarkerManager({
   let currentOutputButtonRemoveListener: ((e: MouseEvent) => void) | null = null;
   let currentOutputButtonTimeoutId: ReturnType<typeof setTimeout> | null = null;
   const pythonMarkersById = new Map<string, IDecoration>();
+
+  const cleanupOutputButton = () => {
+    if (currentOutputButton) {
+      currentOutputButton.remove();
+      currentOutputButton = null;
+    }
+    if (currentOutputButtonTimeoutId) {
+      clearTimeout(currentOutputButtonTimeoutId);
+      currentOutputButtonTimeoutId = null;
+    }
+    if (currentOutputButtonRemoveListener) {
+      document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
+      currentOutputButtonRemoveListener = null;
+    }
+  };
 
   const notifyMarkersChanged = () => {
     try {
@@ -582,18 +591,7 @@ export function createMarkerManager({
         // Clicked outside any command block - remove highlight and button
         clearHighlight();
         currentHighlightedMarker = null;
-        if (currentOutputButton) {
-          currentOutputButton.remove();
-          currentOutputButton = null;
-        }
-        if (currentOutputButtonTimeoutId) {
-          clearTimeout(currentOutputButtonTimeoutId);
-          currentOutputButtonTimeoutId = null;
-        }
-        if (currentOutputButtonRemoveListener) {
-          document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-          currentOutputButtonRemoveListener = null;
-        }
+        cleanupOutputButton();
         return;
       }
 
@@ -603,36 +601,14 @@ export function createMarkerManager({
         // This is the current/pending command (gray marker) - don't highlight
         clearHighlight();
         currentHighlightedMarker = null;
-        if (currentOutputButton) {
-          currentOutputButton.remove();
-          currentOutputButton = null;
-        }
-        if (currentOutputButtonTimeoutId) {
-          clearTimeout(currentOutputButtonTimeoutId);
-          currentOutputButtonTimeoutId = null;
-        }
-        if (currentOutputButtonRemoveListener) {
-          document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-          currentOutputButtonRemoveListener = null;
-        }
+        cleanupOutputButton();
         return;
       }
 
       // Highlight the command block
       const didHighlight = highlightCommandBlock(marker);
       if (!didHighlight) {
-        if (currentOutputButton) {
-          currentOutputButton.remove();
-          currentOutputButton = null;
-        }
-        if (currentOutputButtonTimeoutId) {
-          clearTimeout(currentOutputButtonTimeoutId);
-          currentOutputButtonTimeoutId = null;
-        }
-        if (currentOutputButtonRemoveListener) {
-          document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-          currentOutputButtonRemoveListener = null;
-        }
+        cleanupOutputButton();
         return;
       }
 
@@ -647,7 +623,7 @@ export function createMarkerManager({
 
       if (outputInfo.hasOutput) {
         const outputLineCount = endLine - outputInfo.safeOutputStart + 1;
-        showOutputButton(marker, outputInfo.safeOutputStart, endLine, outputLineCount);
+        showOutputButton(outputInfo.safeOutputStart, endLine, outputLineCount);
       }
     };
 
@@ -669,35 +645,13 @@ export function createMarkerManager({
       }
       clearHighlight();
       currentHighlightedMarker = null;
-      if (currentOutputButton) {
-        currentOutputButton.remove();
-        currentOutputButton = null;
-      }
-      if (currentOutputButtonTimeoutId) {
-        clearTimeout(currentOutputButtonTimeoutId);
-        currentOutputButtonTimeoutId = null;
-      }
-      if (currentOutputButtonRemoveListener) {
-        document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-        currentOutputButtonRemoveListener = null;
-      }
+      cleanupOutputButton();
     };
   };
 
-  const showOutputButton = (_marker: IDecoration, startLine: number, endLine: number, lineCount: number) => {
+  const showOutputButton = (startLine: number, endLine: number, lineCount: number) => {
     // Remove existing button and cleanup
-    if (currentOutputButton) {
-      currentOutputButton.remove();
-      currentOutputButton = null;
-    }
-    if (currentOutputButtonTimeoutId) {
-      clearTimeout(currentOutputButtonTimeoutId);
-      currentOutputButtonTimeoutId = null;
-    }
-    if (currentOutputButtonRemoveListener) {
-      document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-      currentOutputButtonRemoveListener = null;
-    }
+    cleanupOutputButton();
 
     // Create floating button
     const button = document.createElement('div');
@@ -722,16 +676,7 @@ export function createMarkerManager({
     viewBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       openOutputWindow(startLine, endLine, lineCount);
-      button.remove();
-      currentOutputButton = null;
-      if (currentOutputButtonTimeoutId) {
-        clearTimeout(currentOutputButtonTimeoutId);
-        currentOutputButtonTimeoutId = null;
-      }
-      if (currentOutputButtonRemoveListener) {
-        document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-        currentOutputButtonRemoveListener = null;
-      }
+      cleanupOutputButton();
     });
 
     const copyBtn = button.querySelector('.output-copy-clipboard');
@@ -741,29 +686,13 @@ export function createMarkerManager({
       navigator.clipboard.writeText(content).catch((err) => {
         log.error('Failed to copy to clipboard', err);
       });
-      button.remove();
-      currentOutputButton = null;
-      if (currentOutputButtonTimeoutId) {
-        clearTimeout(currentOutputButtonTimeoutId);
-        currentOutputButtonTimeoutId = null;
-      }
-      if (currentOutputButtonRemoveListener) {
-        document.removeEventListener('mousedown', currentOutputButtonRemoveListener);
-        currentOutputButtonRemoveListener = null;
-      }
+      cleanupOutputButton();
     });
 
     // Remove on outside click
     const removeButton = (e: MouseEvent) => {
       if (!button.contains(e.target as Node)) {
-        button.remove();
-        currentOutputButton = null;
-        document.removeEventListener('mousedown', removeButton);
-        currentOutputButtonRemoveListener = null;
-        if (currentOutputButtonTimeoutId) {
-          clearTimeout(currentOutputButtonTimeoutId);
-          currentOutputButtonTimeoutId = null;
-        }
+        cleanupOutputButton();
       }
     };
     currentOutputButtonRemoveListener = removeButton;
@@ -777,10 +706,8 @@ export function createMarkerManager({
     // Get the output content
     const content = getRangeText([startLine, endLine]);
     
-    
     // Copy to clipboard
-    navigator.clipboard.writeText(content).then(() => {
-    }).catch(err => {
+    navigator.clipboard.writeText(content).catch(err => {
       log.error('Failed to copy', err);
     });
     
@@ -797,9 +724,6 @@ export function createMarkerManager({
         center: true,
         resizable: true,
         decorations: true,
-      });
-
-      outputWindow.once('tauri://created', () => {
       });
 
       outputWindow.once('tauri://error', (event) => {
@@ -1027,9 +951,6 @@ export function createMarkerManager({
           }
 
           markerMeta.set(marker, meta);
-          
-          if (isBootstrap) {
-          }
 
           if (markers.length > maxMarkers) {
             const oldest = markers[0];
@@ -1084,9 +1005,6 @@ export function createMarkerManager({
             markerMeta.set(marker, meta);
             const markerEl = marker.element ?? markerElement.get(marker);
             if (markerEl) renderMarkerElement(markerEl, meta);
-            
-            if (isBootstrap) {
-            }
 
             if (markers.length > maxMarkers) {
               const oldest = markers[0];

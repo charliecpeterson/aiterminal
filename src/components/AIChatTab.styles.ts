@@ -36,10 +36,10 @@ export const chatStyles = {
     flex: 1,
     overflowY: 'auto',
     overflowX: 'hidden',
-    padding: tokens.spacing[16],
+    padding: `${tokens.spacing[12]} ${tokens.spacing[16]}`,
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing[12],
+    gap: tokens.spacing[6],
   } as CSSProperties,
 
   // Empty state / intro card
@@ -100,126 +100,158 @@ export const chatStyles = {
   message: {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing[6],
-    padding: tokens.spacing[14],
+    gap: tokens.spacing[2],
+    padding: `${tokens.spacing[8]} ${tokens.spacing[12]}`,
     borderRadius: tokens.borderRadius.lg,
-    border: `${tokens.borderWidth.thin} solid transparent`,
+    border: 'none',
     transition: tokens.transition.fast,
   } as CSSProperties,
 
   messageUser: {
     background: chatColors.user,
-    borderColor: 'rgba(91, 141, 232, 0.2)',
-    marginLeft: '64px', // 32 * 2
+    marginLeft: '24px',
+    borderRadius: '16px 16px 4px 16px',
   } as CSSProperties,
 
   messageAssistant: {
-    background: chatColors.assistant,
-    borderColor: chatColors.border,
-    marginRight: '64px', // 32 * 2
+    background: 'transparent',
+    marginRight: '24px',
+    paddingLeft: tokens.spacing[4],
+    paddingRight: tokens.spacing[4],
   } as CSSProperties,
 
-  // Message metadata
+  // Message metadata - inline with subtle styling
   messageMeta: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    fontSize: tokens.fontSize.xs,
+    gap: tokens.spacing[6],
+    fontSize: '11px',
     color: chatColors.textDim,
-    marginBottom: tokens.spacing[2],
   } as CSSProperties,
 
   messageRole: {
-    fontWeight: tokens.fontWeight.semibold,
+    fontWeight: tokens.fontWeight.medium,
     color: chatColors.textMuted,
-    letterSpacing: '0.02em',
-    textTransform: 'uppercase',
+    letterSpacing: '0.01em',
   } as CSSProperties,
 
   messageTime: {
     color: chatColors.textDim,
+    opacity: 0.7,
   } as CSSProperties,
 
   // Message body
   messageBody: {
     fontSize: tokens.fontSize.sm,
-    lineHeight: '1.6',
+    lineHeight: '1.5',
     color: chatColors.text,
     wordBreak: 'break-word',
   } as CSSProperties,
 
-  // Input row
+  // Input row - outer container with padding
   inputRow: {
     display: 'flex',
-    gap: tokens.spacing[10],
-    padding: tokens.spacing[16],
+    padding: `${tokens.spacing[12]} ${tokens.spacing[16]}`,
     borderTop: `${tokens.borderWidth.thin} solid ${chatColors.border}`,
     background: 'rgba(0, 0, 0, 0.2)',
     backdropFilter: 'blur(10px)',
   } as CSSProperties,
 
-  // Textarea
-  input: {
+  // Unified input container (pill shape)
+  inputContainer: {
+    display: 'flex',
+    alignItems: 'flex-end',
     flex: 1,
     background: chatColors.input,
     border: `${tokens.borderWidth.thin} solid ${chatColors.border}`,
-    borderRadius: tokens.borderRadius.lg,
-    padding: tokens.spacing[12],
+    borderRadius: '22px',
+    padding: `${tokens.spacing[4]} ${tokens.spacing[6]} ${tokens.spacing[4]} ${tokens.spacing[14]}`,
+    transition: tokens.transition.fast,
+    gap: tokens.spacing[4],
+  } as CSSProperties,
+
+  inputContainerFocus: {
+    background: chatColors.inputFocus,
+    borderColor: 'rgba(91, 141, 232, 0.4)',
+    boxShadow: '0 0 0 3px rgba(91, 141, 232, 0.1)',
+  } as CSSProperties,
+
+  inputContainerDisabled: {
+    opacity: 0.6,
+  } as CSSProperties,
+
+  // Textarea - minimal styling, container handles appearance
+  input: {
+    flex: 1,
+    background: 'transparent',
+    border: 'none',
+    padding: `${tokens.spacing[4]} 0`,
     color: chatColors.text,
     fontSize: tokens.fontSize.sm,
     fontFamily: 'inherit',
     resize: 'none',
     outline: 'none',
-    transition: tokens.transition.fast,
     lineHeight: '1.5',
+    minHeight: '24px',
+    maxHeight: '120px',
+    overflow: 'auto',
   } as CSSProperties,
 
-  inputFocus: {
-    background: chatColors.inputFocus,
-    borderColor: chatColors.borderStrong,
-  } as CSSProperties,
+  inputFocus: {} as CSSProperties,
 
   inputDisabled: {
-    opacity: 0.5,
     cursor: 'not-allowed',
   } as CSSProperties,
 
-  // Send/Cancel buttons
+  // Send button - circular icon button
   sendButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     background: chatColors.accent,
     border: 'none',
-    borderRadius: tokens.borderRadius.lg,
-    padding: `${tokens.spacing[12]} ${tokens.spacing[20]}`,
+    borderRadius: '50%',
+    width: '32px',
+    height: '32px',
+    minWidth: '32px',
+    minHeight: '32px',
     color: '#ffffff',
-    fontSize: tokens.fontSize.sm,
-    fontWeight: tokens.fontWeight.semibold,
     cursor: 'pointer',
     transition: tokens.transition.fast,
-    letterSpacing: '-0.01em',
-    minWidth: '80px',
+    flexShrink: 0,
   } as CSSProperties,
 
   sendButtonHover: {
     background: chatColors.accentHover,
-    transform: 'translateY(-1px)',
+    transform: 'scale(1.05)',
   } as CSSProperties,
 
+  sendButtonDisabled: {
+    background: 'rgba(91, 141, 232, 0.4)',
+    cursor: 'not-allowed',
+    transform: 'none',
+  } as CSSProperties,
+
+  // Cancel button - matches send button style but different color
   cancelButton: {
-    background: 'transparent',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'rgba(255, 255, 255, 0.1)',
     border: `${tokens.borderWidth.thin} solid ${chatColors.border}`,
-    borderRadius: tokens.borderRadius.lg,
-    padding: `${tokens.spacing[12]} ${tokens.spacing[20]}`,
+    borderRadius: '50%',
+    width: '32px',
+    height: '32px',
+    minWidth: '32px',
+    minHeight: '32px',
     color: chatColors.textMuted,
-    fontSize: tokens.fontSize.sm,
-    fontWeight: tokens.fontWeight.medium,
     cursor: 'pointer',
     transition: tokens.transition.fast,
-    letterSpacing: '-0.01em',
-    minWidth: '80px',
+    flexShrink: 0,
   } as CSSProperties,
 
   cancelButtonHover: {
-    background: chatColors.cardHover,
+    background: 'rgba(255, 255, 255, 0.15)',
     borderColor: chatColors.borderStrong,
     color: chatColors.text,
   } as CSSProperties,

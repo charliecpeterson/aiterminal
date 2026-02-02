@@ -23,7 +23,8 @@ export function handlePromptKeyDown(
   event: KeyboardEvent<HTMLTextAreaElement>,
   onSend: () => void,
 ): void {
-  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+  // Enter sends the message, Shift+Enter creates a new line
+  if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     onSend();
   }

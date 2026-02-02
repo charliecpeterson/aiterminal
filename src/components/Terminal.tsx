@@ -3,7 +3,6 @@ import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import '../terminal/ui/fold.css';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
@@ -19,7 +18,7 @@ import { createTerminalActions } from '../terminal/terminalActions';
 import { usePtyAutoClose } from '../terminal/hooks/usePtyAutoClose';
 import { useAiRunCommandListener } from '../terminal/hooks/useAiRunCommandListener';
 import { useTerminalAppearance } from '../terminal/hooks/useTerminalAppearance';
-import { useLatencyProbe } from '../terminal/hooks/useLatencyProbe';
+import { useTerminalPolling, getHealthIndicator, getHealthDescription } from '../terminal/hooks/useTerminalPolling';
 import { useAutocompleteSimple } from '../terminal/hooks/useAutocompleteSimple';
 import { useAutocompleteMenu } from '../terminal/hooks/useAutocompleteMenu';
 import { AutocompleteMenu } from './AutocompleteMenu';
@@ -36,14 +35,6 @@ function formatDuration(ms: number): string {
     const minutes = Math.floor(ms / 60000);
     const seconds = ((ms % 60000) / 1000).toFixed(0);
     return `${minutes}m ${seconds}s`;
-}
-
-interface PtyInfo {
-    pty_type: string;
-    remote_host: string | null;
-    remote_user: string | null;
-    ssh_client: string | null;
-    connection_time: number | null;
 }
 
 interface TerminalProps {
@@ -76,7 +67,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
             onUpdateRemoteState(isRemote, isRemote ? label : undefined);
         }
     }, [onUpdateRemoteState]);
-    const [ptyInfo, setPtyInfo] = useState<PtyInfo | null>(null);
     const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
     const copyMenuRef = useRef<HTMLDivElement | null>(null);
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
@@ -173,8 +163,27 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
       appearance: settings?.appearance,
   });
 
-  // Monitor latency for SSH sessions
-  const { latencyMs } = useLatencyProbe(id, 5000); // Poll every 5 seconds
+  // Consolidated polling hook - replaces useLatencyProbe, useTerminalHealth, useTerminalStatus, and PTY info polling
+  const polling = useTerminalPolling(id, {
+    enabled: terminalReady,
+    onRemoteStateChange: (isRemote) => {
+      if (onUpdateRemoteState) {
+        onUpdateRemoteState(isRemote, isRemote ? polling.hostLabel : undefined);
+      }
+    },
+  });
+
+  // Extract values from consolidated polling for compatibility
+  const { displayCwd, fullCwd, gitInfo, isPathTruncated, latencyMs, health: terminalHealth, isRemote, hostLabel: polledHostLabel } = polling;
+  const healthIndicator = getHealthIndicator(terminalHealth);
+  const healthDescription = getHealthDescription(terminalHealth);
+
+  // Update host label from polling
+  useEffect(() => {
+    if (polledHostLabel !== hostLabel) {
+      setHostLabel(polledHostLabel);
+    }
+  }, [polledHostLabel, hostLabel]);
 
   // Simple Fish-style autocomplete (clean rewrite)
   useAutocompleteSimple(
@@ -194,32 +203,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
   );
 
   const visibleRef = useRef(visible);
-  
-  // Fetch PTY info to determine if local or remote
-  // Poll periodically to detect SSH session changes
-  useEffect(() => {
-    const fetchPtyInfo = () => {
-      invoke<PtyInfo>('get_pty_info', { id })
-        .then((info) => {
-          setPtyInfo(info);
-          if (info.pty_type === 'ssh' && info.remote_host) {
-            const userPart = info.remote_user ? `${info.remote_user}@` : '';
-            setHostLabelAndRemoteState(`🔒 ${userPart}${info.remote_host}`);
-          } else {
-            setHostLabelAndRemoteState('Local');
-          }
-        })
-        .catch((err) => log.error('Failed to get PTY info', err));
-    };
-    
-    // Initial fetch
-    fetchPtyInfo();
-    
-    // Poll every 2 seconds to detect SSH session changes
-    const intervalId = setInterval(fetchPtyInfo, 2000);
-    
-    return () => clearInterval(intervalId);
-  }, [id]);
   
   // Cleanup on unmount
   useEffect(() => {
@@ -268,8 +251,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         xtermContainer: xtermHostRef.current,
         appearance: settings.appearance,
         maxMarkers: settings?.terminal?.max_markers ?? 200,
-        foldThreshold: settings?.fold?.threshold ?? 50,
-        foldEnabled: settings?.fold?.enabled ?? true,
         visibleRef,
         selectionPointRef,
         pendingFileCaptureRef,
@@ -527,25 +508,63 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                 </div>
             )}
             <div className="terminal-status">
+                {/* CWD */}
+                <div 
+                    className="status-cwd" 
+                    title={isPathTruncated ? fullCwd : undefined}
+                >
+                    <span className="status-icon">📁</span>
+                    <span className="status-text">{displayCwd}</span>
+                </div>
+
+                {/* Git branch */}
+                {gitInfo?.is_git_repo && gitInfo.branch && (
+                    <div className={`status-git ${gitInfo.has_changes ? 'has-changes' : ''}`}>
+                        <span className="status-icon git-indicator">
+                            {gitInfo.has_changes ? '●' : '○'}
+                        </span>
+                        <span className="status-text">{gitInfo.branch}</span>
+                        {(gitInfo.ahead > 0 || gitInfo.behind > 0) && (
+                            <span className="git-sync">
+                                {gitInfo.ahead > 0 && <span className="ahead">↑{gitInfo.ahead}</span>}
+                                {gitInfo.behind > 0 && <span className="behind">↓{gitInfo.behind}</span>}
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                {/* Terminal health indicator (only show when not healthy) */}
+                {healthIndicator && (
+                    <div 
+                        className={`status-health status-health-${terminalHealth?.status || 'unknown'}`}
+                        title={healthDescription}
+                    >
+                        <span className="health-indicator">{healthIndicator}</span>
+                        <span className="status-text">
+                            {terminalHealth?.status === 'idle' ? 'Idle' : 
+                             terminalHealth?.status === 'unresponsive' ? 'Hung?' :
+                             terminalHealth?.status === 'dead' ? 'Exited' : ''}
+                        </span>
+                    </div>
+                )}
+
+                {/* Spacer */}
+                <div style={{ flex: 1 }} />
+
+                {/* Host/SSH info (right side) */}
                 <div className="status-host" title={hostLabel}>
                     <span className="status-dot" />
                     <span className="status-text">{hostLabel}</span>
                 </div>
-                {ptyInfo?.pty_type === 'ssh' && (
-                    <>
-                        <div 
-                            className="status-latency" 
-                            title={
-                                ptyInfo.ssh_client
-                                    ? `SSH Connection\n${ptyInfo.ssh_client}\nConnected: ${ptyInfo.connection_time ? new Date(ptyInfo.connection_time * 1000).toLocaleString() : 'Unknown'}\nLatency: ${latencyMs ? `${latencyMs}ms` : 'Measuring...'}`
-                                    : 'SSH Session'
-                            }
-                        >
-                            <span className={`latency-pill ${latencyMs && latencyMs > 0 ? (latencyMs < 100 ? 'latency-good' : latencyMs < 300 ? 'latency-warn' : 'latency-bad') : 'latency-unknown'}`}>
-                                {latencyMs && latencyMs > 0 ? `${latencyMs}ms` : '\u2014'}
-                            </span>
-                        </div>
-                    </>
+                {isRemote && (
+                    <div 
+                        className="status-latency" 
+                        title={`SSH Session\nLatency: ${latencyMs ? `${latencyMs}ms` : 'Measuring...'}`}
+                    >
+                        <span className={`latency-pill ${latencyMs && latencyMs > 0 ? (latencyMs < 100 ? 'latency-good' : latencyMs < 300 ? 'latency-warn' : 'latency-bad') : 'latency-unknown'}`}>
+                            {latencyMs && latencyMs > 0 ? `${latencyMs}ms` : '\u2014'}
+                        </span>
+                    </div>
                 )}
             </div>
             

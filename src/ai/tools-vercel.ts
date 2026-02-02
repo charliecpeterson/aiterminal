@@ -16,9 +16,70 @@ import { createLogger } from '../utils/logger';
 const log = createLogger('AITools');
 
 // Tool timeout and size limit constants
-const COMMAND_TIMEOUT_MS = 10000;
+const COMMAND_TIMEOUT_QUICK_MS = 10000;   // 10s for quick commands (ls, cat, pwd)
+const COMMAND_TIMEOUT_DEFAULT_MS = 30000; // 30s for most commands
+const COMMAND_TIMEOUT_LONG_MS = 120000;   // 2min for builds, installs, tests
 const FILE_SIZE_WARNING_THRESHOLD_BYTES = 100 * 1024; // 100 KB
 const FILE_SIZE_LARGE_THRESHOLD_BYTES = 1024 * 1024; // 1 MB
+
+// Tool result size limits (to prevent context bloat)
+const TOOL_RESULT_MAX_CHARS = 8000;      // ~2000 tokens max per tool result
+const TOOL_RESULT_TRUNCATE_CHARS = 3000; // Keep this much from start when truncating
+
+/**
+ * Truncate large tool results to prevent context bloat.
+ * Keeps the beginning (usually most relevant) and adds a note about truncation.
+ */
+function truncateToolResult(result: string, maxChars: number = TOOL_RESULT_MAX_CHARS): string {
+  if (result.length <= maxChars) {
+    return result;
+  }
+  
+  const truncated = result.substring(0, TOOL_RESULT_TRUNCATE_CHARS);
+  const remaining = result.length - TOOL_RESULT_TRUNCATE_CHARS;
+  const lines = (result.match(/\n/g) || []).length;
+  const truncatedLines = (truncated.match(/\n/g) || []).length;
+  
+  return `${truncated}\n\n... [TRUNCATED: ${remaining} more characters, ~${lines - truncatedLines} more lines. Use get_file_info or tail_file for specific sections.]`;
+}
+
+// Commands that typically run quickly
+const QUICK_COMMANDS = [
+  /^ls(\s|$)/, /^pwd$/, /^cat\s/, /^head\s/, /^tail\s/, /^echo\s/,
+  /^which\s/, /^type\s/, /^whoami$/, /^date$/, /^hostname$/,
+  /^env$/, /^printenv/, /^uname/, /^id$/, /^groups$/,
+];
+
+// Commands that typically take longer
+const LONG_COMMANDS = [
+  /^npm\s+(install|ci|run|test|build)/, /^yarn\s+(install|add|run|test|build)/,
+  /^pnpm\s+(install|add|run|test|build)/, /^bun\s+(install|add|run|test|build)/,
+  /^pip\s+install/, /^pip3\s+install/, /^python.*setup\.py/,
+  /^cargo\s+(build|test|run)/, /^rustc\s/,
+  /^go\s+(build|test|run|install)/, /^make(\s|$)/,
+  /^docker\s+(build|pull|push)/, /^docker-compose\s+up/,
+  /^git\s+(clone|pull|push|fetch)/, /^curl\s/, /^wget\s/,
+  /^apt(-get)?\s+(install|update|upgrade)/, /^brew\s+(install|upgrade)/,
+];
+
+/**
+ * Get appropriate timeout for a command based on expected duration
+ */
+function getCommandTimeout(command: string): number {
+  const trimmedCmd = command.trim().toLowerCase();
+  
+  // Check for quick commands
+  if (QUICK_COMMANDS.some(pattern => pattern.test(trimmedCmd))) {
+    return COMMAND_TIMEOUT_QUICK_MS;
+  }
+  
+  // Check for long-running commands
+  if (LONG_COMMANDS.some(pattern => pattern.test(trimmedCmd))) {
+    return COMMAND_TIMEOUT_LONG_MS;
+  }
+  
+  return COMMAND_TIMEOUT_DEFAULT_MS;
+}
 
 // Store pending approval promises
 const pendingApprovalPromises = new Map<string, {
@@ -63,15 +124,146 @@ async function getTerminalCwd(terminalId: number): Promise<string> {
 }
 
 /**
+ * Create a cached CWD getter to avoid repeated IPC calls within a single agent turn.
+ * The cache is scoped to a single createTools() invocation.
+ */
+function createCwdCache(terminalId: number) {
+  let cachedCwd: string | null = null;
+  let cacheTimestamp: number = 0;
+  const CACHE_TTL_MS = 30000; // 30 seconds - covers most agent turns
+  
+  return async function getCachedCwd(): Promise<string> {
+    const now = Date.now();
+    if (cachedCwd && (now - cacheTimestamp) < CACHE_TTL_MS) {
+      return cachedCwd;
+    }
+    
+    cachedCwd = await getTerminalCwd(terminalId);
+    cacheTimestamp = now;
+    log.debug('CWD cached', { cwd: cachedCwd });
+    return cachedCwd;
+  };
+}
+
+/**
+ * File read cache to avoid re-reading the same file multiple times in one agent turn.
+ * This is scoped to a single createTools() invocation (one agent conversation turn).
+ * 
+ * Key features:
+ * - 60 second TTL (covers multi-step agent turns)
+ * - Invalidation on write operations to the same file
+ * - Max 50 entries to prevent memory bloat
+ * - Cache key is normalized path
+ */
+interface FileReadCacheEntry {
+  content: string;
+  timestamp: number;
+}
+
+function createFileReadCache() {
+  const cache = new Map<string, FileReadCacheEntry>();
+  const CACHE_TTL_MS = 60000; // 60 seconds
+  const MAX_ENTRIES = 50;
+  
+  /**
+   * Normalize path to create a consistent cache key.
+   * Resolves relative paths against cwd.
+   */
+  function normalizePath(path: string, cwd: string): string {
+    if (path.startsWith('/') || path.startsWith('~')) {
+      return path;
+    }
+    // Relative path - combine with cwd
+    return `${cwd}/${path}`.replace(/\/+/g, '/');
+  }
+  
+  /**
+   * Get cached file content if available and not expired.
+   */
+  function get(path: string, cwd: string): string | null {
+    const key = normalizePath(path, cwd);
+    const entry = cache.get(key);
+    
+    if (!entry) {
+      return null;
+    }
+    
+    const now = Date.now();
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      cache.delete(key);
+      return null;
+    }
+    
+    log.debug('File cache hit', { path: key });
+    return entry.content;
+  }
+  
+  /**
+   * Store file content in cache.
+   */
+  function set(path: string, cwd: string, content: string): void {
+    const key = normalizePath(path, cwd);
+    
+    // Evict oldest entries if at max capacity
+    if (cache.size >= MAX_ENTRIES) {
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      
+      for (const [k, v] of cache.entries()) {
+        if (v.timestamp < oldestTime) {
+          oldestTime = v.timestamp;
+          oldestKey = k;
+        }
+      }
+      
+      if (oldestKey) {
+        cache.delete(oldestKey);
+      }
+    }
+    
+    cache.set(key, {
+      content,
+      timestamp: Date.now(),
+    });
+    log.debug('File cached', { path: key, size: content.length });
+  }
+  
+  /**
+   * Invalidate cache entry for a specific path (called after write operations).
+   */
+  function invalidate(path: string, cwd: string): void {
+    const key = normalizePath(path, cwd);
+    if (cache.has(key)) {
+      cache.delete(key);
+      log.debug('File cache invalidated', { path: key });
+    }
+  }
+  
+  /**
+   * Clear entire cache (useful for testing or manual reset).
+   */
+  function clear(): void {
+    cache.clear();
+    log.debug('File cache cleared');
+  }
+  
+  return { get, set, invalidate, clear, normalizePath };
+}
+
+/**
  * Execute a shell command using the active terminal PTY
  * This ensures commands run in the current terminal context (local, SSH, docker, etc.)
+ * Timeout is automatically adjusted based on command type.
  */
 async function executeCommand(command: string, terminalId: number): Promise<string> {
+  const timeoutMs = getCommandTimeout(command);
+  log.debug('Executing command', { command: command.substring(0, 50), timeoutMs });
+  
   try {
     const result = await executeInPty({
       terminalId,
       command,
-      timeoutMs: COMMAND_TIMEOUT_MS,
+      timeoutMs,
     });
     return result.output || '(no output)';
   } catch (error) {
@@ -87,6 +279,14 @@ export function createTools(
   requireApproval: boolean = true,
   onPendingApproval?: (approval: PendingApproval) => void
 ) {
+  // Create a cached CWD getter for this tool set
+  // This avoids repeated IPC calls within a single agent turn
+  const getCwd = createCwdCache(terminalId);
+  
+  // Create file read cache for this tool set
+  // Avoids re-reading the same file multiple times in one agent turn
+  const fileCache = createFileReadCache();
+  
   return {
     get_current_directory: tool({
       description: `Get the current working directory of the active terminal.`,
@@ -123,7 +323,7 @@ Examples:
           const safetyCheck = isCommandSafe(command);
           if (!safetyCheck.isSafe) {
             // Get current directory for context
-            const cwd = await getTerminalCwd(terminalId);
+            const cwd = await getCwd();
             
             // Create approval request
             const approval: PendingApproval = {
@@ -155,12 +355,13 @@ Examples:
         }
         
         const output = await executeCommand(command, terminalId);
-        return output;
+        // Truncate large command outputs to prevent context bloat
+        return truncateToolResult(output);
       },
     }),
 
     read_file: tool({
-      description: `Read the contents of a file. Only works with text files. Large files will be truncated.
+      description: `Read the contents of a file. Only works with text files. Large files will be truncated to ~3000 chars.
 
 Examples:
 - Check package.json: path="package.json"
@@ -170,7 +371,15 @@ Examples:
         max_bytes: z.number().optional().describe('Maximum bytes to read (default: 50000)'),
       }),
       execute: async ({ path, max_bytes }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
+        
+        // Check cache first (only for default max_bytes to ensure consistency)
+        if (!max_bytes || max_bytes === 50000) {
+          const cached = fileCache.get(path, cwd);
+          if (cached !== null) {
+            return cached;
+          }
+        }
         
         try {
           const result = await invoke<string>('read_file_tool', {
@@ -178,7 +387,15 @@ Examples:
             maxBytes: max_bytes || 50000,
             workingDirectory: cwd,
           });
-          return result;
+          // Truncate large results to prevent context bloat
+          const truncated = truncateToolResult(result);
+          
+          // Cache the result (only for default max_bytes)
+          if (!max_bytes || max_bytes === 50000) {
+            fileCache.set(path, cwd, truncated);
+          }
+          
+          return truncated;
         } catch (error) {
           return `Error reading file: ${error}`;
         }
@@ -210,7 +427,7 @@ Examples:
         path: z.string().describe('Path to the file (absolute or relative to terminal directory)'),
       }),
       execute: async ({ path }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<{
@@ -278,7 +495,7 @@ Examples:
         max_bytes_per_file: z.number().optional().describe('Max bytes per file (default: 50000)'),
       }),
       execute: async ({ paths, max_bytes_per_file }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('read_multiple_files_tool', {
@@ -286,7 +503,9 @@ Examples:
             maxBytesPerFile: max_bytes_per_file,
             workingDirectory: cwd,
           });
-          return result;
+          // Truncate combined result to prevent context bloat
+          // Allow more chars since this is explicitly for multiple files
+          return truncateToolResult(result, TOOL_RESULT_MAX_CHARS * 2);
         } catch (error) {
           return `Error reading files: ${error}`;
         }
@@ -314,7 +533,7 @@ Examples:
         case_sensitive: z.boolean().optional().describe('Case-sensitive search (default: false)'),
       }),
       execute: async ({ pattern, paths, case_sensitive }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('grep_in_files_tool', {
@@ -323,7 +542,8 @@ Examples:
             caseSensitive: case_sensitive,
             workingDirectory: cwd,
           });
-          return result;
+          // Truncate large search results
+          return truncateToolResult(result);
         } catch (error) {
           return `Error searching files: ${error}`;
         }
@@ -352,7 +572,7 @@ Examples:
         error_text: z.string().describe('The full error output or stack trace to analyze'),
       }),
       execute: async ({ error_text }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('analyze_error_tool', {
@@ -418,7 +638,7 @@ Examples:
         path: z.string().optional().describe('Directory to search in (defaults to current)'),
       }),
       execute: async ({ pattern, path }) => {
-        const searchPath = path || await getTerminalCwd(terminalId);
+        const searchPath = path || await getCwd();
         
         try {
           const result = await invoke<{ matches: string[]; count: number }>('search_files_tool', {
@@ -483,7 +703,7 @@ Examples:
         all: z.boolean().optional().describe('Replace all occurrences (default: false, only replaces first)'),
       }),
       execute: async ({ path, search, replace, all }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('replace_in_file_tool', {
@@ -493,6 +713,8 @@ Examples:
             all: all || false,
             workingDirectory: cwd,
           });
+          // Invalidate cache since file was modified
+          fileCache.invalidate(path, cwd);
           return result;
         } catch (error) {
           return `Error replacing in file: ${error}`;
@@ -516,16 +738,19 @@ Examples:
         content: z.string().describe('Content to write to the file'),
       }),
       execute: async ({ path, content }) => {
-        // Escape for shell
-        const escapedContent = content.replace(/'/g, "'\\''");
-        const escapedPath = path.replace(/'/g, "'\\''");
-        const command = `printf '%s' '${escapedContent}' > '${escapedPath}'`;
+        const cwd = await getCwd();
         
         try {
-          await executeCommand(command, terminalId);
-          return `Wrote to ${path}`;
+          const result = await invoke<string>('write_file_tool', {
+            path,
+            content,
+            workingDirectory: cwd,
+          });
+          // Invalidate cache since file was modified
+          fileCache.invalidate(path, cwd);
+          return result;
         } catch (error) {
-          return `Error: ${error}`;
+          return `Error writing file: ${error}`;
         }
       },
     }),
@@ -541,7 +766,7 @@ Examples:
         content: z.string().describe('Content to append'),
       }),
       execute: async ({ path, content }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('append_to_file_tool', {
@@ -549,6 +774,8 @@ Examples:
             content,
             workingDirectory: cwd,
           });
+          // Invalidate cache since file was modified
+          fileCache.invalidate(path, cwd);
           return result;
         } catch (error) {
           return `Error appending to file: ${error}`;
@@ -562,7 +789,7 @@ Examples:
 Use this to understand the state of the git repository before making suggestions.`,
       inputSchema: z.object({}),
       execute: async () => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('git_status_tool', {
@@ -638,7 +865,7 @@ Examples:
         lines: z.number().optional().describe('Number of lines to read from end (default: 50)'),
       }),
       execute: async ({ path, lines }) => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('tail_file_tool', {
@@ -666,14 +893,16 @@ Examples:
         path: z.string().describe('Path to the directory to create'),
       }),
       execute: async ({ path }) => {
-        const escapedPath = path.replace(/'/g, "'\\''");
-        const command = `mkdir -p '${escapedPath}'`;
+        const cwd = await getCwd();
         
         try {
-          await executeCommand(command, terminalId);
-          return `Created directory: ${path}`;
+          const result = await invoke<string>('make_directory_tool', {
+            path,
+            workingDirectory: cwd,
+          });
+          return result;
         } catch (error) {
-          return `Error: ${error}`;
+          return `Error creating directory: ${error}`;
         }
       },
     }),
@@ -682,7 +911,7 @@ Examples:
       description: `Get uncommitted changes in the git repository. Shows what has been modified but not yet committed.`,
       inputSchema: z.object({}),
       execute: async () => {
-        const cwd = await getTerminalCwd(terminalId);
+        const cwd = await getCwd();
         
         try {
           const result = await invoke<string>('get_git_diff_tool', {
@@ -728,6 +957,226 @@ Use this when the user asks about external documentation or errors that might ne
           return result;
         } catch (error) {
           return `Error generating search suggestion: ${error}`;
+        }
+      },
+    }),
+
+    get_shell_history: tool({
+      description: `Get the user's shell command history. Useful for:
+- Understanding what commands the user has been running
+- Finding a command they ran earlier
+- Seeing patterns in their workflow
+- Helping debug issues by seeing recent activity
+
+⚠️ NOTE: This reads from the LOCAL machine's shell history file (~/.bash_history, ~/.zsh_history, etc.)
+
+Examples:
+- Recent commands: count=20
+- Find git commands: filter="git", count=50
+- All npm commands: filter="npm"`,
+      inputSchema: z.object({
+        count: z.number().optional().describe('Number of commands to retrieve (default: 50, max: 500)'),
+        shell: z.string().optional().describe('Shell type: bash, zsh, or fish (auto-detected if not specified)'),
+        filter: z.string().optional().describe('Filter commands containing this text (case-insensitive)'),
+      }),
+      execute: async ({ count, shell, filter }) => {
+        try {
+          const result = await invoke<string>('get_shell_history_tool', {
+            count: count || 50,
+            shell: shell || null,
+            filter: filter || null,
+          });
+          return result;
+        } catch (error) {
+          return `Error reading shell history: ${error}`;
+        }
+      },
+    }),
+
+    find_errors_in_file: tool({
+      description: `Scan large files for error patterns WITHOUT loading entire file into context.
+Uses efficient streaming - handles GB+ files with no memory issues.
+
+Searches for common error patterns:
+- Critical: error, fatal, panic, crash, abort, segfault
+- Memory: oom, out of memory, cannot allocate  
+- Process: killed, terminated, timeout, timed out
+- Access: permission denied, access denied, unauthorized
+- Network: connection refused/reset/timeout, unreachable
+- Files: no such file, file not found, cannot open
+- General: failed, failure, exception, traceback, exit code
+
+Returns matching lines WITH context (lines before/after) for debugging.
+
+Use this for:
+- Job output files (HPC, CI/CD, batch jobs)
+- Application logs
+- Build/compile output
+- System logs
+- Any large text file that might contain errors
+
+Examples:
+- Check job output: path="/scratch/jobs/job_12345.out"
+- Scan log with more context: path="app.log", context_lines=5
+- Limit matches: path="huge.log", max_matches=20`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file (absolute or relative to terminal directory)'),
+        context_lines: z.number().optional().describe('Lines of context before/after each match (default: 2)'),
+        max_matches: z.number().optional().describe('Maximum matches to return (default: 50, max: 200)'),
+        custom_patterns: z.array(z.string()).optional().describe('Additional patterns to search for'),
+      }),
+      execute: async ({ path, context_lines, max_matches, custom_patterns }) => {
+        const cwd = await getCwd();
+        
+        try {
+          const result = await invoke<string>('find_errors_in_file_tool', {
+            path,
+            workingDirectory: cwd,
+            contextLines: context_lines,
+            maxMatches: max_matches,
+            customPatterns: custom_patterns,
+          });
+          return result;
+        } catch (error) {
+          return `Error scanning file for errors: ${error}`;
+        }
+      },
+    }),
+
+    file_sections: tool({
+      description: `Read specific line ranges from large files efficiently.
+Uses streaming - handles GB+ files without loading entire file into memory.
+
+Line numbers are 1-indexed (matches error output, stack traces, etc.)
+
+Use this when:
+- You know which lines to examine (from error messages, find_errors_in_file, etc.)
+- You need to see code around a specific line number
+- Exploring different sections of a large file
+- Following up on analyze_error output
+
+Examples:
+- Read lines 500-600: path="output.log", start_line=500, end_line=600  
+- Read 100 lines from line 1000: path="trace.log", start_line=1000
+- Check end of file: Use tail_file instead for last N lines`,
+      inputSchema: z.object({
+        path: z.string().describe('Path to the file (absolute or relative to terminal directory)'),
+        start_line: z.number().describe('First line to read (1-indexed)'),
+        end_line: z.number().optional().describe('Last line to read (default: start_line + max_lines)'),
+        max_lines: z.number().optional().describe('Maximum lines to return (default: 200, max: 500)'),
+      }),
+      execute: async ({ path, start_line, end_line, max_lines }) => {
+        const cwd = await getCwd();
+        
+        try {
+          const result = await invoke<string>('file_sections_tool', {
+            path,
+            workingDirectory: cwd,
+            startLine: start_line,
+            endLine: end_line,
+            maxLines: max_lines,
+          });
+          return result;
+        } catch (error) {
+          return `Error reading file section: ${error}`;
+        }
+      },
+    }),
+
+    undo_file_change: tool({
+      description: `Undo the last file modification by restoring from backup.
+File backups are automatically created when using write_file, append_to_file, or replace_in_file.
+
+Use this when:
+- User says "undo that" after a file was modified
+- A file change caused problems and needs to be reverted
+- You made a mistake in a file edit
+
+Examples:
+- Undo most recent change: (no parameters)
+- Undo specific file: path="config.json"
+
+Note: Keeps up to 5 backups per file, 50 total across all files.`,
+      inputSchema: z.object({
+        path: z.string().optional().describe('Specific file to restore (default: most recently modified file)'),
+      }),
+      execute: async ({ path }) => {
+        const cwd = await getCwd();
+        
+        try {
+          const result = await invoke<string>('undo_file_change_tool', {
+            path: path || null,
+            workingDirectory: cwd,
+          });
+          // Invalidate cache since file was restored
+          if (path) {
+            fileCache.invalidate(path, cwd);
+          }
+          return result;
+        } catch (error) {
+          return `Error undoing file change: ${error}`;
+        }
+      },
+    }),
+
+    list_file_backups: tool({
+      description: `List available file backups that can be restored with undo_file_change.
+Shows backup timestamps and sizes.
+
+Use this when:
+- User asks what can be undone
+- You want to see history of file changes
+- Before restoring to check available versions`,
+      inputSchema: z.object({
+        path: z.string().optional().describe('Filter backups for a specific file'),
+      }),
+      execute: async ({ path }) => {
+        const cwd = await getCwd();
+        
+        try {
+          const result = await invoke<string>('list_file_backups_tool', {
+            path: path || null,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error listing backups: ${error}`;
+        }
+      },
+    }),
+
+    diff_files: tool({
+      description: `Compare two files OR show changes made to a file since last backup.
+
+Two modes:
+1. Compare two files: file1="old.txt", file2="new.txt"
+2. Show recent changes: file1="config.json" (compares current vs backup)
+
+Use this when:
+- User asks "what did you change?"
+- Comparing two versions of a file
+- Reviewing modifications before committing
+
+Output shows:
+- Lines added (+)
+- Lines removed (-)
+- Context around changes`,
+      inputSchema: z.object({
+        file1: z.string().describe('First file path (or only file to compare against its backup)'),
+        file2: z.string().optional().describe('Second file path (omit to compare file1 with its backup)'),
+      }),
+      execute: async ({ file1, file2 }) => {
+        const cwd = await getCwd();
+        
+        try {
+          const result = await invoke<string>('diff_files_tool', {
+            file1,
+            file2: file2 || null,
+            workingDirectory: cwd,
+          });
+          return result;
+        } catch (error) {
+          return `Error comparing files: ${error}`;
         }
       },
     }),

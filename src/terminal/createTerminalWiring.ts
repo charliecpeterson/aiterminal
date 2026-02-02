@@ -50,8 +50,6 @@ export function createTerminalWiring(params: {
     xtermContainer?: HTMLElement;
     appearance: AppearanceSettings;
     maxMarkers: number;
-    foldThreshold: number;
-    foldEnabled: boolean;
 
     visibleRef: { current: boolean };
     selectionPointRef: MutableRefObject<{ x: number; y: number } | null>;
@@ -81,8 +79,6 @@ export function createTerminalWiring(params: {
         xtermContainer,
         appearance,
         maxMarkers,
-        foldThreshold,
-        foldEnabled,
         visibleRef,
         selectionPointRef,
         pendingFileCaptureRef,
@@ -146,8 +142,6 @@ export function createTerminalWiring(params: {
     const markerManager = createMarkerManager({
         term,
         maxMarkers,
-        foldThreshold,
-        foldEnabled,
         setCopyMenu,
         getRangeText: (range) => getRangeText(term, range),
         addContextItem,

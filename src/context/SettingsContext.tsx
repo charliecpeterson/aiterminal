@@ -33,18 +33,32 @@ export interface AiSettings {
     enable_context_summaries?: boolean;       // Default: false
     context_summary_threshold?: number;       // Default: 2
     context_auto_cleanup_hours?: number;      // Default: 0 (disabled)
+    
+    // Auto-Routing: Intelligent model selection based on query complexity
+    auto_routing?: {
+        enabled: boolean;  // Default: true
+        
+        // Model tiers
+        simple_model: string;      // Default: "gpt-4o-mini"
+        moderate_model: string;    // Default: "gpt-4.1"
+        complex_model: string;     // Default: "gpt-4.1"
+        
+        // Budget tiers (optional, falls back to mode defaults)
+        simple_budget?: number;    // Default: 4000
+        moderate_budget?: number;  // Default: 8000
+        complex_budget?: number;   // Default: 12000
+        
+        // Prompt enhancement
+        enable_prompt_enhancement: boolean;  // Default: true
+        
+        // UI/Export preferences
+        show_routing_info: boolean;  // Default: true
+        export_routing_detail: 'minimal' | 'standard' | 'detailed';  // Default: 'standard'
+    };
 }
 
 export interface TerminalSettings {
     max_markers: number;
-}
-
-export interface FoldSettings {
-    enabled: boolean; // Enable output folding
-    threshold: number; // Lines before showing notification (default: 50)
-    show_preview_lines: number; // Lines to show in preview (default: 3)
-    auto_open_window: boolean; // Automatically open window for very large outputs
-    large_threshold: number; // Lines to suggest window (default: 500)
 }
 
 export interface AutocompleteSettings {
@@ -68,7 +82,6 @@ export interface AppSettings {
     appearance: AppearanceSettings;
     ai: AiSettings;
     terminal: TerminalSettings;
-    fold?: FoldSettings; // Optional for backward compatibility
     autocomplete?: AutocompleteSettings; // Optional for backward compatibility
     streaming?: StreamingSettings; // Optional for backward compatibility
 }
@@ -126,13 +139,6 @@ const SettingsProviderInner: React.FC<{ children: React.ReactNode }> = ({ childr
                     api_key_in_keychain: false,
                 },
                 terminal: { max_markers: 200 },
-                fold: {
-                    enabled: true,
-                    threshold: 30,
-                    show_preview_lines: 3,
-                    auto_open_window: false,
-                    large_threshold: 500
-                },
                 autocomplete: { 
                     enable_inline: true, 
                     inline_source: 'history' as const,

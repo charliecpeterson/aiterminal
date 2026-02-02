@@ -4,7 +4,7 @@
  * Manages SSH profiles, provides CRUD operations, and tracks connection health
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { SSHProfile, SSHConfigHost, ConnectionHealth } from '../types/ssh';
 import { createLogger } from '../utils/logger';
@@ -29,6 +29,7 @@ interface SSHProfilesContextType {
   // Connection tracking - keyed by PTY ID, not profile ID
   connections: Map<string, ConnectionHealth>;
   updateConnection: (ptyId: string, health: Partial<ConnectionHealth>) => void;
+  removeConnection: (ptyId: string) => void;
   
   // Helper to get all connections for a profile
   getProfileConnections: (profileId: string) => ConnectionHealth[];
@@ -58,6 +59,9 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
   const [connections, setConnections] = useState<Map<string, ConnectionHealth>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Operation queue to prevent race conditions in profile CRUD operations
+  const operationQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // Load profiles from backend
   const loadProfiles = useCallback(async () => {
@@ -89,25 +93,31 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     }
   }, []);
 
-  // Add a new profile
+  // Add a new profile (queued to prevent race conditions)
   const addProfile = useCallback(async (profile: SSHProfile) => {
-    try {
+    const operation = async () => {
       setError(null);
       const currentProfiles = await invoke<SSHProfile[]>('load_ssh_profiles');
       const newProfiles = [...currentProfiles, profile];
       await invoke('save_ssh_profiles', { profiles: newProfiles });
       setProfiles(newProfiles);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-      log.error('Failed to add SSH profile', err);
-      throw err;
-    }
+    };
+    
+    operationQueueRef.current = operationQueueRef.current
+      .then(operation)
+      .catch(err => {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        log.error('Failed to add SSH profile', err);
+        throw err;
+      });
+    
+    return operationQueueRef.current;
   }, []);
 
-  // Update existing profile
+  // Update existing profile (queued to prevent race conditions)
   const updateProfile = useCallback(async (id: string, updates: Partial<SSHProfile>) => {
-    try {
+    const operation = async () => {
       setError(null);
       const currentProfiles = await invoke<SSHProfile[]>('load_ssh_profiles');
       const newProfiles = currentProfiles.map(p => 
@@ -115,28 +125,40 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
       );
       await invoke('save_ssh_profiles', { profiles: newProfiles });
       setProfiles(newProfiles);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-      log.error('Failed to update SSH profile', err);
-      throw err;
-    }
+    };
+    
+    operationQueueRef.current = operationQueueRef.current
+      .then(operation)
+      .catch(err => {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        log.error('Failed to update SSH profile', err);
+        throw err;
+      });
+    
+    return operationQueueRef.current;
   }, []);
 
-  // Delete profile
+  // Delete profile (queued to prevent race conditions)
   const deleteProfile = useCallback(async (id: string) => {
-    try {
+    const operation = async () => {
       setError(null);
       const currentProfiles = await invoke<SSHProfile[]>('load_ssh_profiles');
       const newProfiles = currentProfiles.filter(p => p.id !== id);
       await invoke('save_ssh_profiles', { profiles: newProfiles });
       setProfiles(newProfiles);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-      log.error('Failed to delete SSH profile', err);
-      throw err;
-    }
+    };
+    
+    operationQueueRef.current = operationQueueRef.current
+      .then(operation)
+      .catch(err => {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        log.error('Failed to delete SSH profile', err);
+        throw err;
+      });
+    
+    return operationQueueRef.current;
   }, []);
 
   // Load SSH config hosts
@@ -171,6 +193,15 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     });
   }, []);
 
+  // Remove connection (cleanup when PTY closes)
+  const removeConnection = useCallback((ptyId: string) => {
+    setConnections(prev => {
+      const updated = new Map(prev);
+      updated.delete(ptyId);
+      return updated;
+    });
+  }, []);
+
   // Get all connections for a specific profile
   const getProfileConnections = useCallback((profileId: string): ConnectionHealth[] => {
     return Array.from(connections.values()).filter(c => c.profileId === profileId);
@@ -190,7 +221,7 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     init();
   }, [loadProfiles, loadSSHConfig]);
 
-  const value: SSHProfilesContextType = {
+  const value = useMemo<SSHProfilesContextType>(() => ({
     profiles,
     loadProfiles,
     saveProfiles,
@@ -202,10 +233,27 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     loadSSHConfig,
     connections,
     updateConnection,
+    removeConnection,
     getProfileConnections,
     isLoading,
     error,
-  };
+  }), [
+    profiles,
+    loadProfiles,
+    saveProfiles,
+    addProfile,
+    updateProfile,
+    deleteProfile,
+    getProfileById,
+    sshConfigHosts,
+    loadSSHConfig,
+    connections,
+    updateConnection,
+    removeConnection,
+    getProfileConnections,
+    isLoading,
+    error,
+  ]);
 
   return (
     <SSHProfilesContext.Provider value={value}>

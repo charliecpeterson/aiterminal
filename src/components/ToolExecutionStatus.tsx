@@ -5,7 +5,7 @@
  * and progress indicators.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { toolExecutionStyles } from './ToolExecutionStatus.styles';
 
 export interface ToolExecution {
@@ -27,7 +27,9 @@ interface ToolExecutionStatusProps {
 }
 
 export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecutionStatusProps) {
-  const activeExecutions = executions.filter(e => e.status !== 'completed' && e.status !== 'failed');
+  const activeExecutions = useMemo(() => 
+    executions.filter(e => e.status !== 'completed' && e.status !== 'failed')
+  , [executions]);
   const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
   
   if (activeExecutions.length === 0) {

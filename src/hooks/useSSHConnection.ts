@@ -4,10 +4,13 @@
  */
 
 import { useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { emitTo } from '@tauri-apps/api/event';
 import { createLogger } from '../utils/logger';
 import { connectSSHProfileNewTab, getProfileDisplayName } from '../utils/sshConnect';
+import { 
+  checkPtyHealth, 
+  broadcastConnectionStatus,
+  deriveConnectionStatus,
+} from '../services/sshHealthService';
 import type { SSHProfile } from '../types/ssh';
 
 const log = createLogger('SSHConnection');
@@ -55,15 +58,13 @@ export function useSSHConnection(options: UseSSHConnectionOptions) {
         lastActivity: new Date(),
       });
       
-      // Broadcast to SSH window
-      emitTo("ssh-panel", "connection-status-update", {
-        ptyId: String(ptyId),
+      // Broadcast to SSH window using centralized service
+      await broadcastConnectionStatus({
+        ptyId,
         profileId: profile.id,
-        tabName: displayName,
         status: 'connecting',
+        tabName: displayName,
         tabId: String(ptyId),
-      }).catch((err) => {
-        log.debug('Failed to emit connection status to SSH panel', err);
       });
       
       // Update profile connection stats
@@ -74,7 +75,7 @@ export function useSSHConnection(options: UseSSHConnectionOptions) {
     } catch (error) {
       log.error("Failed to connect SSH profile", error);
     }
-  }, [addSSHTab, updateConnection, updateProfile]);
+  }, [addSSHTab, setPtyToProfileMap, updateConnection, updateProfile]);
 
   /**
    * Monitor connection health for SSH sessions
@@ -82,24 +83,24 @@ export function useSSHConnection(options: UseSSHConnectionOptions) {
   useEffect(() => {
     if (ptyToProfileMap.size === 0) return;
 
+    let isRunning = true;
+
     const monitorConnections = async () => {
+      if (!isRunning) return;
+
       for (const [ptyId, profileId] of ptyToProfileMap.entries()) {
+        if (!isRunning) break;
+
         try {
-          // Get PTY info
-          const ptyInfo = await invoke<any>('get_pty_info', { id: ptyId });
-          
-          // Get latency
-          const latency = await invoke<number>('measure_pty_latency', { id: ptyId });
+          // Use centralized health check
+          const healthResult = await checkPtyHealth(ptyId);
           
           // Get tab name
           const tab = tabs.find(t => t.panes.some(p => p.id === ptyId));
           const tabName = tab?.customName || tab?.title || 'Unknown';
           
-          // Determine status
-          let status: 'connected' | 'disconnected' | 'error' = 'disconnected';
-          if (ptyInfo && ptyInfo.pty_type === 'ssh') {
-            status = 'connected';
-          }
+          // Derive status from health result
+          const status = deriveConnectionStatus(healthResult);
           
           // Update connection health (keyed by ptyId)
           updateConnection(String(ptyId), {
@@ -107,20 +108,18 @@ export function useSSHConnection(options: UseSSHConnectionOptions) {
             tabId: String(ptyId),
             tabName,
             status,
-            latency: latency > 0 ? latency : undefined,
+            latency: healthResult.latencyMs ?? undefined,
             lastActivity: new Date(),
           });
           
-          // Broadcast to SSH window
-          emitTo("ssh-panel", "connection-status-update", {
-            ptyId: String(ptyId),
+          // Broadcast to SSH window using centralized service
+          await broadcastConnectionStatus({
+            ptyId,
             profileId,
-            tabName,
             status,
-            latency: latency > 0 ? latency : undefined,
+            latencyMs: healthResult.latencyMs ?? undefined,
+            tabName,
             tabId: String(ptyId),
-          }).catch((err) => {
-            log.debug('Failed to emit connection status to SSH panel', err);
           });
         } catch (error) {
           // PTY might be closed
@@ -130,26 +129,28 @@ export function useSSHConnection(options: UseSSHConnectionOptions) {
             status: 'disconnected',
           });
           
-          // Broadcast to SSH window
-          emitTo("ssh-panel", "connection-status-update", {
-            ptyId: String(ptyId),
+          // Broadcast disconnection using centralized service
+          await broadcastConnectionStatus({
+            ptyId,
             profileId,
             status: 'disconnected',
             tabId: String(ptyId),
-          }).catch((err) => {
-            log.debug('Failed to emit disconnection status to SSH panel', err);
           });
         }
       }
+
+      // Schedule next check using setTimeout to prevent overlap
+      if (isRunning) {
+        setTimeout(monitorConnections, 5000);
+      }
     };
 
-    // Monitor immediately
+    // Start monitoring
     monitorConnections();
 
-    // Then monitor every 5 seconds
-    const intervalId = setInterval(monitorConnections, 5000);
-
-    return () => clearInterval(intervalId);
+    return () => {
+      isRunning = false;
+    };
   }, [ptyToProfileMap, tabs, updateConnection]);
 
   /**
@@ -171,7 +172,7 @@ export function useSSHConnection(options: UseSSHConnectionOptions) {
       
       return changed ? updated : prev;
     });
-  }, [tabs]);
+  }, [tabs, setPtyToProfileMap]);
 
   return {
     connectSSHProfile,

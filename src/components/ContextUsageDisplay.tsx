@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ChatMessage } from '../context/AIContext';
+import type { RoutingDecision, PromptEnhancement } from '../types/routing';
 
 interface MessageMetricsProps {
   metrics?: ChatMessage['metrics'];
@@ -13,12 +14,14 @@ interface MessageMetricsProps {
       text: string;
     }>;
   };
+  routingDecision?: RoutingDecision;
+  promptEnhancement?: PromptEnhancement;
 }
 
 /**
  * Display performance metrics for an AI response in a sleek, compact way
  */
-export function MessageMetrics({ metrics, usedContext }: MessageMetricsProps) {
+export function MessageMetrics({ metrics, usedContext, routingDecision, promptEnhancement }: MessageMetricsProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (!metrics) return null;
@@ -139,6 +142,63 @@ export function MessageMetrics({ metrics, usedContext }: MessageMetricsProps) {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+          
+          {/* Routing Decision (if available) */}
+          {routingDecision && (
+            <div style={{ 
+              marginTop: '8px',
+              paddingTop: '8px',
+              borderTop: '1px solid var(--border-color, #333)',
+            }}>
+              <div style={{ marginBottom: '6px' }}>
+                <strong>Routing:</strong> {routingDecision.tier} tier
+                {' '}(complexity: {routingDecision.reasoning.score}/100)
+              </div>
+              <div style={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                fontSize: '11px',
+                opacity: 0.8,
+              }}>
+                <div>
+                  <span style={{ opacity: 0.6 }}>Model:</span> {routingDecision.model}
+                  {routingDecision.fallbackUsed && (
+                    <span style={{ color: '#f5a623', marginLeft: '6px' }}>fallback</span>
+                  )}
+                </div>
+                <div>
+                  <span style={{ opacity: 0.6 }}>Budget:</span> {routingDecision.contextBudget} tokens
+                </div>
+                <div>
+                  <span style={{ opacity: 0.6 }}>Type:</span> {routingDecision.reasoning.queryType}
+                </div>
+                <div>
+                  <span style={{ opacity: 0.6 }}>Temperature:</span> {routingDecision.temperature}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Prompt Enhancement (if applied) */}
+          {promptEnhancement?.wasEnhanced && (
+            <div style={{ 
+              marginTop: '8px',
+              paddingTop: '8px',
+              borderTop: '1px solid var(--border-color, #333)',
+            }}>
+              <div style={{ marginBottom: '6px' }}>
+                <strong>Prompt Enhanced:</strong> {promptEnhancement.reason}
+              </div>
+              <div style={{
+                fontSize: '11px',
+                opacity: 0.7,
+                fontStyle: 'italic',
+              }}>
+                "{promptEnhancement.enhanced}"
+              </div>
             </div>
           )}
         </div>

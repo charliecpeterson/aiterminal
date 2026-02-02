@@ -171,7 +171,7 @@ To make it clear what the model actually saw, assistant messages include an expa
 - Lists retrieved snippets (with source type/path when available).
 
 #### AI Capabilities & Tools
-The AI assistant has access to 21 tools that execute automatically to help you:
+The AI assistant has access to 28 tools that execute automatically to help you:
 
 **File Operations**
 1. **get_current_directory** - Get the active terminal's current working directory
@@ -224,13 +224,13 @@ The AI assistant has access to 21 tools that execute automatically to help you:
     - Glob patterns for filenames (e.g., `*.ts`, `**/*.json`)
     - Content search across files
 
-13. **grep_in_files** - **NEW!** Fast pattern search in specific files
+13. **grep_in_files** - Fast pattern search in specific files
     - More efficient than search_files for targeted searches
     - Returns matching lines with line numbers
     - Example: "Find 'ConnectionError' in all log files"
 
-**Error Analysis & Debugging** 🆕
-14. **analyze_error** - **NEW!** Smart error parser and debugger
+**Error Analysis & Debugging**
+14. **analyze_error** - Smart error parser and debugger
     - Automatically extracts file paths, line numbers, error types
     - Parses stack traces and identifies root causes
     - Checks which mentioned files exist
@@ -238,36 +238,71 @@ The AI assistant has access to 21 tools that execute automatically to help you:
     - **Use this first when debugging errors!**
     - Example: Paste crash output → AI extracts all relevant info and investigates
 
+15. **find_errors_in_file** - Scan large files for error patterns
+    - Efficiently scans GB+ files using streaming (no memory issues)
+    - Searches for common error patterns: error, fatal, panic, crash, timeout, etc.
+    - Returns matching lines with context (lines before/after)
+    - Great for job outputs, HPC logs, CI/CD logs, build output
+    - Example: "Check for errors in my job output file"
+
+16. **file_sections** - Read specific line ranges from large files
+    - Uses streaming for efficient large file access
+    - 1-indexed line numbers (matches error output/stack traces)
+    - Example: "Read lines 500-600 from output.log"
+
 **Git Operations**
-15. **git_status** - Get current branch, staged files, uncommitted changes
+17. **git_status** - Get current branch, staged files, uncommitted changes
     - Helps AI understand your git repository state
 
-16. **get_git_diff** - Show uncommitted changes
+18. **get_git_diff** - Show uncommitted changes
     - See what's been modified before committing
 
 **System & Process**
-17. **find_process** - Search for running processes by name
+19. **find_process** - Search for running processes by name
     - Examples: Find node processes, check for running servers
     - Useful for debugging "port already in use" errors
 
-18. **check_port** - Check if a network port is in use
+20. **check_port** - Check if a network port is in use
     - Shows which process is using the port
     - Common for debugging port conflicts
 
-19. **get_system_info** - Get OS, architecture, and disk space
+21. **get_system_info** - Get OS, architecture, and disk space
     - Useful for environment debugging
 
-20. **get_environment_variable** - Check environment variables
+22. **get_environment_variable** - Check environment variables
     - Examples: PATH, HOME, custom variables
 
+23. **get_shell_history** - Read your shell command history
+    - Find commands you ran earlier
+    - Filter by keyword (e.g., "show me recent git commands")
+    - Supports bash, zsh, and fish shells
+    - Example: "What npm commands did I run today?"
+
 **Utilities**
-21. **calculate** - Evaluate mathematical expressions
+24. **calculate** - Evaluate mathematical expressions
     - Examples: Unit conversions, sizing calculations
     - Supports arithmetic and math functions
 
-22. **web_search** - Generate search URLs for documentation
+25. **web_search** - Generate search URLs for documentation
     - Suggests Google searches when external info is needed
     - Cannot actually browse but provides helpful links
+
+**File Backup & Undo**
+26. **undo_file_change** - Restore file from automatic backup
+    - File backups are created automatically when using write_file, append_to_file, or replace_in_file
+    - Undo the most recent change or specify a file path
+    - Keeps up to 5 backups per file, 50 total
+    - Example: "Undo that change" or "Revert config.json"
+
+27. **list_file_backups** - List available file backups
+    - See what files can be restored
+    - Shows backup timestamps and sizes
+    - Filter by file path
+
+28. **diff_files** - Compare files or show changes
+    - Compare two files: "diff config.json config.json.bak"
+    - Show recent changes: "what did you change in config.json?"
+    - Shows added (+) and removed (-) lines with context
 
 #### Command Approval System
 Dangerous commands are protected by an interactive approval system:
@@ -396,7 +431,90 @@ Manage multiple terminal sessions in a single window.
   - **Multi-Tab Monitoring**: Easily see which background tabs have running commands
   - **Long-Running Tasks**: Especially useful when running builds, tests, or servers in background tabs
 
-### 9. Quick Actions
+### 9. Split Panes
+Split your terminal tab into multiple panes for side-by-side work.
+
+#### Creating Splits
+- **Vertical Split**: Press `Cmd + D` (macOS) / `Ctrl + D` (Windows/Linux) to split horizontally (panes side by side)
+- **Horizontal Split**: Press `Cmd + Shift + D` (macOS) / `Ctrl + Shift + D` (Windows/Linux) to split vertically (panes stacked)
+- Each pane is an independent terminal session with its own PTY
+
+#### Navigating Panes
+- **Switch Focus**: Click on a pane to focus it, or use keyboard shortcuts
+- **Focused Pane**: The active pane has a highlighted border
+- **Close Pane**: Use `Cmd + W` to close the focused pane (closes tab if only one pane)
+
+#### Split Ratio
+- **Resize**: Drag the divider between panes to adjust the split ratio
+- **Default**: Splits start at 50/50 ratio
+- **Range**: Adjustable from 10% to 90%
+
+#### Use Cases
+- **Code & Tests**: Edit code in one pane, run tests in another
+- **Logs & Commands**: Monitor logs while running commands
+- **Server & Client**: Run backend and frontend side by side
+- **Compare Outputs**: Run similar commands in different directories
+
+### 10. Autocomplete
+AI Terminal provides intelligent command completion to speed up your workflow.
+
+#### Inline Completions (Ghost Text)
+- As you type, suggestions appear as faded "ghost text"
+- Press `Tab` to accept the suggestion
+- Press `Escape` or keep typing to dismiss
+
+#### Menu Completions
+- A dropdown menu shows matching commands from your history
+- Navigate with arrow keys, press `Enter` to select
+- Matches are filtered as you type
+
+#### Completion Sources
+Configure in Settings → Terminal → Autocomplete:
+
+- **History** (default): Suggestions based on your shell command history
+  - Fast and doesn't require API calls
+  - Works offline
+  
+- **LLM**: AI-powered suggestions using your configured model
+  - Understands context and intent
+  - Can suggest commands you've never typed
+  - Requires API key and uses tokens
+  - Configurable: temperature, max tokens, debounce delay
+
+- **Hybrid**: Combines history and LLM sources
+  - Falls back to history when LLM is slow or unavailable
+
+#### Settings
+- **Enable Inline**: Toggle ghost text suggestions
+- **Enable Menu**: Toggle dropdown completion menu
+- **Inline Source**: Choose history, llm, or hybrid
+- **LLM Temperature**: 0.0 (focused) to 1.0 (creative)
+- **LLM Max Tokens**: Limit completion length (5-50)
+- **LLM Debounce**: Delay before requesting completion (0-1000ms)
+
+### 11. Output Folding
+Automatically fold large command outputs to keep your terminal readable.
+
+#### How It Works
+- When a command produces output exceeding the threshold (default: 30 lines), it's automatically collapsed
+- A fold indicator shows "▶ [N lines]" - click to expand
+- Very large outputs (500+ lines) show a "View in Window" button
+
+#### Settings
+Configure in Settings → Terminal → Output Folding:
+
+- **Enabled**: Toggle folding on/off
+- **Threshold**: Minimum lines before folding (default: 30)
+- **Preview Lines**: Lines to show before fold (default: 3)
+- **Auto Open Window**: Automatically open Output Viewer for very large outputs
+- **Large Threshold**: Lines considered "very large" (default: 500)
+
+#### Manual Controls
+- Click the fold indicator to expand/collapse
+- "View in Window" opens output in the dedicated Output Viewer
+- Output Viewer supports search, copy, and export
+
+### 12. Quick Actions
 Save and execute sequences of commands with a single click. Perfect for repetitive tasks, deployment workflows, or testing routines.
 
 #### Features
@@ -451,7 +569,7 @@ open http://localhost:3000
 - All output appears in the active terminal in real-time
 - Quick Actions window can remain open while commands execute
 
-### 10. Command History Navigator
+### 13. Command History Navigator
 Quickly jump to any previous command in your terminal history with a searchable, keyboard-driven overlay.
 
 #### Features
@@ -505,7 +623,7 @@ Quickly jump to any previous command in your terminal history with a searchable,
 - Exit codes and timestamps come from OSC 133 sequences
 - Overlay appears centered and dismisses on click outside
 
-### 11. File Preview
+### 14. File Preview
 View and monitor files directly from the terminal with live rendering in a separate window. Perfect for viewing documentation, logs, HTML previews, or any text-based files.
 
 #### Features
@@ -732,7 +850,9 @@ aiterm_render ~/sphinx-docs/index.rst
 | Action | Shortcut (macOS) | Shortcut (Windows/Linux) |
 |--------|------------------|--------------------------|
 | **New Tab** | `Cmd` + `T` | `Ctrl` + `T` |
-| **Close Tab** | `Cmd` + `W` | `Ctrl` + `W` |
+| **Close Tab/Pane** | `Cmd` + `W` | `Ctrl` + `W` |
+| **Split Vertical** | `Cmd` + `D` | `Ctrl` + `D` |
+| **Split Horizontal** | `Cmd` + `Shift` + `D` | `Ctrl` + `Shift` + `D` |
 | **Zoom In** | `Cmd` + `+` (or `=`) | `Ctrl` + `+` (or `=`) |
 | **Zoom Out** | `Cmd` + `-` | `Ctrl` + `-` |
 | **Reset Zoom** | `Cmd` + `0` | `Ctrl` + `0` |
@@ -759,6 +879,9 @@ Open Settings → AI to configure providers and models.
 - **Models**: Any model that supports function calling/tool use
   - Requires tool calling support for automatic command execution
 - **API Key**: Required for cloud providers (OpenAI, Anthropic, Gemini)
+  - **Keychain Storage** (optional): Store API key securely in system keychain
+  - Toggle "Store in Keychain" to enable secure storage
+  - Key is encrypted and only accessible to AI Terminal
 - **Custom URL**: Override base API endpoints (useful for Ollama or proxies)
 - **Test Connection**: Validates credentials and populates model dropdowns
 - **Command Approval**: Enable/disable approval requirement for dangerous commands
@@ -769,7 +892,7 @@ Open Settings → AI to configure providers and models.
 ### Technical Implementation
 The AI system is built on:
 - **Vercel AI SDK v5** for robust streaming and tool execution
-- **Automatic Tool Calling**: 17 tools execute seamlessly to accomplish tasks
+- **Automatic Tool Calling**: 28 tools execute seamlessly to accomplish tasks
 - **Multi-Step Execution**: Up to 5 sequential tool calls per request using `stopWhen`
 - **Approval System**: Promise-based blocking for dangerous command approval
 - **Terminal Integration**: Uses `get_pty_cwd` to determine your actual working directory
@@ -798,7 +921,7 @@ Notes:
 
 AIterminal has been recently refactored for improved maintainability and performance. The application now uses a modular architecture with:
 
-- **9 Custom React Hooks** - Managing state, sessions, SSH, keyboard shortcuts, etc.
+- **10 Custom React Hooks** - Managing state, sessions, SSH, keyboard shortcuts, etc.
 - **Focused Components** - TabBar, TerminalGrid, AppToolbar, WindowRouter
 - **Clean Separation** - UI, business logic, and utilities are clearly separated
 
@@ -814,7 +937,7 @@ For developers interested in contributing, see [DEV_GUIDE.md](../DEV_GUIDE.md) i
 
 The refactoring reduced the main `App.tsx` file from 1,002 lines to 207 lines (79% reduction) by extracting:
 
-- **State Management**: 9 custom hooks handle tabs, sessions, SSH, commands, keyboard shortcuts
+- **State Management**: 10 custom hooks handle tabs, sessions, SSH, commands, keyboard shortcuts
 - **UI Components**: TabBar, AppToolbar, TerminalGrid, WindowRouter for focused rendering
 - **Window Management**: Separate window types (AI Panel, SSH Panel, Quick Actions, Output Viewer, Preview)
 - **Cross-Window Communication**: Event-based sync between windows

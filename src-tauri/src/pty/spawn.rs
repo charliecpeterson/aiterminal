@@ -51,8 +51,14 @@ pub fn spawn_pty(window: tauri::Window, state: State<AppState>) -> Result<u32, S
     let master = pair.master;
     let writer = master.take_writer().map_err(|e| e.to_string())?;
 
-    // Spawn reader thread with SSH detection
-    let reader_handle = spawn_reader_thread(reader, window, id, state.ssh_sessions.clone());
+    // Spawn reader thread with SSH detection and output tracking
+    let reader_handle = spawn_reader_thread(
+        reader, 
+        window, 
+        id, 
+        state.ssh_sessions.clone(),
+        state.pty_last_output.clone(),
+    );
 
     {
         let mut ptys = state

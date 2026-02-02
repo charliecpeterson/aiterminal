@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import SettingsModal from "./components/SettingsModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { WindowRouter } from "./components/WindowRouter";
 import { TabBar } from "./components/TabBar";
 import { AppToolbar } from "./components/AppToolbar";
 import { TerminalGrid } from "./components/TerminalGrid";
+import { CommandPalette } from "./components/CommandPalette";
 
 import { SettingsProvider } from "./context/SettingsContext";
 import { AIProvider } from "./context/AIContext";
@@ -20,7 +21,8 @@ import { useCommandTracking } from "./hooks/useCommandTracking";
 import { useWindowCloseHandler } from "./hooks/useWindowCloseHandler";
 import { useAIPanelAutoOpen } from "./hooks/useAIPanelAutoOpen";
 import { detectWindowType } from "./utils/windowDetection";
-import { openAIPanelWindow, openSSHPanelWindow, openQuickActionsWindow } from "./utils/windowManagement";
+import { openAIPanelWindow, openSSHPanelWindow } from "./utils/windowManagement";
+import { initializeActions } from "./actions/actions";
 import { createLogger } from "./utils/logger";
 import "./App.css";
 
@@ -30,6 +32,7 @@ function AppContent() {
   const [mainActiveTabId, setMainActiveTabId] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const { updateProfile, updateConnection, getProfileById } = useSSHProfiles();
   
   // Detect window type
@@ -101,6 +104,7 @@ function AppContent() {
     splitPane,
     setFocusedPane,
     setIsSettingsOpen,
+    setIsCommandPaletteOpen,
     openAIPanelWindow,
     openSSHPanelWindow,
   });
@@ -141,6 +145,25 @@ function AppContent() {
     runningCommands,
   });
 
+  // Initialize command palette actions when dependencies change
+  // Also run synchronously on first render to ensure actions are available immediately
+  const actionDeps = useMemo(() => ({
+    tabs,
+    activeTabId,
+    createTab,
+    closeTab,
+    renameTab,
+    setActiveTabId,
+    splitPane,
+    closePane,
+    setFocusedPane,
+    setIsSettingsOpen,
+    setIsCommandPaletteOpen,
+  }), [tabs, activeTabId, createTab, closeTab, renameTab, setActiveTabId, splitPane, closePane, setFocusedPane, setIsSettingsOpen, setIsCommandPaletteOpen]);
+
+  // Initialize actions synchronously when deps change
+  initializeActions(actionDeps);
+
   return (
     <WindowRouter
       isAiWindow={isAiWindow}
@@ -153,6 +176,10 @@ function AppContent() {
     >
       <div className="app-container">
         <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        <CommandPalette 
+          isOpen={isCommandPaletteOpen} 
+          onClose={() => setIsCommandPaletteOpen(false)} 
+        />
         <div className="tabs-header">
           <TabBar
             tabs={tabs}
@@ -168,9 +195,7 @@ function AppContent() {
           <AppToolbar
             onSSHClick={openSSHPanelWindow}
             onAIPanelClick={() => openAIPanelWindow({ activeTabId, tabs })}
-            onQuickActionsClick={() => openQuickActionsWindow({ activeTabId, tabs })}
-            onHistoryClick={() => window.dispatchEvent(new CustomEvent('toggle-command-history'))}
-            onSettingsClick={() => setIsSettingsOpen(true)}
+            onCommandPaletteClick={() => setIsCommandPaletteOpen(true)}
           />
         </div>
         <TerminalGrid

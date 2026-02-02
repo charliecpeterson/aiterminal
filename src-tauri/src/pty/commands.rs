@@ -1,8 +1,22 @@
 use super::PtyInfo;
 use crate::models::AppState;
 use portable_pty::PtySize;
+use serde::Serialize;
 use std::io::Write;
 use tauri::State;
+
+/// Terminal health status
+#[derive(Serialize, Debug, Clone)]
+pub struct TerminalHealth {
+    /// Whether the PTY process is alive
+    pub process_alive: bool,
+    /// Whether we can write to the PTY
+    pub writable: bool,
+    /// Time since last output in milliseconds (None if never received output)
+    pub ms_since_last_output: Option<u64>,
+    /// Overall health status: "healthy", "idle", "unresponsive", "dead"
+    pub status: String,
+}
 
 #[tauri::command]
 pub fn get_pty_info(id: u32, state: State<AppState>) -> Result<PtyInfo, String> {
@@ -209,4 +223,77 @@ pub fn get_pty_cwd(id: u32, state: State<AppState>) -> Result<String, String> {
     std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| format!("Failed to get current directory: {}", e))
+}
+
+/// Check the health of a PTY session
+/// Returns health status including process state, writability, and idle time
+#[tauri::command]
+pub fn check_pty_health(id: u32, state: State<AppState>) -> Result<TerminalHealth, String> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    // Check if PTY exists and process is alive
+    let (process_alive, writable) = {
+        let mut ptys = state
+            .ptys
+            .lock()
+            .map_err(|e| format!("Failed to acquire PTY lock: {}", e))?;
+
+        let session = ptys
+            .get_mut(&id)
+            .ok_or_else(|| format!("PTY {} not found", id))?;
+
+        // Check if child process is still running
+        let process_alive = if let Some(child) = &mut session.child {
+            match child.try_wait() {
+                Ok(Some(_)) => false, // Process has exited
+                Ok(None) => true,     // Process still running
+                Err(_) => false,      // Error checking = assume dead
+            }
+        } else {
+            false
+        };
+
+        // Try to write an empty string (tests if writer is still valid)
+        // Note: We write nothing to avoid affecting the terminal
+        let writable = session.writer.flush().is_ok();
+
+        (process_alive, writable)
+    };
+
+    // Get time since last output
+    let ms_since_last_output = {
+        let last_output = state
+            .pty_last_output
+            .lock()
+            .map_err(|e| format!("Failed to acquire last_output lock: {}", e))?;
+
+        last_output.get(&id).map(|&last| now_ms.saturating_sub(last))
+    };
+
+    // Determine overall status
+    let status = if !process_alive {
+        "dead".to_string()
+    } else if !writable {
+        "unresponsive".to_string()
+    } else if let Some(idle_ms) = ms_since_last_output {
+        // Consider "idle" if no output for more than 5 minutes while process is alive
+        if idle_ms > 5 * 60 * 1000 {
+            "idle".to_string()
+        } else {
+            "healthy".to_string()
+        }
+    } else {
+        // No output ever received - could be waiting for first prompt
+        "healthy".to_string()
+    };
+
+    Ok(TerminalHealth {
+        process_alive,
+        writable,
+        ms_since_last_output,
+        status,
+    })
 }

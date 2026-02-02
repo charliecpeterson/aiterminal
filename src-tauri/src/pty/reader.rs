@@ -11,6 +11,7 @@ pub fn spawn_reader_thread(
     window: tauri::Window,
     id: u32,
     ssh_sessions: Arc<Mutex<std::collections::HashMap<u32, SshSessionInfo>>>,
+    pty_last_output: Arc<Mutex<std::collections::HashMap<u32, u64>>>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut buf = [0u8; PTY_BUFFER_SIZE];
@@ -19,6 +20,15 @@ pub fn spawn_reader_thread(
                 Ok(n) if n > 0 => {
                     let data = &buf[..n];
                     let data_str = String::from_utf8_lossy(data).to_string();
+
+                    // Update last output timestamp
+                    if let Ok(mut last_output) = pty_last_output.lock() {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64;
+                        last_output.insert(id, now_ms);
+                    }
 
                     // Parse OSC sequences for SSH detection
                     if let Some(remote_info) = parse_remote_host_osc(&data_str) {
@@ -30,6 +40,10 @@ pub fn spawn_reader_thread(
                     }
                 }
                 _ => {
+                    // Clean up last output tracking on exit
+                    if let Ok(mut last_output) = pty_last_output.lock() {
+                        last_output.remove(&id);
+                    }
                     let _ = window.emit(&format!("pty-exit:{}", id), ());
                     break;
                 }

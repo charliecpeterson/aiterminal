@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatMessage, PendingApproval } from "../context/AIContext";
 import { formatChatTime, handlePromptKeyDown, roleLabel } from "../ai/panelUi";
@@ -7,6 +7,37 @@ import { ToolExecutionStatus, type ToolExecution } from "./ToolExecutionStatus";
 import { MessageMetrics } from "./ContextUsageDisplay";
 import { ToolProgressDisplay } from "./ToolProgressDisplay";
 import { chatStyles } from "./AIChatTab.styles";
+
+// Send arrow icon component
+const SendIcon = () => (
+  <svg 
+    width="16" 
+    height="16" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <line x1="12" y1="19" x2="12" y2="5" />
+    <polyline points="5 12 12 5 19 12" />
+  </svg>
+);
+
+// Stop/Cancel icon component
+const StopIcon = () => (
+  <svg 
+    width="14" 
+    height="14" 
+    viewBox="0 0 24 24" 
+    fill="currentColor"
+  >
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+  </svg>
+);
+
+export type QuickActionType = 'summarize' | 'explain-error' | 'draft-fix';
 
 export function AIChatTab(props: {
   messages: ChatMessage[];
@@ -21,6 +52,7 @@ export function AIChatTab(props: {
   pendingApprovals?: PendingApproval[];
   onApprove?: (id: string) => void;
   onDeny?: (id: string) => void;
+  onQuickAction?: (action: QuickActionType) => void;
 }) {
   const {
     messages,
@@ -34,11 +66,33 @@ export function AIChatTab(props: {
     pendingApprovals = [],
     onApprove,
     onDeny,
+    onQuickAction,
   } = props;
 
   // Hover states for interactive elements
   const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
   const [inputFocus, setInputFocus] = useState(false);
+  
+  // Ref for auto-resize textarea
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea based on content
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto';
+    
+    // Calculate new height (min 24px, max 120px as defined in styles)
+    const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 120);
+    textarea.style.height = `${newHeight}px`;
+  }, []);
+
+  // Adjust height when prompt changes
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [prompt, adjustTextareaHeight]);
 
   const renderMarkdown = (content: string) => (
     <AIMarkdown
@@ -53,15 +107,17 @@ export function AIChatTab(props: {
     />
   );
 
-  // Convert pending approvals to tool executions
-  const toolExecutions: ToolExecution[] = pendingApprovals.map(approval => ({
-    id: approval.id,
-    toolName: 'execute_command',
-    status: 'pending' as const,
-    command: approval.command,
-    workingDirectory: approval.cwd,
-    startTime: approval.timestamp,
-  }));
+  // Convert pending approvals to tool executions (memoized to prevent unnecessary re-renders)
+  const toolExecutions = useMemo<ToolExecution[]>(() => 
+    pendingApprovals.map(approval => ({
+      id: approval.id,
+      toolName: 'execute_command',
+      status: 'pending' as const,
+      command: approval.command,
+      workingDirectory: approval.cwd,
+      startTime: approval.timestamp,
+    }))
+  , [pendingApprovals]);
 
   return (
     <div style={chatStyles.section}>
@@ -90,7 +146,7 @@ export function AIChatTab(props: {
                 }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip1: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip1: false }))}
-                onClick={() => setPrompt("Summarize the last command and output.")}
+                onClick={() => onQuickAction?.('summarize')}
               >
                 Summarize last command
               </button>
@@ -102,7 +158,7 @@ export function AIChatTab(props: {
                 }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip2: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip2: false }))}
-                onClick={() => setPrompt("Explain this error and suggest a fix.")}
+                onClick={() => onQuickAction?.('explain-error')}
               >
                 Explain error
               </button>
@@ -114,7 +170,7 @@ export function AIChatTab(props: {
                 }
                 onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip3: true }))}
                 onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip3: false }))}
-                onClick={() => setPrompt("Draft a fix for the issue above.")}
+                onClick={() => onQuickAction?.('draft-fix')}
               >
                 Draft a fix
               </button>
@@ -144,6 +200,16 @@ export function AIChatTab(props: {
                 <MessageMetrics 
                   metrics={message.metrics}
                   usedContext={message.usedContext}
+                  routingDecision={message.routingDecision}
+                  promptEnhancement={message.promptEnhancement}
+                />
+              )}
+              
+              {/* Show routing info for user messages if available */}
+              {message.role === 'user' && (message.routingDecision || message.promptEnhancement) && (
+                <MessageMetrics 
+                  routingDecision={message.routingDecision}
+                  promptEnhancement={message.promptEnhancement}
                 />
               )}
             </div>
@@ -152,50 +218,57 @@ export function AIChatTab(props: {
       </div>
 
       <div style={chatStyles.inputRow}>
-        <textarea
-          style={
-            isSending
-              ? { ...chatStyles.input, ...chatStyles.inputDisabled }
-              : inputFocus
-                ? { ...chatStyles.input, ...chatStyles.inputFocus }
-                : chatStyles.input
-          }
-          placeholder="Ask about the terminal output..."
-          rows={3}
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          onKeyDown={(event) => handlePromptKeyDown(event, onSend)}
-          onFocus={() => setInputFocus(true)}
-          onBlur={() => setInputFocus(false)}
-          disabled={isSending}
-        />
-        {isSending ? (
-          <button
-            style={
-              hoverStates.cancelBtn
-                ? { ...chatStyles.cancelButton, ...chatStyles.cancelButtonHover }
-                : chatStyles.cancelButton
-            }
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-        ) : (
-          <button
-            style={
-              hoverStates.sendBtn
-                ? { ...chatStyles.sendButton, ...chatStyles.sendButtonHover }
-                : chatStyles.sendButton
-            }
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, sendBtn: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, sendBtn: false }))}
-            onClick={onSend}
-          >
-            Send
-          </button>
-        )}
+        <div 
+          style={{
+            ...chatStyles.inputContainer,
+            ...(isSending ? chatStyles.inputContainerDisabled : {}),
+            ...(inputFocus && !isSending ? chatStyles.inputContainerFocus : {}),
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            style={{
+              ...chatStyles.input,
+              ...(isSending ? chatStyles.inputDisabled : {}),
+            }}
+            placeholder="Ask about the terminal output..."
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => handlePromptKeyDown(event, onSend)}
+            onFocus={() => setInputFocus(true)}
+            onBlur={() => setInputFocus(false)}
+            disabled={isSending}
+          />
+          {isSending ? (
+            <button
+              style={{
+                ...chatStyles.cancelButton,
+                ...(hoverStates.cancelBtn ? chatStyles.cancelButtonHover : {}),
+              }}
+              onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
+              onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
+              onClick={onCancel}
+              title="Cancel"
+            >
+              <StopIcon />
+            </button>
+          ) : (
+            <button
+              style={{
+                ...chatStyles.sendButton,
+                ...(hoverStates.sendBtn ? chatStyles.sendButtonHover : {}),
+                ...(!prompt.trim() ? chatStyles.sendButtonDisabled : {}),
+              }}
+              onMouseEnter={() => setHoverStates(prev => ({ ...prev, sendBtn: true }))}
+              onMouseLeave={() => setHoverStates(prev => ({ ...prev, sendBtn: false }))}
+              onClick={onSend}
+              disabled={!prompt.trim()}
+              title="Send (Enter)"
+            >
+              <SendIcon />
+            </button>
+          )}
+        </div>
       </div>
 
       {sendError && <div style={chatStyles.error}>{sendError}</div>}

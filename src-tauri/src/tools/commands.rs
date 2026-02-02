@@ -339,18 +339,24 @@ pub async fn write_file_tool(
     path: String,
     content: String,
     working_directory: Option<String>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     use std::fs;
     use std::io::Write;
 
-    let full_path = if let Some(cwd) = working_directory {
-        Path::new(&cwd).join(&path)
+    let full_path = if let Some(ref cwd) = working_directory {
+        Path::new(cwd).join(&path)
     } else {
         Path::new(&path).to_path_buf()
     };
 
     // SECURITY: Validate path to prevent traversal attacks
     let safe_path = validate_path(&full_path)?;
+
+    // Create backup before modifying (if file exists)
+    if safe_path.exists() {
+        let _ = create_file_backup(&state, &safe_path); // Ignore backup errors, don't block write
+    }
 
     if let Some(parent) = safe_path.parent() {
         fs::create_dir_all(parent)
@@ -372,18 +378,24 @@ pub async fn append_to_file_tool(
     path: String,
     content: String,
     working_directory: Option<String>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     use std::fs::OpenOptions;
     use std::io::Write;
 
-    let full_path = if let Some(cwd) = working_directory {
-        Path::new(&cwd).join(&path)
+    let full_path = if let Some(ref cwd) = working_directory {
+        Path::new(cwd).join(&path)
     } else {
         Path::new(&path).to_path_buf()
     };
 
     // SECURITY: Validate path to prevent traversal attacks
     let safe_path = validate_path(&full_path)?;
+
+    // Create backup before modifying (if file exists)
+    if safe_path.exists() {
+        let _ = create_file_backup(&state, &safe_path);
+    }
 
     let mut file = OpenOptions::new()
         .create(true)
@@ -405,11 +417,12 @@ pub async fn replace_in_file_tool(
     replace: String,
     all: Option<bool>,
     working_directory: Option<String>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     use std::fs;
 
-    let full_path = if let Some(cwd) = working_directory {
-        Path::new(&cwd).join(&path)
+    let full_path = if let Some(ref cwd) = working_directory {
+        Path::new(cwd).join(&path)
     } else {
         Path::new(&path).to_path_buf()
     };
@@ -424,6 +437,9 @@ pub async fn replace_in_file_tool(
     if !safe_path.is_file() {
         return Err(format!("Path is not a file: {}", safe_path.display()));
     }
+
+    // Create backup before modifying
+    let _ = create_file_backup(&state, &safe_path);
 
     // Read the file content
     let content = fs::read_to_string(&safe_path)
@@ -635,6 +651,95 @@ pub async fn get_git_diff_tool(working_directory: Option<String>) -> Result<Stri
         Ok("No uncommitted changes".to_string())
     } else {
         Ok(diff)
+    }
+}
+
+/// Git branch info for status bar
+#[derive(serde::Serialize)]
+pub struct GitBranchInfo {
+    pub branch: Option<String>,
+    pub is_git_repo: bool,
+    pub has_changes: bool,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+// Get git branch info (lightweight, for status bar)
+#[tauri::command]
+pub async fn get_git_branch_tool(working_directory: Option<String>) -> Result<GitBranchInfo, String> {
+    let mut cmd = Command::new("git");
+    cmd.args(["status", "--porcelain=v1", "--branch"]);
+    
+    if let Some(cwd) = &working_directory {
+        cmd.current_dir(cwd);
+    }
+    
+    let output = cmd.output();
+    
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let lines: Vec<&str> = stdout.lines().collect();
+            
+            // First line is branch info: ## branch...origin/branch [ahead N, behind M]
+            let branch_line = lines.first().unwrap_or(&"");
+            
+            let mut branch = None;
+            let mut ahead = 0u32;
+            let mut behind = 0u32;
+            
+            if branch_line.starts_with("## ") {
+                let info = &branch_line[3..]; // Remove "## "
+                
+                // Parse branch name (before "..." or end of string)
+                let branch_name = if let Some(dot_pos) = info.find("...") {
+                    &info[..dot_pos]
+                } else if let Some(space_pos) = info.find(' ') {
+                    &info[..space_pos]
+                } else {
+                    info
+                };
+                
+                if !branch_name.is_empty() && branch_name != "HEAD (no branch)" {
+                    branch = Some(branch_name.to_string());
+                }
+                
+                // Parse ahead/behind
+                if let Some(bracket_start) = info.find('[') {
+                    if let Some(bracket_end) = info.find(']') {
+                        let tracking = &info[bracket_start+1..bracket_end];
+                        for part in tracking.split(", ") {
+                            if part.starts_with("ahead ") {
+                                ahead = part[6..].parse().unwrap_or(0);
+                            } else if part.starts_with("behind ") {
+                                behind = part[7..].parse().unwrap_or(0);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Check if there are any changes (lines after the branch line)
+            let has_changes = lines.len() > 1 && lines.iter().skip(1).any(|l| !l.is_empty());
+            
+            Ok(GitBranchInfo {
+                branch,
+                is_git_repo: true,
+                has_changes,
+                ahead,
+                behind,
+            })
+        }
+        _ => {
+            // Not a git repo or git not available
+            Ok(GitBranchInfo {
+                branch: None,
+                is_git_repo: false,
+                has_changes: false,
+                ahead: 0,
+                behind: 0,
+            })
+        }
     }
 }
 
@@ -1046,4 +1151,806 @@ pub async fn analyze_error_tool(
     } else {
         Ok(analysis.join("\n"))
     }
+}
+
+/// Get shell command history from the user's shell history file
+/// Supports bash, zsh, and fish shells
+#[tauri::command]
+pub async fn get_shell_history_tool(
+    count: Option<usize>,
+    shell: Option<String>,
+    filter: Option<String>,
+) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+    
+    let max_count = count.unwrap_or(50).min(500); // Cap at 500 entries
+    
+    // Determine shell type and history file
+    let home = std::env::var("HOME").map_err(|_| "Could not determine home directory")?;
+    
+    // Auto-detect shell if not specified
+    let detected_shell = shell.unwrap_or_else(|| {
+        std::env::var("SHELL")
+            .unwrap_or_default()
+            .rsplit('/')
+            .next()
+            .unwrap_or("bash")
+            .to_string()
+    });
+    
+    let history_path = match detected_shell.as_str() {
+        "zsh" => format!("{}/.zsh_history", home),
+        "fish" => format!("{}/.local/share/fish/fish_history", home),
+        "bash" | _ => format!("{}/.bash_history", home),
+    };
+    
+    let path = Path::new(&history_path);
+    if !path.exists() {
+        return Err(format!(
+            "History file not found: {}. Shell detected: {}",
+            history_path, detected_shell
+        ));
+    }
+    
+    let file = fs::File::open(path)
+        .map_err(|e| format!("Failed to open history file: {}", e))?;
+    let reader = BufReader::new(file);
+    
+    let mut commands: Vec<String> = Vec::new();
+    let filter_lower = filter.as_ref().map(|f| f.to_lowercase());
+    
+    // Parse history based on shell type
+    match detected_shell.as_str() {
+        "zsh" => {
+            // zsh history format: ": timestamp:0;command" or just "command"
+            for line in reader.lines().flatten() {
+                let cmd = if line.starts_with(':') {
+                    // Extended history format
+                    line.split(';').skip(1).collect::<Vec<_>>().join(";")
+                } else {
+                    line.clone()
+                };
+                
+                if !cmd.is_empty() {
+                    if let Some(ref f) = filter_lower {
+                        if cmd.to_lowercase().contains(f) {
+                            commands.push(cmd);
+                        }
+                    } else {
+                        commands.push(cmd);
+                    }
+                }
+            }
+        }
+        "fish" => {
+            // fish history format is YAML-like: "- cmd: command"
+            for line in reader.lines().flatten() {
+                if line.starts_with("- cmd:") {
+                    let cmd = line.trim_start_matches("- cmd:").trim().to_string();
+                    if !cmd.is_empty() {
+                        if let Some(ref f) = filter_lower {
+                            if cmd.to_lowercase().contains(f) {
+                                commands.push(cmd);
+                            }
+                        } else {
+                            commands.push(cmd);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {
+            // bash: simple line-by-line format
+            for line in reader.lines().flatten() {
+                if !line.is_empty() && !line.starts_with('#') {
+                    if let Some(ref f) = filter_lower {
+                        if line.to_lowercase().contains(f) {
+                            commands.push(line);
+                        }
+                    } else {
+                        commands.push(line);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Get the most recent entries (history is usually oldest first)
+    let recent: Vec<_> = commands.into_iter().rev().take(max_count).collect();
+    
+    if recent.is_empty() {
+        return Ok(format!(
+            "No commands found in history{}",
+            filter.map(|f| format!(" matching '{}'", f)).unwrap_or_default()
+        ));
+    }
+    
+    // Format output with line numbers (most recent first)
+    let mut output = vec![format!(
+        "Shell: {} | Showing {} most recent commands{}:\n",
+        detected_shell,
+        recent.len(),
+        filter.as_ref().map(|f| format!(" matching '{}'", f)).unwrap_or_default()
+    )];
+    
+    for (i, cmd) in recent.iter().enumerate() {
+        output.push(format!("{:4}. {}", i + 1, cmd));
+    }
+    
+    Ok(output.join("\n"))
+}
+
+/// Scan large files for error patterns without loading entire file into memory.
+/// Uses efficient line-by-line streaming for GB+ files.
+/// Returns matching lines with context for debugging.
+#[tauri::command]
+pub async fn find_errors_in_file_tool(
+    path: String,
+    working_directory: Option<String>,
+    context_lines: Option<usize>,
+    max_matches: Option<usize>,
+    custom_patterns: Option<Vec<String>>,
+) -> Result<String, String> {
+    use std::collections::VecDeque;
+    use std::io::{BufRead, BufReader};
+
+    // Resolve path
+    let base_dir = working_directory
+        .as_deref()
+        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+    let file_path = if Path::new(&path).is_absolute() {
+        Path::new(&path).to_path_buf()
+    } else {
+        base_dir.join(&path)
+    };
+
+    // SECURITY: Validate path
+    let safe_path = validate_path(&file_path)?;
+
+    if !safe_path.exists() {
+        return Err(format!("File does not exist: {}", safe_path.display()));
+    }
+
+    if !safe_path.is_file() {
+        return Err(format!("Path is not a file: {}", safe_path.display()));
+    }
+
+    // Get file metadata for summary
+    let metadata = fs::metadata(&safe_path)
+        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    let file_size = metadata.len();
+    let size_human = format_file_size(file_size);
+
+    // Configuration
+    let context = context_lines.unwrap_or(2);
+    let max = max_matches.unwrap_or(50).min(200); // Hard cap at 200 to prevent huge outputs
+
+    // Default error patterns - general purpose for any system
+    let default_patterns = vec![
+        // Critical errors
+        "error", "fatal", "panic", "crash", "abort", "segfault", "sigsegv", "sigkill",
+        // Memory issues
+        "oom", "out of memory", "memory allocation failed", "cannot allocate",
+        // Process issues
+        "killed", "terminated", "timed out", "timeout", "deadline exceeded",
+        // Permission/access issues
+        "permission denied", "access denied", "unauthorized", "forbidden",
+        // Connection issues
+        "connection refused", "connection reset", "connection timed out", "no route to host",
+        "network unreachable", "host unreachable",
+        // File issues
+        "no such file", "file not found", "does not exist", "cannot open",
+        // General failures
+        "failed", "failure", "exception", "traceback", "stack trace",
+        // Exit codes
+        "exit code", "exit status", "returned 1", "non-zero",
+    ];
+
+    let patterns: Vec<String> = custom_patterns
+        .unwrap_or_else(|| default_patterns.iter().map(|s| s.to_string()).collect());
+
+    // Open file for streaming read
+    let file = fs::File::open(&safe_path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let reader = BufReader::with_capacity(64 * 1024, file); // 64KB buffer for efficiency
+
+    // Circular buffer for context lines before match
+    let mut context_before: VecDeque<(usize, String)> = VecDeque::with_capacity(context + 1);
+    
+    // Store matches with context
+    struct ErrorMatch {
+        line_number: usize,
+        line_content: String,
+        pattern_matched: String,
+        context_before: Vec<(usize, String)>,
+        context_after: Vec<(usize, String)>,
+    }
+    
+    let mut matches: Vec<ErrorMatch> = Vec::new();
+    let mut pending_context_after: Option<(usize, usize)> = None; // (match_idx, lines_remaining)
+    let mut total_lines: usize = 0;
+    
+    for (line_idx, line_result) in reader.lines().enumerate() {
+        let line_num = line_idx + 1; // 1-indexed
+        total_lines = line_num;
+        
+        let line = match line_result {
+            Ok(l) => l,
+            Err(_) => continue, // Skip non-UTF8 lines
+        };
+        
+        let line_lower = line.to_lowercase();
+        
+        // Add context_after lines to previous match if needed
+        if let Some((match_idx, remaining)) = pending_context_after {
+            if remaining > 0 {
+                if let Some(m) = matches.get_mut(match_idx) {
+                    m.context_after.push((line_num, line.clone()));
+                }
+                pending_context_after = Some((match_idx, remaining - 1));
+            } else {
+                pending_context_after = None;
+            }
+        }
+        
+        // Check for pattern matches
+        let mut matched_pattern: Option<String> = None;
+        for pattern in &patterns {
+            if line_lower.contains(&pattern.to_lowercase()) {
+                matched_pattern = Some(pattern.clone());
+                break;
+            }
+        }
+        
+        if let Some(pattern) = matched_pattern {
+            if matches.len() < max {
+                let error_match = ErrorMatch {
+                    line_number: line_num,
+                    line_content: line.clone(),
+                    pattern_matched: pattern,
+                    context_before: context_before.iter().cloned().collect(),
+                    context_after: Vec::new(),
+                };
+                matches.push(error_match);
+                pending_context_after = Some((matches.len() - 1, context));
+            }
+        }
+        
+        // Update context_before buffer
+        context_before.push_back((line_num, line));
+        if context_before.len() > context {
+            context_before.pop_front();
+        }
+    }
+
+    // Build output
+    let mut output = Vec::new();
+    
+    if matches.is_empty() {
+        output.push(format!(
+            "No errors found in {} ({}, {} lines scanned)",
+            safe_path.display(),
+            size_human,
+            total_lines
+        ));
+        output.push(String::new());
+        output.push(format!("Patterns searched: {}", patterns.join(", ")));
+    } else {
+        output.push(format!(
+            "Found {} error(s) in {} ({}, {} lines):",
+            matches.len(),
+            safe_path.display(),
+            size_human,
+            total_lines
+        ));
+        output.push(String::new());
+        
+        for (idx, m) in matches.iter().enumerate() {
+            output.push(format!("─── Match {} [Line {}] Pattern: \"{}\" ───", 
+                idx + 1, m.line_number, m.pattern_matched));
+            
+            // Context before
+            for (ln, content) in &m.context_before {
+                output.push(format!("  {:>6} │ {}", ln, truncate_line(content, 200)));
+            }
+            
+            // The matching line (highlighted)
+            output.push(format!("▶ {:>6} │ {}", m.line_number, truncate_line(&m.line_content, 200)));
+            
+            // Context after
+            for (ln, content) in &m.context_after {
+                output.push(format!("  {:>6} │ {}", ln, truncate_line(content, 200)));
+            }
+            
+            output.push(String::new());
+        }
+        
+        if matches.len() >= max {
+            output.push(format!("(Showing first {} matches, more may exist)", max));
+        }
+        
+        // Summary of matched patterns
+        let mut pattern_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for m in &matches {
+            *pattern_counts.entry(&m.pattern_matched).or_insert(0) += 1;
+        }
+        output.push(String::new());
+        output.push("Pattern summary:".to_string());
+        let mut counts: Vec<_> = pattern_counts.iter().collect();
+        counts.sort_by(|a, b| b.1.cmp(a.1));
+        for (pattern, count) in counts.iter().take(10) {
+            output.push(format!("  • \"{}\": {} occurrence(s)", pattern, count));
+        }
+    }
+
+    Ok(output.join("\n"))
+}
+
+/// Read specific line ranges from large files efficiently.
+/// Uses streaming to handle GB+ files without memory issues.
+#[tauri::command]
+pub async fn file_sections_tool(
+    path: String,
+    working_directory: Option<String>,
+    start_line: usize,
+    end_line: Option<usize>,
+    max_lines: Option<usize>,
+) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+
+    // Resolve path
+    let base_dir = working_directory
+        .as_deref()
+        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+    let file_path = if Path::new(&path).is_absolute() {
+        Path::new(&path).to_path_buf()
+    } else {
+        base_dir.join(&path)
+    };
+
+    // SECURITY: Validate path
+    let safe_path = validate_path(&file_path)?;
+
+    if !safe_path.exists() {
+        return Err(format!("File does not exist: {}", safe_path.display()));
+    }
+
+    if !safe_path.is_file() {
+        return Err(format!("Path is not a file: {}", safe_path.display()));
+    }
+
+    // Validate start_line (1-indexed)
+    if start_line == 0 {
+        return Err("start_line must be >= 1 (line numbers are 1-indexed)".to_string());
+    }
+
+    // Get file metadata
+    let metadata = fs::metadata(&safe_path)
+        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    let file_size = metadata.len();
+    let size_human = format_file_size(file_size);
+
+    // Configuration
+    let max = max_lines.unwrap_or(200).min(500); // Hard cap at 500 lines per request
+
+    // Calculate effective end_line
+    let effective_end = end_line.unwrap_or(start_line + max - 1);
+    let requested_lines = effective_end.saturating_sub(start_line) + 1;
+    let lines_to_read = requested_lines.min(max);
+    let actual_end = start_line + lines_to_read - 1;
+
+    // Open file for streaming read
+    let file = fs::File::open(&safe_path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let reader = BufReader::with_capacity(64 * 1024, file); // 64KB buffer
+
+    let mut output_lines: Vec<String> = Vec::new();
+    let mut total_lines: usize = 0;
+    let mut collected = 0;
+
+    for (line_idx, line_result) in reader.lines().enumerate() {
+        let line_num = line_idx + 1; // 1-indexed
+        total_lines = line_num;
+
+        // Skip until we reach start_line
+        if line_num < start_line {
+            continue;
+        }
+
+        // Stop if we've passed actual_end
+        if line_num > actual_end {
+            // Keep counting total lines for the summary
+            continue;
+        }
+
+        let line = match line_result {
+            Ok(l) => l,
+            Err(_) => "(binary/non-UTF8 content)".to_string(),
+        };
+
+        output_lines.push(format!("{:>6} │ {}", line_num, truncate_line(&line, 300)));
+        collected += 1;
+
+        if collected >= lines_to_read {
+            // Continue iterating to get total line count, but don't collect more
+            // For very large files, we might want to estimate instead
+            if file_size > 100 * 1024 * 1024 {
+                // For files > 100MB, estimate total lines
+                break;
+            }
+        }
+    }
+
+    // Build header
+    let mut output = Vec::new();
+    
+    if output_lines.is_empty() {
+        output.push(format!(
+            "No lines found in range {}-{} (file has {} lines)",
+            start_line, actual_end, total_lines
+        ));
+    } else {
+        let showing_end = start_line + output_lines.len() - 1;
+        let total_info = if file_size > 100 * 1024 * 1024 && collected >= lines_to_read {
+            format!("{} (estimated, large file)", size_human)
+        } else {
+            format!("{} total lines", total_lines)
+        };
+        
+        output.push(format!(
+            "Lines {}-{} of {} ({}):",
+            start_line,
+            showing_end,
+            safe_path.display(),
+            total_info
+        ));
+        output.push(String::new());
+        output.extend(output_lines);
+        
+        if requested_lines > lines_to_read {
+            output.push(String::new());
+            output.push(format!(
+                "(Requested {} lines, showing {} due to limit. Use start_line={} to continue.)",
+                requested_lines, lines_to_read, showing_end + 1
+            ));
+        }
+    }
+
+    Ok(output.join("\n"))
+}
+
+/// Helper: Format file size in human-readable form
+fn format_file_size(size: u64) -> String {
+    if size < 1024 {
+        format!("{} bytes", size)
+    } else if size < 1024 * 1024 {
+        format!("{:.1} KB", size as f64 / 1024.0)
+    } else if size < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", size as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.2} GB", size as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+/// Helper: Truncate long lines for output readability
+fn truncate_line(line: &str, max_len: usize) -> String {
+    if line.len() <= max_len {
+        line.to_string()
+    } else {
+        format!("{}...[truncated +{} chars]", &line[..max_len], line.len() - max_len)
+    }
+}
+
+/// Helper: Create a backup of a file before modifying it
+pub fn create_file_backup(
+    state: &tauri::State<'_, AppState>,
+    path: &Path,
+) -> Result<(), String> {
+    use crate::models::{FileBackup, MAX_BACKUPS_PER_FILE, MAX_TOTAL_BACKUPS};
+    
+    // Only backup if file exists
+    if !path.exists() || !path.is_file() {
+        return Ok(());
+    }
+    
+    // Read current content
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file for backup: {}", e))?;
+    
+    let path_str = path.to_string_lossy().to_string();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    let backup = FileBackup {
+        path: path_str.clone(),
+        content,
+        timestamp,
+    };
+    
+    let mut backups = state.file_backups.lock()
+        .map_err(|e| format!("Failed to lock backups: {}", e))?;
+    
+    // Count existing backups for this file
+    let file_backup_count = backups.iter().filter(|b| b.path == path_str).count();
+    
+    // If too many backups for this file, remove oldest
+    if file_backup_count >= MAX_BACKUPS_PER_FILE {
+        if let Some(idx) = backups.iter().position(|b| b.path == path_str) {
+            backups.remove(idx);
+        }
+    }
+    
+    // If too many total backups, remove oldest
+    while backups.len() >= MAX_TOTAL_BACKUPS {
+        backups.remove(0);
+    }
+    
+    backups.push(backup);
+    Ok(())
+}
+
+/// Undo the last file change by restoring from backup
+#[tauri::command]
+pub async fn undo_file_change_tool(
+    path: Option<String>,
+    working_directory: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let mut backups = state.file_backups.lock()
+        .map_err(|e| format!("Failed to lock backups: {}", e))?;
+    
+    if backups.is_empty() {
+        return Err("No file backups available to restore".to_string());
+    }
+    
+    // If path specified, find backup for that specific file
+    let backup = if let Some(ref p) = path {
+        let full_path = if let Some(ref cwd) = working_directory {
+            Path::new(cwd).join(p)
+        } else {
+            Path::new(p).to_path_buf()
+        };
+        
+        let safe_path = validate_path(&full_path)?;
+        let path_str = safe_path.to_string_lossy().to_string();
+        
+        // Find most recent backup for this file
+        let idx = backups.iter().rposition(|b| b.path == path_str)
+            .ok_or_else(|| format!("No backup found for: {}", path_str))?;
+        
+        backups.remove(idx)
+    } else {
+        // No path specified, restore most recent backup
+        backups.pop().unwrap()
+    };
+    
+    // Restore the file
+    let restore_path = Path::new(&backup.path);
+    
+    // Create parent directories if needed
+    if let Some(parent) = restore_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+    
+    fs::write(restore_path, &backup.content)
+        .map_err(|e| format!("Failed to restore file: {}", e))?;
+    
+    // Format timestamp
+    let datetime = chrono::DateTime::from_timestamp(backup.timestamp as i64, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| "unknown time".to_string());
+    
+    Ok(format!(
+        "Restored {} to version from {} ({} bytes)",
+        backup.path,
+        datetime,
+        backup.content.len()
+    ))
+}
+
+/// List available file backups
+#[tauri::command]
+pub async fn list_file_backups_tool(
+    path: Option<String>,
+    working_directory: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let backups = state.file_backups.lock()
+        .map_err(|e| format!("Failed to lock backups: {}", e))?;
+    
+    if backups.is_empty() {
+        return Ok("No file backups available".to_string());
+    }
+    
+    // Filter by path if specified
+    let filtered: Vec<_> = if let Some(ref p) = path {
+        let full_path = if let Some(ref cwd) = working_directory {
+            Path::new(cwd).join(p)
+        } else {
+            Path::new(p).to_path_buf()
+        };
+        
+        let safe_path = validate_path(&full_path)?;
+        let path_str = safe_path.to_string_lossy().to_string();
+        
+        backups.iter().filter(|b| b.path == path_str).collect()
+    } else {
+        backups.iter().collect()
+    };
+    
+    if filtered.is_empty() {
+        return Ok(format!("No backups found for: {}", path.unwrap_or_default()));
+    }
+    
+    let mut output = vec![format!("Available backups ({}):", filtered.len())];
+    
+    for (i, backup) in filtered.iter().enumerate().rev() {
+        let datetime = chrono::DateTime::from_timestamp(backup.timestamp as i64, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        
+        let size = if backup.content.len() < 1024 {
+            format!("{} bytes", backup.content.len())
+        } else {
+            format!("{:.1} KB", backup.content.len() as f64 / 1024.0)
+        };
+        
+        output.push(format!("  {}. {} ({}) - {}", i + 1, backup.path, size, datetime));
+    }
+    
+    Ok(output.join("\n"))
+}
+
+/// Compare two files or show changes made to a file
+#[tauri::command]
+pub async fn diff_files_tool(
+    file1: String,
+    file2: Option<String>,
+    working_directory: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let base_dir = working_directory
+        .as_deref()
+        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    
+    // Resolve file1 path
+    let path1 = if Path::new(&file1).is_absolute() {
+        Path::new(&file1).to_path_buf()
+    } else {
+        base_dir.join(&file1)
+    };
+    let safe_path1 = validate_path(&path1)?;
+    
+    // Get content1 - either from file or backup
+    let (content1, label1) = if file2.is_none() {
+        // Compare current file with its most recent backup
+        let backups = state.file_backups.lock()
+            .map_err(|e| format!("Failed to lock backups: {}", e))?;
+        
+        let path_str = safe_path1.to_string_lossy().to_string();
+        let backup = backups.iter().rev().find(|b| b.path == path_str)
+            .ok_or_else(|| format!("No backup found for {}. Cannot show diff without a previous version.", path_str))?;
+        
+        (backup.content.clone(), format!("{} (backup)", file1))
+    } else {
+        // Read file1
+        if !safe_path1.exists() {
+            return Err(format!("File does not exist: {}", safe_path1.display()));
+        }
+        let content = fs::read_to_string(&safe_path1)
+            .map_err(|e| format!("Failed to read {}: {}", file1, e))?;
+        (content, file1.clone())
+    };
+    
+    // Get content2
+    let (content2, label2) = if let Some(ref f2) = file2 {
+        let path2 = if Path::new(f2).is_absolute() {
+            Path::new(f2).to_path_buf()
+        } else {
+            base_dir.join(f2)
+        };
+        let safe_path2 = validate_path(&path2)?;
+        
+        if !safe_path2.exists() {
+            return Err(format!("File does not exist: {}", safe_path2.display()));
+        }
+        
+        let content = fs::read_to_string(&safe_path2)
+            .map_err(|e| format!("Failed to read {}: {}", f2, e))?;
+        (content, f2.clone())
+    } else {
+        // Compare with current file content
+        if !safe_path1.exists() {
+            return Err(format!("File does not exist: {}", safe_path1.display()));
+        }
+        let content = fs::read_to_string(&safe_path1)
+            .map_err(|e| format!("Failed to read {}: {}", file1, e))?;
+        (content, format!("{} (current)", file1))
+    };
+    
+    // If contents are identical
+    if content1 == content2 {
+        return Ok(format!("No differences between {} and {}", label1, label2));
+    }
+    
+    // Generate unified diff
+    let lines1: Vec<&str> = content1.lines().collect();
+    let lines2: Vec<&str> = content2.lines().collect();
+    
+    let mut output = vec![
+        format!("--- {}", label1),
+        format!("+++ {}", label2),
+        String::new(),
+    ];
+    
+    // Simple line-by-line diff (not a true unified diff, but useful)
+    let max_lines = lines1.len().max(lines2.len());
+    let mut changes = 0;
+    let mut in_change_block = false;
+    let mut block_start = 0;
+    
+    for i in 0..max_lines {
+        let line1 = lines1.get(i);
+        let line2 = lines2.get(i);
+        
+        match (line1, line2) {
+            (Some(l1), Some(l2)) if l1 == l2 => {
+                if in_change_block && changes < 100 {
+                    // Show context line after changes
+                    output.push(format!(" {:>4} │ {}", i + 1, truncate_line(l1, 200)));
+                }
+                in_change_block = false;
+            }
+            (Some(l1), Some(l2)) => {
+                if !in_change_block {
+                    block_start = i;
+                    in_change_block = true;
+                    output.push(format!("@@ Line {} @@", i + 1));
+                }
+                if changes < 100 {
+                    output.push(format!("-{:>4} │ {}", i + 1, truncate_line(l1, 200)));
+                    output.push(format!("+{:>4} │ {}", i + 1, truncate_line(l2, 200)));
+                }
+                changes += 1;
+            }
+            (Some(l1), None) => {
+                if !in_change_block {
+                    in_change_block = true;
+                    output.push(format!("@@ Line {} @@", i + 1));
+                }
+                if changes < 100 {
+                    output.push(format!("-{:>4} │ {}", i + 1, truncate_line(l1, 200)));
+                }
+                changes += 1;
+            }
+            (None, Some(l2)) => {
+                if !in_change_block {
+                    in_change_block = true;
+                    output.push(format!("@@ Line {} @@", i + 1));
+                }
+                if changes < 100 {
+                    output.push(format!("+{:>4} │ {}", i + 1, truncate_line(l2, 200)));
+                }
+                changes += 1;
+            }
+            (None, None) => break,
+        }
+    }
+    
+    if changes >= 100 {
+        output.push(format!("\n(Showing first 100 changes, {} total)", changes));
+    }
+    
+    output.push(String::new());
+    output.push(format!("Summary: {} line(s) changed", changes));
+    
+    Ok(output.join("\n"))
 }

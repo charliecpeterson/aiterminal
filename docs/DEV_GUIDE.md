@@ -61,14 +61,14 @@ AIterminal is built with a **modular, hook-based architecture** that separates c
 
 - **Frontend**: React + TypeScript + xterm.js
 - **Backend**: Rust + Tauri + portable-pty
-- **AI System**: Vercel AI SDK with 22 automated tools
+- **AI System**: Vercel AI SDK with 28 automated tools
 - **State Management**: React hooks + Context API
 
 ### Recent Refactoring (2026)
 
 The project underwent a major refactoring that reduced `App.tsx` from 1,002 lines to 207 lines (79% reduction):
 
-- **9 custom React hooks** for state management
+- **9 custom React hooks** for state management (plus useAIPanelAutoOpen)
 - **4 focused components** for UI composition
 - **2 utility modules** for window and detection logic
 - **Removed 57 unnecessary style helper functions**
@@ -111,9 +111,10 @@ App (Root)
 | `useCrossWindowEvents` | Multi-window sync | Sync state between main/AI/SSH/Quick Actions windows |
 | `useSessionRestoration` | Startup restoration | Restore tabs and SSH connections on app launch |
 | `useQuickActionsExecutor` | Quick Actions | Execute command sequences in active terminal |
-| `useKeyboardShortcuts` | Keyboard handling | Global shortcuts (Cmd+T, Cmd+W, etc.) |
+| `useKeyboardShortcuts` | Keyboard handling | Global shortcuts (Cmd+T, Cmd+W, Cmd+D, etc.) |
 | `useCommandTracking` | Running commands | Track command execution time, navigate to tabs |
 | `useWindowCloseHandler` | Shutdown cleanup | Save session on window close |
+| `useAIPanelAutoOpen` | AI Panel auto-open | Auto-show AI panel for new users or on errors |
 
 See [notes/HOOKS_REFERENCE.md](notes/HOOKS_REFERENCE.md) for detailed API documentation.
 
@@ -166,7 +167,7 @@ See [Pull Request Process](#pull-request-process) below.
 AIterminal/
 ├── src/                      # React + TypeScript frontend
 │   ├── ai/                   # AI assistant implementation
-│   │   ├── tools-vercel.ts   # 22 tool definitions
+│   │   ├── tools-vercel.ts   # 28 tool definitions
 │   │   ├── chatSend-vercel.ts # Streaming chat with tool execution
 │   │   ├── prompts.ts        # System prompts
 │   │   ├── conversationHistory.ts # Sliding window history
@@ -257,6 +258,30 @@ Windows communicate via Tauri's event system (`emitTo`, `listen`).
 - **SSH integration**: Automatic marker injection via `aiterm_ssh` wrapper
 - **REPL support**: Python and R interactive sessions
 - **Remote markers**: Base64-encoded script injection for SSH sessions
+
+### File Backup System
+
+The AI tools automatically create backups before modifying files, enabling undo functionality.
+
+**Implementation** (`src-tauri/src/models.rs` and `src-tauri/src/tools/commands.rs`):
+
+- **FileBackup struct**: Stores path, content, and timestamp
+- **Limits**: 5 backups per file, 50 total across all files
+- **Auto-creation**: `write_file_tool`, `append_to_file_tool`, `replace_in_file_tool` create backups
+- **Restore**: `undo_file_change_tool` restores most recent backup
+- **List**: `list_file_backups_tool` shows available backups
+- **Diff**: `diff_files_tool` compares current vs backup
+
+**Storage**: In-memory via `AppState.file_backups: Mutex<Vec<FileBackup>>`
+
+**Helper function** in `commands.rs`:
+```rust
+fn create_file_backup(
+    state: &tauri::State<'_, AppState>,
+    path: &str,
+    content: &str,
+) -> Result<(), String>
+```
 
 ---
 

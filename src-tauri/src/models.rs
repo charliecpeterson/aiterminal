@@ -72,27 +72,6 @@ pub struct TerminalSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FoldSettings {
-    pub enabled: bool,
-    pub threshold: u16,
-    pub show_preview_lines: u8,
-    pub auto_open_window: bool,
-    pub large_threshold: u16,
-}
-
-impl Default for FoldSettings {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            threshold: 30,
-            show_preview_lines: 3,
-            auto_open_window: false,
-            large_threshold: 500,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AutocompleteSettings {
     pub enable_inline: bool,
     pub enable_menu: bool,
@@ -158,8 +137,6 @@ pub struct AppSettings {
     pub ai: AiSettings,
     pub terminal: TerminalSettings,
     #[serde(default)]
-    pub fold: FoldSettings,
-    #[serde(default)]
     pub autocomplete: AutocompleteSettings,
     #[serde(default)]
     pub streaming: StreamingSettings,
@@ -192,7 +169,6 @@ impl Default for AppSettings {
             terminal: TerminalSettings {
                 max_markers: DEFAULT_MAX_MARKERS,
             },
-            fold: FoldSettings::default(),
             autocomplete: AutocompleteSettings::default(),
             streaming: StreamingSettings::default(),
         }
@@ -252,6 +228,19 @@ impl TerminalContext {
     }
 }
 
+/// Stores a backup of file content before modification
+#[derive(Debug, Clone)]
+pub struct FileBackup {
+    pub path: String,
+    pub content: String,
+    pub timestamp: u64,
+}
+
+/// Maximum number of file backups to keep per file path
+pub const MAX_BACKUPS_PER_FILE: usize = 5;
+/// Maximum total backups across all files
+pub const MAX_TOTAL_BACKUPS: usize = 50;
+
 pub struct AppState {
     pub ptys: Mutex<HashMap<u32, PtySession>>,
     pub next_id: Mutex<u32>,
@@ -260,6 +249,8 @@ pub struct AppState {
     pub ssh_sessions: Arc<Mutex<HashMap<u32, SshSessionInfo>>>, // PTY ID -> SSH info, wrapped in Arc for thread sharing
     pub terminal_contexts: Arc<Mutex<HashMap<u32, TerminalContext>>>, // PTY ID -> Context
     pub context_index: Mutex<crate::context_index::ContextIndex>,
+    pub file_backups: Mutex<Vec<FileBackup>>, // Stack of file backups for undo functionality
+    pub pty_last_output: Arc<Mutex<HashMap<u32, u64>>>, // PTY ID -> last output timestamp (ms since epoch)
 }
 
 impl AppState {
@@ -272,6 +263,8 @@ impl AppState {
             ssh_sessions: Arc::new(Mutex::new(HashMap::new())),
             terminal_contexts: Arc::new(Mutex::new(HashMap::new())),
             context_index: Mutex::new(crate::context_index::ContextIndex::default()),
+            file_backups: Mutex::new(Vec::new()),
+            pty_last_output: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

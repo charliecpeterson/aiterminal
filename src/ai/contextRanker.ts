@@ -6,6 +6,7 @@
 import type { ContextItem } from '../context/AIContext';
 import type { ChatMessage } from '../context/AIContext';
 import { createLogger } from '../utils/logger';
+import { estimateTokens } from '../utils/tokens';
 
 const log = createLogger('ContextRanker');
 
@@ -391,10 +392,9 @@ function filterByTokenBudget(
   let tokenCount = 0;
 
   for (const item of ranked) {
-    // Rough token estimation: ~4 chars per token
-    const estimatedTokens = Math.ceil(item.item.content.length / 4);
+    const estimatedItemTokens = estimateTokens(item.item.content);
     
-    if (tokenCount + estimatedTokens > maxTokens) {
+    if (tokenCount + estimatedItemTokens > maxTokens) {
       // Try to include at least one item
       if (result.length === 0) {
         // Truncate this item to fit
@@ -404,7 +404,7 @@ function filterByTokenBudget(
     }
 
     result.push(item);
-    tokenCount += estimatedTokens;
+    tokenCount += estimatedItemTokens;
   }
 
   return result;

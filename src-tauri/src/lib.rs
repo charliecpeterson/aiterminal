@@ -43,7 +43,7 @@ use keychain::{
 };
 pub use models::AppState;
 use preview::{get_preview_content, open_preview_window, read_preview_file, stop_preview_watcher};
-use pty::{close_pty, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
+use pty::{check_pty_health, close_pty, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
 use quick_actions::{load_quick_actions, save_quick_actions};
 use secret_scanner::scan_content_for_secrets;
 use sessions::{clear_session_state, has_saved_session, load_session_state, save_session_state};
@@ -51,11 +51,13 @@ use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_se
 use ssh::{get_ssh_config_hosts, load_ssh_profiles, save_ssh_profiles};
 use tauri::Emitter;
 use tools::{
-    analyze_error_tool, append_to_file_tool, calculate_tool, check_port_tool, execute_tool_command,
-    find_process_tool, get_current_directory_tool, get_env_var_tool, get_file_info_tool,
-    get_git_diff_tool, get_system_info_tool, git_status_tool, grep_in_files_tool,
-    list_directory_tool, make_directory_tool, read_file_tool, read_multiple_files_tool,
-    replace_in_file_tool, search_files_tool, tail_file_tool, web_search_tool, write_file_tool,
+    analyze_error_tool, append_to_file_tool, calculate_tool, check_port_tool, diff_files_tool,
+    execute_tool_command, file_sections_tool, find_errors_in_file_tool, find_process_tool,
+    get_current_directory_tool, get_env_var_tool, get_file_info_tool, get_git_branch_tool,
+    get_git_diff_tool, get_shell_history_tool, get_system_info_tool, git_status_tool,
+    grep_in_files_tool, list_directory_tool, list_file_backups_tool, make_directory_tool,
+    read_file_tool, read_multiple_files_tool, replace_in_file_tool, search_files_tool,
+    tail_file_tool, undo_file_change_tool, web_search_tool, write_file_tool,
 };
 #[tauri::command]
 async fn context_index_sync(
@@ -258,6 +260,7 @@ pub fn run() {
             measure_pty_latency,
             get_pty_info,
             get_pty_cwd,
+            check_pty_health,
             get_shell_history,
             spawn_pty,
             write_to_pty,
@@ -302,14 +305,21 @@ pub fn run() {
             append_to_file_tool,
             replace_in_file_tool,
             git_status_tool,
+            get_git_branch_tool,
             find_process_tool,
             check_port_tool,
             get_system_info_tool,
             tail_file_tool,
             make_directory_tool,
             get_git_diff_tool,
+            get_shell_history_tool,
+            find_errors_in_file_tool,
+            file_sections_tool,
             calculate_tool,
             web_search_tool,
+            undo_file_change_tool,
+            list_file_backups_tool,
+            diff_files_tool,
             init_llm,
             stop_llm,
             get_llm_completions,

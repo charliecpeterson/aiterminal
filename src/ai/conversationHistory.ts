@@ -10,6 +10,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 import type { AiSettings } from '../context/SettingsContext';
 import { createLogger } from '../utils/logger';
+import { estimateTokens } from '../utils/tokens';
 
 const log = createLogger('ConversationHistory');
 
@@ -42,13 +43,6 @@ interface SummaryCache {
 }
 
 let summaryCache: SummaryCache | null = null;
-
-/**
- * Estimate token count (rough approximation: ~4 chars per token)
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
 
 /**
  * Calculate total tokens in messages

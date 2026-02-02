@@ -203,6 +203,16 @@ body, html, #root {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.segmented-button-subtle {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+  padding: 5px 8px;
+}
+
+.segmented-button-subtle:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .ai-panel-button {
   padding: 5px 12px;
   cursor: pointer;
@@ -650,11 +660,53 @@ body, html, #root {
   pointer-events: auto;
 }
 
-.status-host, .status-latency {
+.status-host, .status-latency, .status-cwd, .status-git {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   pointer-events: auto;
+}
+
+.status-icon {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.status-cwd {
+  cursor: default;
+}
+
+.status-cwd:hover .status-text {
+  color: #fff;
+}
+
+/* Git status */
+.status-git {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.status-git .git-indicator {
+  color: #4ade80;
+  font-size: 10px;
+}
+
+.status-git.has-changes .git-indicator {
+  color: #fbbf24;
+}
+
+.git-sync {
+  display: inline-flex;
+  gap: 4px;
+  font-size: 11px;
+  margin-left: 2px;
+}
+
+.git-sync .ahead {
+  color: #4ade80;
+}
+
+.git-sync .behind {
+  color: #f87171;
 }
 
 .status-dot {
@@ -686,6 +738,42 @@ body, html, #root {
 .latency-warn { background: #fbbf24; color: #422006; }
 .latency-bad { background: #f87171; color: #450a0a; }
 .latency-unknown { background: #6b7280; color: #f9fafb; }
+
+/* Terminal health indicator */
+.status-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  cursor: help;
+}
+
+.status-health .health-indicator {
+  font-size: 12px;
+}
+
+.status-health-idle {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.status-health-unresponsive {
+  background: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+  animation: health-pulse 2s ease-in-out infinite;
+}
+
+.status-health-dead {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+@keyframes health-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 
 /* Ensure terminal content can scroll with a visible gutter on the right */
 .xterm .xterm-viewport {
@@ -786,4 +874,34 @@ body, html, #root {
   background: #1e1e1e;
   color: #d4d4d4;
   overflow: hidden;
+}
+
+/* Terminal Link Tooltip */
+.terminal-link-tooltip {
+  position: fixed;
+  background: #2d2d30;
+  color: #e8eaed;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: system-ui, -apple-system, sans-serif;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 10000;
+  pointer-events: none;
+  max-width: 400px;
+  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-link-tooltip::before {
+  content: '🔗 ';
+  opacity: 0.7;
+}
+
+/* Style for links in terminal - xterm applies underline decoration inline */
+.xterm-screen .xterm-link-layer {
+  cursor: pointer;
 }

@@ -10,6 +10,7 @@ interface UseKeyboardShortcutsProps {
   splitPane: (tabId: number, direction: 'horizontal' | 'vertical') => void;
   setFocusedPane: (tabId: number, paneId: number) => void;
   setIsSettingsOpen: (value: boolean) => void;
+  setIsCommandPaletteOpen: (value: boolean) => void;
   openAIPanelWindow: (data: { activeTabId: number | null; tabs: Tab[] }) => void;
   openSSHPanelWindow: () => void;
 }
@@ -27,6 +28,7 @@ export function useKeyboardShortcuts(props: UseKeyboardShortcutsProps): void {
     splitPane,
     setFocusedPane,
     setIsSettingsOpen,
+    setIsCommandPaletteOpen,
     openAIPanelWindow,
     openSSHPanelWindow,
   } = props;
@@ -78,11 +80,14 @@ export function useKeyboardShortcuts(props: UseKeyboardShortcutsProps): void {
         } else if (e.key === "o" && e.shiftKey) {
           e.preventDefault();
           openSSHPanelWindow();
+        } else if (e.key === "p" && e.shiftKey) {
+          e.preventDefault();
+          setIsCommandPaletteOpen(true);
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTabId, tabs, createTab, closeTab, closePane, splitPane, setFocusedPane, setIsSettingsOpen, openAIPanelWindow, openSSHPanelWindow]);
+  }, [activeTabId, tabs, createTab, closeTab, closePane, splitPane, setFocusedPane, setIsSettingsOpen, setIsCommandPaletteOpen, openAIPanelWindow, openSSHPanelWindow]);
 }

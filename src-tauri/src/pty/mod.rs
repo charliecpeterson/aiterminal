@@ -7,7 +7,7 @@ mod shell;
 mod spawn;
 
 // Re-export public interfaces
-pub use commands::{close_pty, get_pty_cwd, get_pty_info, resize_pty, write_to_pty};
+pub use commands::{check_pty_health, close_pty, get_pty_cwd, get_pty_info, resize_pty, write_to_pty};
 pub use spawn::spawn_pty;
 
 // Re-export PtyInfo for backward compatibility
