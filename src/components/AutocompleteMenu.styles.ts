@@ -31,11 +31,11 @@ export const autocompleteMenuStyles = {
   } as CSSProperties,
 
   menuItemHover: {
-    background: 'rgba(255, 255, 255, 0.03)',
+    background: tokens.colors.overlay.light,
   } as CSSProperties,
 
   menuItemSelected: {
-    background: '#094771',
+    background: tokens.colors.accent.focus,
     color: tokens.colors.text.primary,
   } as CSSProperties,
 
@@ -64,13 +64,13 @@ export const autocompleteMenuStyles = {
   } as CSSProperties,
 
   badgeHistory: {
-    background: '#4d4d4d',
+    background: tokens.colors.bg.input,
     color: tokens.colors.white,
   } as CSSProperties,
 
   // Loading/Empty states
   menuItemState: {
-    color: '#999999',
+    color: tokens.colors.text.hint,
     fontStyle: 'italic',
     justifyContent: 'center',
     cursor: 'default',

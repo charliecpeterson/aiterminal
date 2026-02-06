@@ -17,7 +17,7 @@ pub async fn chat_request(
     }
     let base =
         normalize_base_url(url.unwrap_or("https://generativelanguage.googleapis.com/v1beta"));
-    let endpoint = format!("{}/models/{}:generateContent?key={}", base, model, api_key);
+    let endpoint = format!("{}/models/{}:generateContent", base, model);
     let body = serde_json::json!({
         "contents": [
             { "role": "user", "parts": [{ "text": prompt }] }
@@ -25,6 +25,7 @@ pub async fn chat_request(
     });
     let resp = client
         .post(endpoint)
+        .query(&[("key", api_key)])
         .json(&body)
         .send()
         .await
@@ -32,7 +33,7 @@ pub async fn chat_request(
     let status = resp.status();
     let text = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!("Gemini error: {}", text));
+        return Err(sanitize_api_error("Gemini", status.as_u16(), &text));
     }
     let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     extract_gemini_message(&json).ok_or_else(|| "Gemini response missing content".to_string())

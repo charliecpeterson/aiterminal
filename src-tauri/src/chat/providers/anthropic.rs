@@ -33,7 +33,7 @@ pub async fn chat_request(
     let status = resp.status();
     let text = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!("Anthropic error: {}", text));
+        return Err(sanitize_api_error("Anthropic", status.as_u16(), &text));
     }
     let json: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     extract_anthropic_message(&json).ok_or_else(|| "Anthropic response missing content".to_string())

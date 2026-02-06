@@ -215,7 +215,7 @@ export const sshProfileEditorStyles = {
   } as CSSProperties,
 
   addItemButtonHover: {
-    background: '#333',
+    background: tokens.colors.bg.input,
     borderColor: tokens.colors.accent.primary,
     color: tokens.colors.text.tertiary,
   } as CSSProperties,
@@ -264,7 +264,7 @@ export const sshProfileEditorStyles = {
   } as CSSProperties,
 
   buttonCancelHover: {
-    background: '#2a2a2a',
+    background: tokens.colors.bg.header,
     color: tokens.colors.text.tertiary,
   } as CSSProperties,
 

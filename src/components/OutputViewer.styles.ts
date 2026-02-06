@@ -14,7 +14,7 @@ export const outputViewerStyles = {
     height: '100vh',
     width: '100vw',
     background: tokens.colors.bg.primary,
-    color: '#d4d4d4',
+    color: tokens.colors.text.code,
     fontFamily: tokens.fontFamily.mono,
   } as CSSProperties,
 
@@ -24,7 +24,7 @@ export const outputViewerStyles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: `${tokens.spacing[6]} ${tokens.spacing[8]}`,
-    background: '#2d2d2d',
+    background: tokens.colors.bg.header,
     borderBottom: `${tokens.borderWidth.thin} solid ${tokens.colors.border.subtle}`,
     flexShrink: 0,
   } as CSSProperties,
@@ -32,7 +32,7 @@ export const outputViewerStyles = {
   title: {
     fontSize: tokens.fontSize.lg,
     fontWeight: tokens.fontWeight.semibold,
-    color: '#d4d4d4',
+    color: tokens.colors.text.code,
   } as CSSProperties,
 
   // Actions section
@@ -44,7 +44,7 @@ export const outputViewerStyles = {
 
   matchCount: {
     fontSize: tokens.fontSize.sm,
-    color: '#d4d4d4',
+    color: tokens.colors.text.code,
     opacity: 0.9,
     minWidth: '52px',
     textAlign: 'right',
@@ -56,7 +56,7 @@ export const outputViewerStyles = {
     background: tokens.colors.bg.input,
     border: `${tokens.borderWidth.thin} solid ${tokens.colors.border.subtle}`,
     borderRadius: tokens.borderRadius.default,
-    color: '#d4d4d4',
+    color: tokens.colors.text.code,
     fontSize: tokens.fontSize.md,
     outline: 'none',
     minWidth: '200px',
@@ -64,13 +64,13 @@ export const outputViewerStyles = {
   } as CSSProperties,
 
   searchFocus: {
-    borderColor: '#007acc',
+    borderColor: tokens.colors.accent.hover,
   } as CSSProperties,
 
   // Buttons
   btn: {
     padding: `${tokens.spacing[3]} ${tokens.spacing[8]}`,
-    background: '#0e639c',
+    background: tokens.colors.accent.focus,
     color: tokens.colors.white,
     border: 'none',
     borderRadius: tokens.borderRadius.default,
@@ -80,11 +80,11 @@ export const outputViewerStyles = {
   } as CSSProperties,
 
   btnHover: {
-    background: '#1177bb',
+    background: tokens.colors.accent.focusHover,
   } as CSSProperties,
 
   btnActive: {
-    background: '#0d5a8f',
+    background: tokens.colors.accent.focus,
   } as CSSProperties,
 
   // Content wrapper
@@ -110,7 +110,7 @@ export const outputViewerStyles = {
     fontFamily: 'inherit',
     fontSize: tokens.fontSize.md,
     lineHeight: tokens.lineHeight.relaxed,
-    color: '#d4d4d4',
+    color: tokens.colors.text.code,
   } as CSSProperties,
 
   // Ruler (scrollbar indicators)
@@ -129,7 +129,7 @@ export const outputViewerStyles = {
     right: 0,
     width: '6px',
     height: '2px',
-    background: '#007acc',
+    background: tokens.colors.accent.hover,
     opacity: 0.55,
     borderRadius: tokens.borderRadius.sm,
     transform: 'translateY(-50%)',

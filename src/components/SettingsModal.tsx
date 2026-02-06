@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { X, AlertTriangle } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings, AppSettings } from '../context/SettingsContext';
 import { settingsModalStyles } from './SettingsModal.styles';
-import { useInteractiveStates } from '../hooks/useInteractiveStates';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -20,8 +20,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [keychainStatus, setKeychainStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [keychainMessage, setKeychainMessage] = useState<string | null>(null);
 
-    // Interactive states (hover/focus) for buttons and inputs
-    const { getProps, getFocusProps } = useInteractiveStates();
 
     // Load settings when modal opens
     useEffect(() => {
@@ -82,9 +80,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                     conversation_min_for_summary: undefined,
                     context_token_budget_chat: undefined,
                     context_token_budget_agent: undefined,
-                    enable_context_summaries: undefined,
-                    context_summary_threshold: undefined,
-                    context_auto_cleanup_hours: undefined,
                 }
             };
         });
@@ -147,7 +142,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             });
 
             setKeychainStatus('success');
-            setKeychainMessage('✓ Saved to macOS Keychain');
+            setKeychainMessage('Saved to macOS Keychain');
 
             // Clear message after 3 seconds
             setTimeout(() => {
@@ -171,13 +166,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                 <div style={settingsModalStyles.modal} onClick={(e) => e.stopPropagation()}>
                     <div style={settingsModalStyles.header}>
                         <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
-                        <button 
-                            {...getProps('closeBtn', {
-                                base: settingsModalStyles.closeButton,
-                                hover: settingsModalStyles.closeButtonHover,
-                            })}
+                        <button
+                            className="btn-icon"
+                            style={settingsModalStyles.closeButton}
                             onClick={onClose}
-                        >×</button>
+                        ><X size={16} /></button>
                     </div>
                     <div style={settingsModalStyles.loadingContainer}>
                         <p>Loading settings...</p>
@@ -196,13 +189,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                 <div style={settingsModalStyles.modal} onClick={(e) => e.stopPropagation()}>
                     <div style={settingsModalStyles.header}>
                         <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
-                        <button 
-                            {...getProps('closeBtn2', {
-                                base: settingsModalStyles.closeButton,
-                                hover: settingsModalStyles.closeButtonHover,
-                            })}
+                        <button
+                            className="btn-icon"
+                            style={settingsModalStyles.closeButton}
                             onClick={onClose}
-                        >×</button>
+                        ><X size={16} /></button>
                     </div>
                     <div style={settingsModalStyles.loadingContainer}>Initializing...</div>
                 </div>
@@ -215,53 +206,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             <div style={settingsModalStyles.modal} onClick={e => e.stopPropagation()}>
                 <div style={settingsModalStyles.header}>
                     <h2 style={settingsModalStyles.headerTitle}>Settings</h2>
-                        <button 
-                            {...getProps('closeBtn3', {
-                                base: settingsModalStyles.closeButton,
-                                hover: settingsModalStyles.closeButtonHover,
-                            })}
+                        <button
+                            className="btn-icon"
+                            style={settingsModalStyles.closeButton}
                             onClick={onClose}
-                        >×</button>
+                        ><X size={16} /></button>
                 </div>
-                
+
                 <div style={settingsModalStyles.content}>
                     <div style={settingsModalStyles.sidebar}>
-                        <div 
-                            {...getProps('tabAppearance', {
-                                base: settingsModalStyles.tab,
-                                hover: settingsModalStyles.tabHover,
-                                active: settingsModalStyles.tabActive,
-                            }, { active: activeTab === 'appearance' })}
+                        <div
+                            className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
+                            style={settingsModalStyles.tab}
                             onClick={() => setActiveTab('appearance')}
                         >
                             Appearance
                         </div>
-                        <div 
-                            {...getProps('tabAi', {
-                                base: settingsModalStyles.tab,
-                                hover: settingsModalStyles.tabHover,
-                                active: settingsModalStyles.tabActive,
-                            }, { active: activeTab === 'ai' })}
+                        <div
+                            className={`settings-tab ${activeTab === 'ai' ? 'active' : ''}`}
+                            style={settingsModalStyles.tab}
                             onClick={() => setActiveTab('ai')}
                         >
                             AI
                         </div>
-                        <div 
-                            {...getProps('tabTerminal', {
-                                base: settingsModalStyles.tab,
-                                hover: settingsModalStyles.tabHover,
-                                active: settingsModalStyles.tabActive,
-                            }, { active: activeTab === 'terminal' })}
+                        <div
+                            className={`settings-tab ${activeTab === 'terminal' ? 'active' : ''}`}
+                            style={settingsModalStyles.tab}
                             onClick={() => setActiveTab('terminal')}
                         >
                             Terminal
                         </div>
-                        <div 
-                            {...getProps('tabAutocomplete', {
-                                base: settingsModalStyles.tab,
-                                hover: settingsModalStyles.tabHover,
-                                active: settingsModalStyles.tabActive,
-                            }, { active: activeTab === 'autocomplete' })}
+                        <div
+                            className={`settings-tab ${activeTab === 'autocomplete' ? 'active' : ''}`}
+                            style={settingsModalStyles.tab}
                             onClick={() => setActiveTab('autocomplete')}
                         >
                             Autocomplete
@@ -285,10 +262,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 : 14;
                                             handleChange('appearance', 'font_size', size);
                                         }}
-                                        {...getFocusProps('fontSize', {
-                                            base: settingsModalStyles.formInput,
-                                            focus: settingsModalStyles.formInputFocus,
-                                        })}
+                                        className="settings-input-alt"
+                                        style={settingsModalStyles.formInput}
                                     />
                                 </div>
                                 <div style={settingsModalStyles.formGroup}>
@@ -303,10 +278,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             }
                                         }}
                                         placeholder="Monaco, monospace"
-                                        {...getFocusProps('fontFamily', {
-                                            base: settingsModalStyles.formInput,
-                                            focus: settingsModalStyles.formInputFocus,
-                                        })}
+                                        className="settings-input-alt"
+                                        style={settingsModalStyles.formInput}
                                     />
                                 </div>
                                 <div style={settingsModalStyles.formGroup}>
@@ -314,10 +287,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <select 
                                         value={localSettings.appearance.theme}
                                         onChange={(e) => handleChange('appearance', 'theme', e.target.value)}
-                                        {...getFocusProps('theme', {
-                                            base: settingsModalStyles.formInput,
-                                            focus: settingsModalStyles.formInputFocus,
-                                        })}
+                                        className="settings-input-alt"
+                                        style={settingsModalStyles.formInput}
                                     >
                                         <option value="dark">Dark</option>
                                         <option value="light">Light</option>
@@ -342,10 +313,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 : 200;
                                             handleChange('terminal', 'max_markers', clamped);
                                         }}
-                                        {...getFocusProps('maxMarkers', {
-                                            base: settingsModalStyles.formInput,
-                                            focus: settingsModalStyles.formInputFocus,
-                                        })}
+                                        className="settings-input-alt"
+                                        style={settingsModalStyles.formInput}
                                     />
                                 </div>
                             </>
@@ -358,10 +327,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <select 
                                         value={localSettings.ai.provider}
                                         onChange={(e) => handleChange('ai', 'provider', e.target.value)}
-                                        {...getFocusProps('provider', {
-                                            base: settingsModalStyles.formInput,
-                                            focus: settingsModalStyles.formInputFocus,
-                                        })}
+                                        className="settings-input-alt"
+                                        style={settingsModalStyles.formInput}
                                     >
                                         <option value="openai">OpenAI</option>
                                         <option value="anthropic">Anthropic</option>
@@ -376,10 +343,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         value={localSettings.ai.api_key || ''}
                                         onChange={(e) => handleChange('ai', 'api_key', e.target.value)}
                                         placeholder="sk-..."
-                                        {...getFocusProps('apiKey', {
-                                            base: settingsModalStyles.formInput,
-                                            focus: settingsModalStyles.formInputFocus,
-                                        })}
+                                        className="settings-input-alt"
+                                        style={settingsModalStyles.formInput}
                                     />
                                 </div>
                                 <div style={settingsModalStyles.formGroup}>
@@ -397,21 +362,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             }
                                         }}
                                         placeholder="https://api.openai.com/v1"
-                                        {...getFocusProps('url', {
-                                            base: settingsModalStyles.formInput,
-                                            focus: settingsModalStyles.formInputFocus,
-                                        })}
+                                        className="settings-input-alt"
+                                        style={settingsModalStyles.formInput}
                                     />
                                 </div>
                                 <div style={settingsModalStyles.formGroup}>
                                     <label style={settingsModalStyles.formLabel}>Connection</label>
                                     <div style={settingsModalStyles.aiConnectionRow}>
                                         <button
-                                            {...getProps('testBtn', {
-                                                base: { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary },
-                                                hover: settingsModalStyles.buttonHover,
-                                                disabled: settingsModalStyles.buttonDisabled,
-                                            }, { disabled: aiTestStatus === 'testing' })}
+                                            className="btn-secondary"
+                                            style={{ ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary }}
                                             onClick={handleTestConnection}
                                             disabled={aiTestStatus === 'testing'}
                                         >
@@ -439,11 +399,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <label style={settingsModalStyles.formLabel}>Secure Storage</label>
                                     <div style={settingsModalStyles.aiConnectionRow}>
                                         <button
-                                            {...getProps('keychainBtn', {
-                                                base: { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary },
-                                                hover: settingsModalStyles.buttonHover,
-                                                disabled: settingsModalStyles.buttonDisabled,
-                                            }, { disabled: !localSettings.ai.api_key || keychainStatus === 'saving' })}
+                                            className="btn-secondary"
+                                            style={{ ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary }}
                                             onClick={handleSaveToKeychain}
                                             disabled={!localSettings.ai.api_key || keychainStatus === 'saving'}
                                         >
@@ -562,7 +519,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </div>
                                         {(localSettings.ai.conversation_window_size ?? 8) < 4 && (
                                             <div style={settingsModalStyles.warningText}>
-                                                ⚠️ Very small window may lose important context
+                                                <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Very small window may lose important context
                                             </div>
                                         )}
                                     </div>
@@ -583,7 +540,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </div>
                                         {(localSettings.ai.conversation_min_for_summary ?? 12) > 30 && (
                                             <div style={settingsModalStyles.warningText}>
-                                                ⚠️ Large value increases token usage. Summarization saves 60-80% tokens.
+                                                <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Large value increases token usage. Summarization saves 60-80% tokens.
                                             </div>
                                         )}
                                     </div>
@@ -605,7 +562,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </div>
                                         {(localSettings.ai.context_token_budget_chat ?? 12000) < 6000 && (
                                             <div style={settingsModalStyles.warningText}>
-                                                ⚠️ Low budget may truncate important context in chat mode
+                                                <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Low budget may truncate important context in chat mode
                                             </div>
                                         )}
                                     </div>
@@ -626,7 +583,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </div>
                                         {(localSettings.ai.context_token_budget_agent ?? 6000) > 10000 && (
                                             <div style={settingsModalStyles.warningText}>
-                                                ⚠️ High budget reduces efficiency. Agent can fetch files using tools.
+                                                <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> High budget reduces efficiency. Agent can fetch files using tools.
                                             </div>
                                         )}
                                     </div>
@@ -1120,18 +1077,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                 </div>
 
                 <div style={settingsModalStyles.footer}>
-                    <button 
-                        {...getProps('cancelBtn', {
-                            base: { ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary },
-                            hover: settingsModalStyles.buttonHover,
-                        })}
+                    <button
+                        className="btn-secondary"
+                        style={{ ...settingsModalStyles.button, ...settingsModalStyles.buttonSecondary }}
                         onClick={onClose}
                     >Cancel</button>
-                    <button 
-                        {...getProps('saveBtn', {
-                            base: { ...settingsModalStyles.button, ...settingsModalStyles.buttonPrimary },
-                            hover: settingsModalStyles.buttonHover,
-                        })}
+                    <button
+                        className="btn-primary"
+                        style={{ ...settingsModalStyles.button, ...settingsModalStyles.buttonPrimary }}
                         onClick={handleSave}
                     >Save</button>
                 </div>

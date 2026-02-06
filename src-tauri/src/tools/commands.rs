@@ -487,7 +487,12 @@ pub async fn git_status_tool(working_directory: Option<String>) -> Result<String
     cmd.args(["status", "--porcelain", "--branch"]);
 
     if let Some(cwd) = working_directory {
-        cmd.current_dir(&cwd);
+        let cwd_path = Path::new(&cwd);
+        if !cwd_path.is_dir() {
+            return Err(format!("Working directory does not exist: {}", cwd));
+        }
+        let safe_cwd = validate_path(cwd_path)?;
+        cmd.current_dir(&safe_cwd);
     }
 
     let output = cmd
@@ -619,12 +624,15 @@ pub async fn make_directory_tool(
     } else {
         base_dir.join(&path)
     };
-    
+
+    // Validate path to prevent directory traversal
+    let safe_path = validate_path(&full_path)?;
+
     // Create directory with parents (equivalent to mkdir -p)
-    fs::create_dir_all(&full_path)
+    fs::create_dir_all(&safe_path)
         .map_err(|e| format!("Failed to create directory: {}", e))?;
-    
-    Ok(format!("Successfully created directory: {}", path))
+
+    Ok(format!("Successfully created directory: {}", safe_path.display()))
 }
 
 // Get git diff
@@ -634,7 +642,12 @@ pub async fn get_git_diff_tool(working_directory: Option<String>) -> Result<Stri
     cmd.args(["diff"]);
 
     if let Some(cwd) = working_directory {
-        cmd.current_dir(&cwd);
+        let cwd_path = Path::new(&cwd);
+        if !cwd_path.is_dir() {
+            return Err(format!("Working directory does not exist: {}", cwd));
+        }
+        let safe_cwd = validate_path(cwd_path)?;
+        cmd.current_dir(&safe_cwd);
     }
 
     let output = cmd
@@ -669,9 +682,14 @@ pub struct GitBranchInfo {
 pub async fn get_git_branch_tool(working_directory: Option<String>) -> Result<GitBranchInfo, String> {
     let mut cmd = Command::new("git");
     cmd.args(["status", "--porcelain=v1", "--branch"]);
-    
+
     if let Some(cwd) = &working_directory {
-        cmd.current_dir(cwd);
+        let cwd_path = Path::new(cwd);
+        if !cwd_path.is_dir() {
+            return Err(format!("Working directory does not exist: {}", cwd));
+        }
+        let safe_cwd = validate_path(cwd_path)?;
+        cmd.current_dir(&safe_cwd);
     }
     
     let output = cmd.output();
@@ -762,18 +780,29 @@ pub async fn calculate_tool(expression: String) -> Result<String, String> {
         return Err("Invalid expression format".to_string());
     }
     
-    // Execute using bc/PowerShell with validated input
+    // Execute using bc directly (no shell piping to avoid command injection patterns)
     let output = if cfg!(target_os = "windows") {
         Command::new("powershell")
             .args(["-Command", &expression])
             .output()
     } else {
-        // Use echo with the expression piped to bc
-        // Note: expression is already validated to contain only safe chars
-        Command::new("sh")
-            .arg("-c")
-            .arg(format!("echo '{}' | bc -l", expression))
-            .output()
+        use std::io::Write;
+        let mut child = Command::new("bc")
+            .arg("-l")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to start bc: {}", e))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(expression.as_bytes())
+                .map_err(|e| format!("Failed to write to bc: {}", e))?;
+            stdin.write_all(b"\n")
+                .map_err(|e| format!("Failed to write to bc: {}", e))?;
+        }
+
+        child.wait_with_output()
     };
 
     let result = output.map_err(|e| format!("Failed to calculate: {}", e))?;

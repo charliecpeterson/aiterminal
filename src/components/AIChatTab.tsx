@@ -69,8 +69,6 @@ export function AIChatTab(props: {
     onQuickAction,
   } = props;
 
-  // Hover states for interactive elements
-  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
   const [inputFocus, setInputFocus] = useState(false);
   
   // Ref for auto-resize textarea
@@ -139,37 +137,19 @@ export function AIChatTab(props: {
             </div>
             <div style={chatStyles.chipRow}>
               <button
-                style={
-                  hoverStates.chip1
-                    ? { ...chatStyles.chip, ...chatStyles.chipHover }
-                    : chatStyles.chip
-                }
-                onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip1: true }))}
-                onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip1: false }))}
+                className="chat-chip"
                 onClick={() => onQuickAction?.('summarize')}
               >
                 Summarize last command
               </button>
               <button
-                style={
-                  hoverStates.chip2
-                    ? { ...chatStyles.chip, ...chatStyles.chipHover }
-                    : chatStyles.chip
-                }
-                onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip2: true }))}
-                onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip2: false }))}
+                className="chat-chip"
                 onClick={() => onQuickAction?.('explain-error')}
               >
                 Explain error
               </button>
               <button
-                style={
-                  hoverStates.chip3
-                    ? { ...chatStyles.chip, ...chatStyles.chipHover }
-                    : chatStyles.chip
-                }
-                onMouseEnter={() => setHoverStates(prev => ({ ...prev, chip3: true }))}
-                onMouseLeave={() => setHoverStates(prev => ({ ...prev, chip3: false }))}
+                className="chat-chip"
                 onClick={() => onQuickAction?.('draft-fix')}
               >
                 Draft a fix
@@ -241,12 +221,7 @@ export function AIChatTab(props: {
           />
           {isSending ? (
             <button
-              style={{
-                ...chatStyles.cancelButton,
-                ...(hoverStates.cancelBtn ? chatStyles.cancelButtonHover : {}),
-              }}
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, cancelBtn: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, cancelBtn: false }))}
+              style={chatStyles.cancelButton}
               onClick={onCancel}
               title="Cancel"
             >
@@ -256,11 +231,8 @@ export function AIChatTab(props: {
             <button
               style={{
                 ...chatStyles.sendButton,
-                ...(hoverStates.sendBtn ? chatStyles.sendButtonHover : {}),
                 ...(!prompt.trim() ? chatStyles.sendButtonDisabled : {}),
               }}
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, sendBtn: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, sendBtn: false }))}
               onClick={onSend}
               disabled={!prompt.trim()}
               title="Send (Enter)"

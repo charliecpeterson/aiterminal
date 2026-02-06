@@ -28,12 +28,7 @@ export interface AiSettings {
     // Advanced: Context Budget
     context_token_budget_chat?: number;       // Default: 12000
     context_token_budget_agent?: number;      // Default: 6000
-    
-    // Advanced: Context Behavior (for future features)
-    enable_context_summaries?: boolean;       // Default: false
-    context_summary_threshold?: number;       // Default: 2
-    context_auto_cleanup_hours?: number;      // Default: 0 (disabled)
-    
+
     // Auto-Routing: Intelligent model selection based on query complexity
     auto_routing?: {
         enabled: boolean;  // Default: true

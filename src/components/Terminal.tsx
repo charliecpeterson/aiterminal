@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Folder, ChevronUp, ChevronDown, X, Clock, FileText, ClipboardList } from 'lucide-react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
@@ -116,6 +117,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
     const hideSelectionMenuRef = useRef(hideSelectionMenu);
     const setHostLabelAndRemoteStateRef = useRef(setHostLabelAndRemoteState);
     
+    // Sync refs only when callbacks actually change
     useEffect(() => {
         onCommandRunningRef.current = onCommandRunning;
         addContextItemRef.current = addContextItem;
@@ -123,7 +125,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         hideCopyMenuRef.current = hideCopyMenu;
         hideSelectionMenuRef.current = hideSelectionMenu;
         setHostLabelAndRemoteStateRef.current = setHostLabelAndRemoteState;
-    });
+    }, [onCommandRunning, addContextItem, addContextItemWithScan, hideCopyMenu, hideSelectionMenu, setHostLabelAndRemoteState]);
 
     const handleQuickAction = useCallback(
         (actionType: QuickActionType, commandText: string, outputText?: string, exitCode?: number) => {
@@ -375,9 +377,9 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                     onChange={search.onChange}
                     onKeyDown={search.onKeyDown}
                 />
-                <button onClick={search.findPrevious}>↑</button>
-                <button onClick={search.findNext}>↓</button>
-                <button onClick={search.close}>✕</button>
+                <button onClick={search.findPrevious}><ChevronUp size={14} /></button>
+                <button onClick={search.findNext}><ChevronDown size={14} /></button>
+                <button onClick={search.close}><X size={14} /></button>
             </div>
         )}
             <div className="terminal-body" ref={terminalRef}>
@@ -402,7 +404,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                     {/* Show duration if available */}
                     {copyMenu.duration !== undefined && (
                         <div className="marker-duration">
-                            ⏱️ {formatDuration(copyMenu.duration)}
+                            <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />{formatDuration(copyMenu.duration)}
                             {copyMenu.exitCode !== undefined && (
                                 <span className={copyMenu.exitCode === 0 ? 'success' : 'error'}>
                                     {' '}• Exit: {copyMenu.exitCode}
@@ -542,10 +544,10 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                         {outputActions.lineCount} lines
                     </div>
                     <button onClick={handleViewInWindow} title="Open output in new window">
-                        📄 View in Window
+                        <FileText size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> View in Window
                     </button>
                     <button onClick={handleCopyOutput} title="Copy output to clipboard">
-                        📋 Copy Output
+                        <ClipboardList size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Copy Output
                     </button>
                 </div>
             )}
@@ -555,7 +557,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                     className="status-cwd" 
                     title={isPathTruncated ? fullCwd : undefined}
                 >
-                    <span className="status-icon">📁</span>
+                    <span className="status-icon"><Folder size={14} /></span>
                     <span className="status-text">{displayCwd}</span>
                 </div>
 

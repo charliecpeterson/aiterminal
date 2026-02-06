@@ -11,7 +11,7 @@ export const toolExecutionStyles = {
   // Item base
   item: {
     background: tokens.colors.accentOverlay.light,
-    border: `${tokens.borderWidth.thin} solid rgba(91, 141, 232, 0.25)`,
+    border: `${tokens.borderWidth.thin} solid ${tokens.colors.accentOverlay.borderMedium}`,
     borderRadius: tokens.borderRadius.xl,
     padding: `${tokens.spacing[6]} ${tokens.spacing[7]}`,
     marginBottom: tokens.spacing[4],
@@ -26,7 +26,7 @@ export const toolExecutionStyles = {
 
   itemRunning: {
     background: tokens.colors.accentOverlay.light,
-    borderColor: 'rgba(91, 141, 232, 0.25)',
+    borderColor: tokens.colors.accentOverlay.borderMedium,
   } as CSSProperties,
 
   // Header
@@ -85,7 +85,7 @@ export const toolExecutionStyles = {
   } as CSSProperties,
 
   code: {
-    background: 'rgba(0, 0, 0, 0.2)',
+    background: tokens.colors.overlay.dark,
     padding: `${tokens.spacing[2]} ${tokens.spacing[4]}`,
     borderRadius: tokens.borderRadius.md,
     fontFamily: tokens.fontFamily.mono,

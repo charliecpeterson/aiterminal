@@ -94,12 +94,12 @@ export const sshSessionPanelStyles = {
     padding: `${tokens.spacing[4]} ${tokens.spacing[8]}`,
     cursor: 'pointer',
     userSelect: 'none',
-    background: '#252525',
+    background: tokens.colors.bg.card,
     transition: tokens.transition.medium,
   } as CSSProperties,
 
   groupHeaderHover: {
-    background: '#2a2a2a',
+    background: tokens.colors.bg.header,
   } as CSSProperties,
 
   groupToggle: {
@@ -135,7 +135,7 @@ export const sshSessionPanelStyles = {
 
   groupDeleteButtonHover: {
     background: 'rgba(255, 0, 0, 0.1)',
-    color: '#ff4444',
+    color: tokens.colors.semantic.error,
   } as CSSProperties,
 
   // Active connections
@@ -167,7 +167,7 @@ export const sshSessionPanelStyles = {
   } as CSSProperties,
 
   activeItemHover: {
-    background: '#222',
+    background: tokens.colors.bg.card,
     borderColor: tokens.colors.accent.primary,
   } as CSSProperties,
 
@@ -195,7 +195,7 @@ export const sshSessionPanelStyles = {
   } as CSSProperties,
 
   profileItemHover: {
-    background: '#222',
+    background: tokens.colors.bg.card,
     borderColor: tokens.colors.accent.primary,
   } as CSSProperties,
 
@@ -247,8 +247,8 @@ export const sshSessionPanelStyles = {
   actionButton: {
     flex: 1,
     padding: `${tokens.spacing[3]} ${tokens.spacing[6]}`,
-    background: '#2a2a2a',
-    border: `${tokens.borderWidth.thin} solid #444`,
+    background: tokens.colors.bg.header,
+    border: `${tokens.borderWidth.thin} solid ${tokens.colors.border.subtle}`,
     borderRadius: tokens.borderRadius.md,
     color: tokens.colors.text.primary,
     fontSize: tokens.fontSize.xs,
@@ -257,7 +257,7 @@ export const sshSessionPanelStyles = {
   } as CSSProperties,
 
   actionButtonHover: {
-    background: '#333',
+    background: tokens.colors.bg.input,
     borderColor: tokens.colors.accent.primary,
   } as CSSProperties,
 

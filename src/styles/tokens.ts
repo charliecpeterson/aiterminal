@@ -26,6 +26,8 @@ export const colors = {
     workbench: '#1b1c21',    // Workbench area
     input: '#3c3c3c',        // Input fields
     card: '#252526',         // Card background
+    modal: 'rgba(30, 30, 40, 0.98)', // Modal/overlay backgrounds
+    header: '#2d2d2d',       // Header/toolbar backgrounds
   },
   
   // Text colors
@@ -35,6 +37,8 @@ export const colors = {
     tertiary: '#e0e0e0',     // More muted
     muted: '#cccccc',        // Muted text
     disabled: '#858585',     // Disabled/hint text
+    hint: '#999999',         // Hint/placeholder text
+    code: '#d4d4d4',         // Code/monospace text
   },
   
   // Border colors
@@ -52,6 +56,8 @@ export const colors = {
     hover: '#007acc',        // Hover states
     light: '#8db7ff',        // Light accent (links)
     pale: '#dbe5ff',         // Very light accent
+    focus: '#0e639c',        // Focus ring / VS Code blue
+    focusHover: '#1177bb',   // Focus hover
   },
   
   // Semantic colors
@@ -64,6 +70,7 @@ export const colors = {
     errorMuted: '#f08c8c',   // Muted error
     errorDark: '#450a0a',    // Dark error text
     warning: '#fbbf24',      // Warning states
+    warningLight: '#f59e0b', // Light warning (amber-500)
     warningDark: '#422006',  // Dark warning text
     info: '#2196F3',         // Info/Python REPL
     infoDark: '#FFC107',     // Python error

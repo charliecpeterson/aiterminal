@@ -1,24 +1,24 @@
 import { CSSProperties } from 'react';
 import { tokens } from '../styles/tokens';
 
-// Custom chat colors
+// Chat colors mapped to design tokens
 const chatColors = {
-  bg: '#16171d',
-  bgLighter: '#1c1d24',
-  border: 'rgba(255, 255, 255, 0.08)',
-  borderStrong: 'rgba(255, 255, 255, 0.12)',
-  text: '#e8eaed',
-  textMuted: 'rgba(255, 255, 255, 0.55)',
+  bg: tokens.colors.bg.elevated,
+  bgLighter: tokens.colors.bg.workbench,
+  border: tokens.colors.overlay.strong,
+  borderStrong: tokens.colors.border.focus,
+  text: tokens.colors.text.secondary,
+  textMuted: tokens.colors.text.disabled,
   textDim: 'rgba(255, 255, 255, 0.35)',
-  accent: '#5b8de8',
-  accentHover: '#7aa3f0',
-  card: 'rgba(255, 255, 255, 0.03)',
-  cardHover: 'rgba(255, 255, 255, 0.05)',
-  input: 'rgba(255, 255, 255, 0.04)',
-  inputFocus: 'rgba(255, 255, 255, 0.06)',
-  user: 'rgba(91, 141, 232, 0.12)',
+  accent: tokens.colors.accent.primary,
+  accentHover: tokens.colors.accent.strong,
+  card: tokens.colors.overlay.light,
+  cardHover: tokens.colors.overlay.default,
+  input: tokens.colors.overlay.card,
+  inputFocus: tokens.colors.overlay.medium,
+  user: tokens.colors.accentOverlay.default,
   assistant: 'transparent',
-  error: '#ef4444',
+  error: tokens.colors.semantic.error,
   errorBg: 'rgba(239, 68, 68, 0.1)',
 };
 
@@ -153,7 +153,7 @@ export const chatStyles = {
     display: 'flex',
     padding: `${tokens.spacing[12]} ${tokens.spacing[16]}`,
     borderTop: `${tokens.borderWidth.thin} solid ${chatColors.border}`,
-    background: 'rgba(0, 0, 0, 0.2)',
+    background: tokens.colors.overlay.dark,
     backdropFilter: 'blur(10px)',
   } as CSSProperties,
 
@@ -172,8 +172,8 @@ export const chatStyles = {
 
   inputContainerFocus: {
     background: chatColors.inputFocus,
-    borderColor: 'rgba(91, 141, 232, 0.4)',
-    boxShadow: '0 0 0 3px rgba(91, 141, 232, 0.1)',
+    borderColor: tokens.colors.accentOverlay.hover,
+    boxShadow: tokens.boxShadow.focus,
   } as CSSProperties,
 
   inputContainerDisabled: {
@@ -215,7 +215,7 @@ export const chatStyles = {
     height: '32px',
     minWidth: '32px',
     minHeight: '32px',
-    color: '#ffffff',
+    color: tokens.colors.white,
     cursor: 'pointer',
     transition: tokens.transition.fast,
     flexShrink: 0,
@@ -227,7 +227,7 @@ export const chatStyles = {
   } as CSSProperties,
 
   sendButtonDisabled: {
-    background: 'rgba(91, 141, 232, 0.4)',
+    background: tokens.colors.accentOverlay.hover,
     cursor: 'not-allowed',
     transform: 'none',
   } as CSSProperties,
@@ -237,7 +237,7 @@ export const chatStyles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'rgba(255, 255, 255, 0.1)',
+    background: tokens.colors.overlay.stronger,
     border: `${tokens.borderWidth.thin} solid ${chatColors.border}`,
     borderRadius: '50%',
     width: '32px',
@@ -251,7 +251,7 @@ export const chatStyles = {
   } as CSSProperties,
 
   cancelButtonHover: {
-    background: 'rgba(255, 255, 255, 0.15)',
+    background: tokens.colors.overlay.stronger,
     borderColor: chatColors.borderStrong,
     color: chatColors.text,
   } as CSSProperties,

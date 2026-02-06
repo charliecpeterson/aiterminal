@@ -232,8 +232,9 @@ pub async fn ai_chat_stream(
             let status = resp.status();
             if !status.is_success() {
                 let text = resp.text().await.map_err(|e| e.to_string())?;
-                eprintln!("❌ OpenAI API error ({}): {}", status, text);
-                return Err(format!("OpenAI error: {}", text));
+                let sanitized = crate::chat::helpers::sanitize_api_error("OpenAI", status.as_u16(), &text);
+                eprintln!("OpenAI API error ({})", status);
+                return Err(sanitized);
             }
             eprintln!("✅ OpenAI request successful, streaming response");
             let mut stream = resp.bytes_stream();
@@ -423,7 +424,7 @@ pub async fn ai_chat_stream(
             let status = resp.status();
             if !status.is_success() {
                 let text = resp.text().await.map_err(|e| e.to_string())?;
-                return Err(format!("Ollama error: {}", text));
+                return Err(crate::chat::helpers::sanitize_api_error("Ollama", status.as_u16(), &text));
             }
             let mut stream = resp.bytes_stream();
             let mut buffer = String::new();

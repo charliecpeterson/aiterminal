@@ -1,11 +1,12 @@
 /**
  * Tool Execution Status Component
- * 
+ *
  * Shows active tool executions with command preview, working directory,
  * and progress indicators.
  */
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
+import { Settings, Loader, Check, X } from 'lucide-react';
 import { toolExecutionStyles } from './ToolExecutionStatus.styles';
 
 export interface ToolExecution {
@@ -27,11 +28,10 @@ interface ToolExecutionStatusProps {
 }
 
 export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecutionStatusProps) {
-  const activeExecutions = useMemo(() => 
+  const activeExecutions = useMemo(() =>
     executions.filter(e => e.status !== 'completed' && e.status !== 'failed')
   , [executions]);
-  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
-  
+
   if (activeExecutions.length === 0) {
     return null;
   }
@@ -41,8 +41,8 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
       {activeExecutions.map((execution) => {
         const status = execution.status as 'pending' | 'running';
         return (
-          <div 
-            key={execution.id} 
+          <div
+            key={execution.id}
             style={
               status === 'pending'
                 ? { ...toolExecutionStyles.item, ...toolExecutionStyles.itemPending }
@@ -52,15 +52,9 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
             }
           >
             <div style={toolExecutionStyles.header}>
-              <span style={
-                status === 'running'
-                  ? { ...toolExecutionStyles.icon, ...toolExecutionStyles.iconRunning }
-                  : status === 'pending'
-                    ? { ...toolExecutionStyles.icon, ...toolExecutionStyles.iconPending }
-                    : toolExecutionStyles.icon
-              }>
-                {execution.status === 'running' && '⚙️'}
-                {execution.status === 'pending' && '⏳'}
+              <span style={toolExecutionStyles.icon}>
+                {execution.status === 'running' && <Settings size={16} className="animate-spin" />}
+                {execution.status === 'pending' && <Loader size={16} className="animate-spin" />}
               </span>
               <span style={toolExecutionStyles.name}>{execution.toolName}</span>
               {execution.status === 'running' && (
@@ -70,46 +64,36 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
                 <span style={toolExecutionStyles.statusText}>Awaiting approval</span>
               )}
             </div>
-            
+
             {execution.command && (
               <div style={toolExecutionStyles.command}>
                 <span style={toolExecutionStyles.label}>Command:</span>
                 <code style={toolExecutionStyles.code}>{execution.command}</code>
               </div>
             )}
-            
+
             {execution.workingDirectory && (
               <div style={toolExecutionStyles.directory}>
                 <span style={toolExecutionStyles.label}>Directory:</span>
                 <code style={toolExecutionStyles.code}>{execution.workingDirectory}</code>
               </div>
             )}
-            
+
             {execution.status === 'pending' && onApprove && onDeny && (
               <div style={toolExecutionStyles.actions}>
-                <button 
-                  style={
-                    hoverStates[`approve-${execution.id}`]
-                      ? { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.approve, ...toolExecutionStyles.approveHover }
-                      : { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.approve }
-                  }
+                <button
+                  className="btn-success"
+                  style={toolExecutionStyles.actionButton}
                   onClick={() => onApprove(execution.id)}
-                  onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`approve-${execution.id}`]: true }))}
-                  onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`approve-${execution.id}`]: false }))}
                 >
-                  ✓ Run
+                  <Check size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Run
                 </button>
-                <button 
-                  style={
-                    hoverStates[`deny-${execution.id}`]
-                      ? { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.deny, ...toolExecutionStyles.denyHover }
-                      : { ...toolExecutionStyles.actionButton, ...toolExecutionStyles.deny }
-                  }
+                <button
+                  className="btn-danger"
+                  style={toolExecutionStyles.actionButton}
                   onClick={() => onDeny(execution.id)}
-                  onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`deny-${execution.id}`]: true }))}
-                  onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`deny-${execution.id}`]: false }))}
                 >
-                  ✗ Cancel
+                  <X size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Cancel
                 </button>
               </div>
             )}

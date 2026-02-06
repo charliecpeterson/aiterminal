@@ -1,16 +1,16 @@
 import { CSSProperties } from 'react';
 import { tokens } from '../styles/tokens';
 
-// Custom AI Panel colors
+// AI Panel colors mapped to design tokens
 const aiPanelColors = {
-  bg: '#16171d',
-  border: 'rgba(255, 255, 255, 0.1)',
-  muted: 'rgba(255, 255, 255, 0.55)',
-  accent: '#5b8de8',
-  accentStrong: '#7aa3f0',
-  card: 'rgba(255, 255, 255, 0.04)',
-  cardStrong: 'rgba(255, 255, 255, 0.06)',
-  text: '#e8eaed',
+  bg: tokens.colors.bg.elevated,
+  border: tokens.colors.border.strong,
+  muted: tokens.colors.text.disabled,
+  accent: tokens.colors.accent.primary,
+  accentStrong: tokens.colors.accent.strong,
+  card: tokens.colors.overlay.card,
+  cardStrong: tokens.colors.overlay.medium,
+  text: tokens.colors.text.secondary,
 };
 
 export const aiPanelStyles = {
@@ -19,7 +19,7 @@ export const aiPanelStyles = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    color: '#e6e6e6',
+    color: tokens.colors.text.tertiary,
     fontFamily: '"Avenir Next", Avenir, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif',
     background: aiPanelColors.bg,
   } as CSSProperties,
@@ -31,7 +31,7 @@ export const aiPanelStyles = {
     justifyContent: 'space-between',
     padding: `0 ${tokens.spacing[8]}`,
     borderBottom: `${tokens.borderWidth.thin} solid ${aiPanelColors.border}`,
-    background: 'rgba(0, 0, 0, 0.25)',
+    background: tokens.colors.overlay.dark,
     backdropFilter: 'blur(10px)',
     minHeight: '44px',
     gap: tokens.spacing[8],
@@ -69,7 +69,7 @@ export const aiPanelStyles = {
     border: `${tokens.borderWidth.thin} solid ${aiPanelColors.border}`,
     borderRadius: tokens.borderRadius.lg,
     overflow: 'hidden',
-    background: 'rgba(255, 255, 255, 0.02)',
+    background: tokens.colors.overlay.subtle,
   } as CSSProperties,
 
   modeButton: {
@@ -84,7 +84,7 @@ export const aiPanelStyles = {
   } as CSSProperties,
 
   modeButtonHover: {
-    background: 'rgba(255, 255, 255, 0.08)',
+    background: tokens.colors.overlay.strong,
     color: aiPanelColors.text,
   } as CSSProperties,
 
@@ -94,7 +94,7 @@ export const aiPanelStyles = {
   } as CSSProperties,
 
   modeButtonActive: {
-    background: 'rgba(91, 141, 232, 0.18)',
+    background: tokens.colors.accentOverlay.strong,
     color: aiPanelColors.text,
   } as CSSProperties,
 
@@ -112,7 +112,7 @@ export const aiPanelStyles = {
   } as CSSProperties,
 
   headerButtonHover: {
-    background: 'rgba(255, 255, 255, 0.08)',
+    background: tokens.colors.overlay.strong,
     color: aiPanelColors.text,
   } as CSSProperties,
 
@@ -149,8 +149,8 @@ export const aiPanelStyles = {
   } as CSSProperties,
 
   tabHover: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    background: 'rgba(255, 255, 255, 0.05)',
+    color: tokens.colors.text.tertiary,
+    background: tokens.colors.overlay.default,
   } as CSSProperties,
 
   tabActive: {
@@ -160,8 +160,8 @@ export const aiPanelStyles = {
   } as CSSProperties,
 
   tabBadge: {
-    background: 'rgba(91, 141, 232, 0.25)',
-    color: '#b8d0f5',
+    background: tokens.colors.accentOverlay.borderMedium,
+    color: tokens.colors.accent.light,
     borderRadius: '999px',
     padding: `0 ${tokens.spacing[3]}`,
     fontSize: tokens.fontSize.xs,
@@ -185,8 +185,8 @@ export const aiPanelStyles = {
     overflow: 'hidden',
     marginTop: tokens.spacing[8],
     marginBottom: tokens.spacing[8],
-    background: '#1e1e1e',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: tokens.colors.bg.primary,
+    border: `${tokens.borderWidth.thin} solid ${tokens.colors.border.strong}`,
   } as CSSProperties,
 
   // Markdown content styles
@@ -215,14 +215,14 @@ export const aiPanelStyles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: `${tokens.spacing[3]} ${tokens.spacing[4]}`,
-    background: 'rgba(0, 0, 0, 0.3)',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    background: tokens.colors.overlay.darker,
+    borderBottom: `${tokens.borderWidth.thin} solid ${tokens.colors.overlay.strong}`,
   } as CSSProperties,
 
   codeLang: {
     fontSize: tokens.fontSize.xs,
     fontWeight: tokens.fontWeight.medium,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: tokens.colors.text.disabled,
     textTransform: 'lowercase',
     letterSpacing: '0.02em',
   } as CSSProperties,
@@ -235,8 +235,8 @@ export const aiPanelStyles = {
 
   codeButton: {
     border: 'none',
-    background: 'rgba(255, 255, 255, 0.08)',
-    color: 'rgba(255, 255, 255, 0.7)',
+    background: tokens.colors.overlay.strong,
+    color: tokens.colors.text.muted,
     borderRadius: tokens.borderRadius.md,
     padding: `${tokens.spacing[2]} ${tokens.spacing[4]}`,
     cursor: 'pointer',
@@ -246,14 +246,14 @@ export const aiPanelStyles = {
   } as CSSProperties,
 
   codeButtonHover: {
-    background: 'rgba(255, 255, 255, 0.15)',
+    background: tokens.colors.overlay.stronger,
     color: tokens.colors.white,
   } as CSSProperties,
 
   codePre: {
     margin: 0,
     padding: tokens.spacing[4],
-    background: '#1e1e1e',
+    background: tokens.colors.bg.primary,
     overflowX: 'auto',
     fontSize: tokens.fontSize.sm,
     lineHeight: '1.6',
@@ -261,6 +261,6 @@ export const aiPanelStyles = {
 
   codeContent: {
     fontFamily: '"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
-    color: '#d4d4d4',
+    color: tokens.colors.text.code,
   } as CSSProperties,
 };

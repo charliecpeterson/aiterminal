@@ -35,8 +35,17 @@ function truncateToolResult(result: string, maxChars: number = TOOL_RESULT_MAX_C
     return result;
   }
   
-  const truncated = result.substring(0, TOOL_RESULT_TRUNCATE_CHARS);
-  const remaining = result.length - TOOL_RESULT_TRUNCATE_CHARS;
+  // Find the last newline before TOOL_RESULT_TRUNCATE_CHARS to avoid cutting mid-line
+  let truncateAt = TOOL_RESULT_TRUNCATE_CHARS;
+  const lastNewline = result.lastIndexOf('\n', TOOL_RESULT_TRUNCATE_CHARS);
+
+  // Use the newline boundary if found and it's not too far back (within 200 chars)
+  if (lastNewline > 0 && lastNewline > TOOL_RESULT_TRUNCATE_CHARS - 200) {
+    truncateAt = lastNewline;
+  }
+
+  const truncated = result.substring(0, truncateAt);
+  const remaining = result.length - truncateAt;
   const lines = (result.match(/\n/g) || []).length;
   const truncatedLines = (truncated.match(/\n/g) || []).length;
   
@@ -336,20 +345,30 @@ Examples:
               timestamp: Date.now(),
             };
             
-            // Create a promise that waits for user approval/denial
+            const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+            // Create a promise that waits for user approval/denial (with timeout)
             const approvalPromise = new Promise<string>((resolve, reject) => {
               pendingApprovalPromises.set(approval.id, { resolve, reject });
+
+              // Auto-reject after timeout to prevent agent from hanging forever
+              setTimeout(() => {
+                if (pendingApprovalPromises.has(approval.id)) {
+                  pendingApprovalPromises.delete(approval.id);
+                  reject(new Error('Approval timed out after 5 minutes'));
+                }
+              }, APPROVAL_TIMEOUT_MS);
             });
-            
+
             // Add to pending approvals immediately (shows UI)
             onPendingApproval(approval);
-            
+
             // Wait for user decision
             try {
               const result = await approvalPromise;
               return result;
             } catch (error) {
-              return `⛔ Command denied by user: ${error instanceof Error ? error.message : 'User cancelled'}`;
+              return `Command not executed: ${error instanceof Error ? error.message : 'User cancelled'}`;
             }
           }
         }

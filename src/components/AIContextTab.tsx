@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { AlertTriangle, Lock, Unlock, ChevronUp, ChevronDown, X, ClipboardList, Lightbulb } from 'lucide-react';
 import type { ContextIncludeMode, ContextItem } from "../context/AIContext";
 import { formatChatTime } from "../ai/panelUi";
 import "./AIContextTab.css";
@@ -59,7 +60,9 @@ export function AIContextTab(props: {
                 <span className="ai-context-item-type">{item.type}</span>
                 <span className="ai-context-item-time">{formatChatTime(item.timestamp)}</span>
                 {item.hasSecrets && (
-                  <span title="Contains sensitive data">⚠️</span>
+                  <span title="Contains sensitive data">
+                    <AlertTriangle size={12} style={{ color: '#ffa500' }} />
+                  </span>
                 )}
               </div>
               
@@ -115,7 +118,7 @@ export function AIContextTab(props: {
                   onClick={() => toggleSecretRedaction(item.id)}
                   title={item.secretsRedacted ? 'Show secrets' : 'Hide secrets'}
                 >
-                  {item.secretsRedacted ? '🔒' : '🔓'}
+                  {item.secretsRedacted ? <Lock size={12} /> : <Unlock size={12} />}
                 </button>
               )}
               
@@ -123,14 +126,14 @@ export function AIContextTab(props: {
                 className="ai-context-action-btn"
                 onClick={() => setExpandedContextId(isExpanded ? null : item.id)}
               >
-                {isExpanded ? "▲" : "▼"}
+                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </button>
               
               <button
                 className="ai-context-action-btn danger"
                 onClick={() => removeContextItem(item.id)}
               >
-                ✕
+                <X size={12} />
               </button>
             </div>
           </div>
@@ -212,7 +215,7 @@ export function AIContextTab(props: {
         </div>
       ) : (
         <div className="ai-context-empty">
-          <div className="ai-context-empty-icon">📋</div>
+          <div className="ai-context-empty-icon"><ClipboardList size={32} /></div>
           <div>No context items yet.</div>
           <div style={{ marginTop: '8px', fontSize: '11px', opacity: 0.6 }}>
             Use aiterm_add in terminal or select text/commands
@@ -244,7 +247,7 @@ export function AIContextTab(props: {
         </div>
 
         <div className="ai-context-tip">
-          <span style={{ opacity: 0.7 }}>💡 </span>
+          <Lightbulb size={14} style={{ opacity: 0.7, flexShrink: 0 }} />
           Use <code>aiterm_add &lt;file&gt;</code> to add files. Supports wildcards!
         </div>
 

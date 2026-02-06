@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { X, Plus } from 'lucide-react';
 import { formatElapsedTime } from "../utils/time";
 
 interface Tab {
@@ -116,12 +117,12 @@ export function TabBar(props: TabBarProps) {
               onCloseTab(tab.id);
             }}
           >
-            ×
+            <X size={12} />
           </span>
         </div>
       ))}
       <div className="new-tab-button" onClick={onNewTab}>
-        +
+        <Plus size={16} />
       </div>
     </>
   );

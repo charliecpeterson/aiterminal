@@ -12,7 +12,6 @@
  */
 
 import type { ContextItem } from '../context/AIContext';
-import type { AiSettings } from '../context/SettingsContext';
 import type { PromptEnhancement } from '../types/routing';
 import { createLogger } from '../utils/logger';
 
@@ -152,8 +151,7 @@ function listAvailableContext(contextItems: ContextItem[]): string {
  */
 export async function enhancePromptIfNeeded(
   prompt: string,
-  contextItems: ContextItem[],
-  _settings: AiSettings
+  contextItems: ContextItem[]
 ): Promise<PromptEnhancement> {
   const trimmed = prompt.trim();
   

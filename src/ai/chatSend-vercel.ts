@@ -106,7 +106,6 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     prompt,
     settingsAi,
     messages,
-    formattedContextItems: _formattedContextItems, // Available but not currently used
     terminalId,
     usedContextForNextAssistantMessage,
     addMessage,
@@ -177,8 +176,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     if (settingsAi.auto_routing?.enable_prompt_enhancement !== false) {
       const enhancement = await enhancePromptIfNeeded(
         trimmed,
-        deps.contextItems,
-        settingsAi
+        deps.contextItems
       );
       
       if (enhancement.wasEnhanced) {

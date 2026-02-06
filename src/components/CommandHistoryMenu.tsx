@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Check, X as XIcon } from 'lucide-react';
 import { Terminal } from "@xterm/xterm";
 import { commandHistoryStyles } from "./CommandHistoryMenu.styles";
 
@@ -39,7 +40,6 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
   const [filteredCommands, setFilteredCommands] = useState<CommandHistoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -151,17 +151,11 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
           <input
             ref={inputRef}
             type="text"
-            style={
-              hoverStates.searchFocus
-                ? { ...commandHistoryStyles.search, ...commandHistoryStyles.searchFocus }
-                : commandHistoryStyles.search
-            }
+            style={commandHistoryStyles.search}
             placeholder="Search command history..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => setHoverStates(prev => ({ ...prev, searchFocus: true }))}
-            onBlur={() => setHoverStates(prev => ({ ...prev, searchFocus: false }))}
           />
           <div style={commandHistoryStyles.hint}>
             <kbd style={commandHistoryStyles.kbd}>↑↓</kbd> Navigate • <kbd style={commandHistoryStyles.kbd}>↵</kbd> Jump • <kbd style={commandHistoryStyles.kbd}>⌘C</kbd> Copy • <kbd style={commandHistoryStyles.kbd}>⌘A</kbd> Add to AI • <kbd style={commandHistoryStyles.kbd}>Esc</kbd> Close
@@ -175,25 +169,18 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
             </div>
           ) : (
             filteredCommands.map((item, index) => {
-              const itemHoverKey = `item-${index}`;
-              const copyBtnKey = `copy-${index}`;
-              const aiBtnKey = `ai-${index}`;
               const isSelected = index === selectedIndex;
-              const isItemHover = hoverStates[itemHoverKey] || false;
-              
+
               return (
                 <div
                   key={`${item.line}-${index}`}
+                  className={`cmd-history-item ${isSelected ? 'selected' : ''}`}
                   style={
                     isSelected
                       ? { ...commandHistoryStyles.item, ...commandHistoryStyles.itemSelected }
-                      : isItemHover
-                        ? { ...commandHistoryStyles.item, ...commandHistoryStyles.itemHover }
-                        : commandHistoryStyles.item
+                      : commandHistoryStyles.item
                   }
                   onClick={() => handleJump(item)}
-                  onMouseEnter={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: true }))}
-                  onMouseLeave={() => setHoverStates(prev => ({ ...prev, [itemHoverKey]: false }))}
                 >
                   <div style={commandHistoryStyles.itemHeader}>
                     <span style={commandHistoryStyles.text}>{item.command}</span>
@@ -206,45 +193,31 @@ const CommandHistoryMenu: React.FC<CommandHistoryMenuProps> = ({
                           ? { ...commandHistoryStyles.exit, ...commandHistoryStyles.exitSuccess }
                           : { ...commandHistoryStyles.exit, ...commandHistoryStyles.exitError }
                       }>
-                        {item.exitCode === 0 ? '✓' : '✗'} {item.exitCode}
+                        {item.exitCode === 0 ? <Check size={12} /> : <XIcon size={12} />} {item.exitCode}
                       </span>
                     )}
                     {item.hasOutput && (
                       <span style={commandHistoryStyles.hasOutput}>has output</span>
                     )}
-                    <div style={
-                      (isSelected || isItemHover)
-                        ? { ...commandHistoryStyles.actions, ...commandHistoryStyles.actionsVisible }
-                        : commandHistoryStyles.actions
-                    }>
+                    <div className="cmd-history-actions" style={commandHistoryStyles.actions}>
                       <button
-                        style={
-                          hoverStates[copyBtnKey]
-                            ? { ...commandHistoryStyles.action, ...commandHistoryStyles.actionHover }
-                            : commandHistoryStyles.action
-                        }
+                        className="btn-ghost"
+                        style={commandHistoryStyles.action}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleCopy(item);
                         }}
-                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, [copyBtnKey]: true }))}
-                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, [copyBtnKey]: false }))}
                         title="Copy to clipboard (⌘C)"
                       >
                         Copy
                       </button>
                       <button
-                        style={
-                          hoverStates[aiBtnKey]
-                            ? { ...commandHistoryStyles.action, ...commandHistoryStyles.actionHover }
-                            : commandHistoryStyles.action
-                        }
+                        className="btn-ghost"
+                        style={commandHistoryStyles.action}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleAddToContext(item);
                         }}
-                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, [aiBtnKey]: true }))}
-                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, [aiBtnKey]: false }))}
                         title="Add to AI context (⌘A)"
                       >
                         + AI

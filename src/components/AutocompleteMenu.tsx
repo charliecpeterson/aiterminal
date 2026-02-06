@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { Loader, Sparkles, BookOpen } from 'lucide-react';
 import type { Suggestion } from '../terminal/autocomplete/llm';
 import { autocompleteMenuStyles } from './AutocompleteMenu.styles';
 
@@ -20,7 +21,6 @@ export function AutocompleteMenu({
   loading = false,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
   
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -50,7 +50,7 @@ export function AutocompleteMenu({
             ...autocompleteMenuStyles.stateNoHover,
           }}
         >
-          <span style={autocompleteMenuStyles.spinner}>⟳</span> Loading suggestions...
+          <Loader size={12} className="animate-spin" /> Loading suggestions...
         </div>
       )}
       
@@ -67,29 +67,21 @@ export function AutocompleteMenu({
       )}
       
       {suggestions.map((suggestion, index) => {
-        const itemKey = `item-${index}`;
         const isSelected = index === selectedIndex;
-        const isHover = hoverStates[itemKey] || false;
-        
+
         return (
           <div
             key={index}
+            className={isSelected ? '' : 'autocomplete-item'}
             style={
               isSelected
                 ? {
                     ...autocompleteMenuStyles.menuItem,
                     ...autocompleteMenuStyles.menuItemSelected,
                   }
-                : isHover
-                  ? {
-                      ...autocompleteMenuStyles.menuItem,
-                      ...autocompleteMenuStyles.menuItemHover,
-                    }
-                  : autocompleteMenuStyles.menuItem
+                : autocompleteMenuStyles.menuItem
             }
             onClick={() => onSelect(suggestion.text)}
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, [itemKey]: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, [itemKey]: false }))}
           >
             <span style={autocompleteMenuStyles.command}>{suggestion.text}</span>
             <span
@@ -105,7 +97,7 @@ export function AutocompleteMenu({
                     }
               }
             >
-              {suggestion.source === 'llm' ? '✨' : '📚'}
+              {suggestion.source === 'llm' ? <Sparkles size={12} /> : <BookOpen size={12} />}
             </span>
           </div>
         );
@@ -119,7 +111,7 @@ export function AutocompleteMenu({
             ...autocompleteMenuStyles.stateNoHover,
           }}
         >
-          <span style={autocompleteMenuStyles.spinner}>⟳</span> Loading more...
+          <Loader size={12} className="animate-spin" /> Loading more...
         </div>
       )}
     </div>

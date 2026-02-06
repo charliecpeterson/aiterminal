@@ -57,6 +57,7 @@ function AppContent() {
     updateSplitRatio,
     updateTabRemoteState,
     addSSHTab,
+    addLocalTab,
   } = useTabManagement(isInitialized, ptyToProfileMap, updateConnection);
   
   // Use SSH connection hook
@@ -87,7 +88,7 @@ function AppContent() {
   useSessionRestoration({
     profiles,
     connectSSHProfile,
-    addSSHTab,
+    addLocalTab,
     setActiveTabId,
     setIsInitialized,
     createTab,

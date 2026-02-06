@@ -5,6 +5,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { Wrench, Loader, Check, X as XIcon } from 'lucide-react';
 import type { ToolProgress } from '../context/AIContext';
 import { tokens } from '../styles/tokens';
 import { formatExecutionTime } from '../utils/time';
@@ -74,11 +75,11 @@ function formatArgs(args?: Record<string, any>): string {
 /**
  * Get icon for tool status
  */
-function getStatusIcon(status: ToolProgress['status']): string {
+function StatusIcon({ status }: { status: ToolProgress['status'] }) {
   switch (status) {
-    case 'running': return '⏳';
-    case 'completed': return '✓';
-    case 'failed': return '✗';
+    case 'running': return <Loader size={14} className="animate-spin" />;
+    case 'completed': return <Check size={14} />;
+    case 'failed': return <XIcon size={14} />;
   }
 }
 
@@ -134,7 +135,7 @@ export function ToolProgressDisplay({ toolProgress }: ToolProgressDisplayProps) 
           fontWeight: 500,
         }}
       >
-        <span style={{ opacity: 0.6 }}>🔧</span>
+        <Wrench size={14} style={{ opacity: 0.6 }} />
         <span>
           {runningCount > 0 ? (
             <>Running {runningCount} tool{runningCount !== 1 ? 's' : ''}...</>
@@ -179,7 +180,7 @@ export function ToolProgressDisplay({ toolProgress }: ToolProgressDisplayProps) 
                   lineHeight: 1,
                 }}
               >
-                {getStatusIcon(tool.status)}
+                <StatusIcon status={tool.status} />
               </span>
               
               <div style={{ flex: 1, minWidth: 0 }}>

@@ -198,7 +198,7 @@ async fn embed_openai_compatible(
     let text = resp.text().await.map_err(|e| e.to_string())?;
 
     if !status.is_success() {
-        return Err(format!("Embeddings error: {}", text));
+        return Err(crate::chat::helpers::sanitize_api_error("Embeddings", status.as_u16(), &text));
     }
 
     let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -246,8 +246,8 @@ async fn embed_gemini(
     // Gemini uses v1beta and has batch endpoint.
     let base = normalize_base_url(base_url);
     let endpoint = format!(
-        "{}/models/{}:batchEmbedContents?key={}",
-        base, model, api_key
+        "{}/models/{}:batchEmbedContents",
+        base, model
     );
 
     let requests: Vec<serde_json::Value> = inputs
@@ -268,6 +268,7 @@ async fn embed_gemini(
 
     let resp = client
         .post(endpoint)
+        .query(&[("key", api_key)])
         .json(&body)
         .send()
         .await
@@ -277,7 +278,7 @@ async fn embed_gemini(
     let text = resp.text().await.map_err(|e| e.to_string())?;
 
     if !status.is_success() {
-        return Err(format!("Gemini embeddings error: {}", text));
+        return Err(crate::chat::helpers::sanitize_api_error("Gemini embeddings", status.as_u16(), &text));
     }
 
     let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;

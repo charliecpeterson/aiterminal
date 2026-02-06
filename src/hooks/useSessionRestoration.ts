@@ -9,7 +9,7 @@ const log = createLogger('useSessionRestoration');
 interface UseSessionRestorationProps {
   profiles: SSHProfile[];
   connectSSHProfile: (profile: SSHProfile) => Promise<void>;
-  addSSHTab: (ptyId: number, name: string, profileId: string) => void;
+  addLocalTab: (ptyId: number, title: string) => void;
   setActiveTabId: (id: number) => void;
   setIsInitialized: (value: boolean) => void;
   createTab: () => Promise<void>;
@@ -23,7 +23,7 @@ export function useSessionRestoration(props: UseSessionRestorationProps): void {
   const {
     profiles,
     connectSSHProfile,
-    addSSHTab,
+    addLocalTab,
     setActiveTabId,
     setIsInitialized,
     createTab,
@@ -71,10 +71,10 @@ export function useSessionRestoration(props: UseSessionRestorationProps): void {
               log.info(`Restoring local terminal (cwd: ${sessionPane.workingDirectory || 'default'})`);
               try {
                 const ptyId = await invoke<number>("spawn_pty");
-                
-                // Create tab with restored title
-                addSSHTab(ptyId, sessionTab.customName || sessionTab.title, '');
-                
+
+                // Create local tab with restored title
+                addLocalTab(ptyId, sessionTab.customName || sessionTab.title);
+
                 // Change to working directory if available
                 if (sessionPane.workingDirectory) {
                   await invoke('write_to_pty', {

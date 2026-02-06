@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { Pencil, Trash2, ChevronDown, ChevronRight, Plus, GripVertical } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSSHProfiles } from '../context/SSHProfilesContext';
 import { SSHProfile, ProfileGroup, PortForwardHealth } from '../types/ssh';
@@ -34,8 +35,6 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
   const [draggedProfile, setDraggedProfile] = useState<string | null>(null);
   const [dragOverProfile, setDragOverProfile] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
   
-  // Hover states for interactive elements
-  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
 
   // Port forward health status - keyed by profile.id + forward.id
   const [portHealthStatus, setPortHealthStatus] = useState<Map<string, PortForwardHealth>>(new Map());
@@ -297,20 +296,19 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
     setDragOverProfile(null);
   };
 
-  const getStatusIcon = (profile: SSHProfile): string => {
+  const getStatusColor = (profile: SSHProfile): string => {
     const profileConns = getProfileConnections(profile.id);
-    if (profileConns.length === 0) return '⚪'; // Not connected
-    
-    // If any connection is active, show the best status
+    if (profileConns.length === 0) return '#999'; // Not connected (gray)
+
     const hasConnected = profileConns.some(c => c.status === 'connected');
     const hasConnecting = profileConns.some(c => c.status === 'connecting');
-    
+
     if (hasConnected) {
       const maxLatency = Math.max(...profileConns.filter(c => c.latency).map(c => c.latency!));
-      return maxLatency > 500 ? '🟡' : '🟢';
+      return maxLatency > 500 ? '#eab308' : '#22c55e'; // yellow / green
     }
-    if (hasConnecting) return '🔵';
-    return '🔴';
+    if (hasConnecting) return '#3b82f6'; // blue
+    return '#ef4444'; // red
   };
 
   const getConnectionInfo = (profile: SSHProfile): string | null => {
@@ -342,7 +340,7 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
   };
 
   const renderProfile = (profile: SSHProfile, groupName: string) => {
-    const statusIcon = getStatusIcon(profile);
+    const statusColor = getStatusColor(profile);
     const connectionInfo = getConnectionInfo(profile);
     const profileConns = getProfileConnections(profile.id);
     const connectedConns = profileConns.filter(c => c.status === 'connected');
@@ -361,50 +359,37 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
         onDragLeave={handleProfileDragLeave}
         onDrop={(e) => handleProfileDrop(e, profile.id, groupName)}
         onDragEnd={handleProfileDragEnd}
+        className="ssh-profile-item"
         style={{
-          ...(hoverStates[`profile-${profile.id}`]
-            ? { ...sshSessionPanelStyles.profileItem, ...sshSessionPanelStyles.profileItemHover }
-            : sshSessionPanelStyles.profileItem),
+          ...sshSessionPanelStyles.profileItem,
           opacity: isDragging ? 0.5 : 1,
           borderTop: isDragOver && dragPosition === 'before' ? '2px solid #007acc' : undefined,
           borderBottom: isDragOver && dragPosition === 'after' ? '2px solid #007acc' : undefined,
           cursor: 'grab',
         }}
-        onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`profile-${profile.id}`]: true }))}
-        onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`profile-${profile.id}`]: false }))}
       >
         <div style={sshSessionPanelStyles.profileHeader}>
-          <span style={{ ...sshSessionPanelStyles.statusIcon, cursor: 'grab' }}>⋮⋮</span>
-          <span style={sshSessionPanelStyles.statusIcon}>{statusIcon}</span>
+          <span style={{ ...sshSessionPanelStyles.statusIcon, cursor: 'grab' }}><GripVertical size={12} /></span>
+          <span style={sshSessionPanelStyles.statusIcon}><span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block' }} /></span>
           <span style={sshSessionPanelStyles.profileName}>{profile.name}</span>
           <button
-            style={
-              hoverStates[`edit-${profile.id}`]
-                ? { ...sshSessionPanelStyles.profileActionButton, ...sshSessionPanelStyles.profileActionButtonHover }
-                : sshSessionPanelStyles.profileActionButton
-            }
+            className="ssh-action-btn"
+            style={sshSessionPanelStyles.profileActionButton}
             onClick={(e) => {
               e.stopPropagation();
               onEditProfile(profile);
             }}
             title="Edit profile"
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`edit-${profile.id}`]: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`edit-${profile.id}`]: false }))}
           >
-            ✏️
+            <Pencil size={14} />
           </button>
           <button
-            style={
-              hoverStates[`delete-${profile.id}`]
-                ? { ...sshSessionPanelStyles.profileActionButton, ...sshSessionPanelStyles.profileActionButtonHover }
-                : sshSessionPanelStyles.profileActionButton
-            }
+            className="ssh-action-btn"
+            style={sshSessionPanelStyles.profileActionButton}
             onClick={(e) => handleDeleteProfile(e, profile.id)}
             title="Delete profile"
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`delete-${profile.id}`]: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`delete-${profile.id}`]: false }))}
           >
-            🗑️
+            <Trash2 size={14} />
           </button>
         </div>
         
@@ -414,28 +399,18 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
         
         <div style={sshSessionPanelStyles.profileActions}>
           {isConnected ? (
-            <button 
-              style={
-                hoverStates[`newtab-${profile.id}`]
-                  ? { ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonHover }
-                  : sshSessionPanelStyles.actionButton
-              }
+            <button
+              className="btn-outline"
+              style={sshSessionPanelStyles.actionButton}
               onClick={() => onConnect(profile)}
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`newtab-${profile.id}`]: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`newtab-${profile.id}`]: false }))}
             >
               New Tab
             </button>
           ) : (
-            <button 
-              style={
-                hoverStates[`connect-${profile.id}`]
-                  ? { ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary, ...sshSessionPanelStyles.actionButtonPrimaryHover }
-                  : { ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary }
-              }
+            <button
+              className="btn-primary"
+              style={{ ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary }}
               onClick={() => onConnect(profile)}
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`connect-${profile.id}`]: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`connect-${profile.id}`]: false }))}
             >
               Connect
             </button>
@@ -465,18 +440,13 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
     }>
       <div style={sshSessionPanelStyles.header}>
         <h3 style={sshSessionPanelStyles.headerTitle}>SSH Sessions</h3>
-        <button 
-          style={
-            hoverStates.addBtn
-              ? { ...sshSessionPanelStyles.addButton, ...sshSessionPanelStyles.addButtonHover }
-              : sshSessionPanelStyles.addButton
-          }
+        <button
+          className="btn-icon"
+          style={sshSessionPanelStyles.addButton}
           onClick={onNewProfile}
           title="Add new profile"
-          onMouseEnter={() => setHoverStates(prev => ({ ...prev, addBtn: true }))}
-          onMouseLeave={() => setHoverStates(prev => ({ ...prev, addBtn: false }))}
         >
-          +
+          <Plus size={16} />
         </button>
       </div>
 
@@ -484,18 +454,13 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
         {/* Active Connections */}
         {activeConnections.length > 0 && (
           <div style={sshSessionPanelStyles.group}>
-            <div 
-              style={
-                hoverStates.activeHeader
-                  ? { ...sshSessionPanelStyles.activeHeader, ...sshSessionPanelStyles.activeHeaderHover }
-                  : sshSessionPanelStyles.activeHeader
-              }
+            <div
+              className="ssh-group-header"
+              style={sshSessionPanelStyles.activeHeader}
               onClick={() => setShowActive(!showActive)}
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, activeHeader: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, activeHeader: false }))}
             >
               <span style={sshSessionPanelStyles.groupToggle}>
-                {showActive ? '▼' : '▶'}
+                {showActive ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </span>
               <span style={sshSessionPanelStyles.groupName}>
                 Active ({activeConnections.length})
@@ -506,33 +471,26 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
               <div style={sshSessionPanelStyles.groupProfiles}>
                 {activeConnections.map(({ profile, connection }) => (
                   <div key={connection.tabId}>
-                    <div 
-                      style={
-                        hoverStates[`active-${connection.tabId}`]
-                          ? { ...sshSessionPanelStyles.activeItem, ...sshSessionPanelStyles.activeItemHover }
-                          : sshSessionPanelStyles.activeItem
-                      }
-                      onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`active-${connection.tabId}`]: true }))}
-                      onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`active-${connection.tabId}`]: false }))}
+                    <div
+                      className="ssh-active-item"
+                      style={sshSessionPanelStyles.activeItem}
                     >
                       <span style={sshSessionPanelStyles.statusIcon}>
-                        {connection.status === 'connected' 
-                          ? (connection.latency && connection.latency > 500 ? '🟡' : '🟢')
-                          : '🔵'}
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
+                          background: connection.status === 'connected'
+                            ? (connection.latency && connection.latency > 500 ? '#eab308' : '#22c55e')
+                            : '#3b82f6'
+                        }} />
                       </span>
                       <span style={sshSessionPanelStyles.profileName}>{connection.tabName || profile.name}</span>
                       {connection.latency && (
                         <span style={sshSessionPanelStyles.latencyBadge}>{connection.latency}ms</span>
                       )}
-                      <button 
-                        style={
-                          hoverStates[`goto-${connection.tabId}`]
-                            ? { ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary, ...sshSessionPanelStyles.actionButtonPrimaryHover }
-                            : { ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary }
-                        }
+                      <button
+                        className="btn-primary"
+                        style={{ ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary }}
                         onClick={() => onGoToTab && onGoToTab(connection.tabId)}
-                        onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`goto-${connection.tabId}`]: true }))}
-                        onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`goto-${connection.tabId}`]: false }))}
                       >
                         Go to Tab
                       </button>
@@ -550,7 +508,7 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
                         {profile.portForwards.map(forward => {
                           const healthKey = `${profile.id}-${forward.id}`;
                           const health = portHealthStatus.get(healthKey);
-                          const statusIndicator = health?.isActive ? '🟢' : '🔴';
+                          const statusColor = health?.isActive ? '#22c55e' : '#ef4444';
                           
                           let forwardLabel = '';
                           if (forward.type === 'local') {
@@ -578,7 +536,7 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
                               }}
                               title={health?.error || (health?.isActive ? 'Port is active' : 'Checking...')}
                             >
-                              <span style={{ fontSize: '10px' }}>{statusIndicator}</span>
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', background: statusColor }} />
                               <span style={{ 
                                 fontFamily: 'SF Mono, Monaco, Cascadia Code, Courier New, monospace',
                                 color: '#e0e0e0',
@@ -624,23 +582,18 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
             onDrop={(e) => handleGroupDrop(e, group.name)}
             onDragEnd={handleGroupDragEnd}
           >
-            <div 
-              style={
-                hoverStates[`group-${group.name}`]
-                  ? { ...sshSessionPanelStyles.groupHeader, ...sshSessionPanelStyles.groupHeaderHover }
-                  : sshSessionPanelStyles.groupHeader
-              }
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`group-${group.name}`]: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`group-${group.name}`]: false }))}
+            <div
+              className="ssh-group-header"
+              style={sshSessionPanelStyles.groupHeader}
             >
               {group.name !== 'Ungrouped' && (
-                <span style={{ cursor: 'grab', marginRight: '4px', color: '#666' }}>⋮⋮</span>
+                <span style={{ cursor: 'grab', marginRight: '4px', color: '#666' }}><GripVertical size={12} /></span>
               )}
               <span 
                 style={sshSessionPanelStyles.groupToggle}
                 onClick={() => toggleGroup(group.name)}
               >
-                {collapsedGroups.has(group.name) ? '▶' : '▼'}
+                {collapsedGroups.has(group.name) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
               </span>
               <span 
                 style={sshSessionPanelStyles.groupName}
@@ -649,19 +602,9 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
                 {group.name} ({group.profiles.length})
               </span>
               {group.name !== 'Ungrouped' && (
-                <button 
-                  style={
-                    hoverStates[`groupdel-${group.name}`]
-                      ? {
-                          ...sshSessionPanelStyles.groupDeleteButton,
-                          ...(hoverStates[`group-${group.name}`] ? sshSessionPanelStyles.groupDeleteButtonVisible : {}),
-                          ...sshSessionPanelStyles.groupDeleteButtonHover
-                        }
-                      : {
-                          ...sshSessionPanelStyles.groupDeleteButton,
-                          ...(hoverStates[`group-${group.name}`] ? sshSessionPanelStyles.groupDeleteButtonVisible : {})
-                        }
-                  }
+                <button
+                  className="ssh-action-btn"
+                  style={sshSessionPanelStyles.groupDeleteButton}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (confirm(`Delete group "${group.name}"? Profiles will be moved to Ungrouped.`)) {
@@ -670,10 +613,8 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
                     }
                   }}
                   title="Delete group"
-                  onMouseEnter={() => setHoverStates(prev => ({ ...prev, [`groupdel-${group.name}`]: true }))}
-                  onMouseLeave={() => setHoverStates(prev => ({ ...prev, [`groupdel-${group.name}`]: false }))}
                 >
-                  🗑️
+                  <Trash2 size={14} />
                 </button>
               )}
             </div>
@@ -690,15 +631,10 @@ export const SSHSessionPanel: React.FC<SSHSessionPanelProps> = ({
       {profiles.length === 0 && (
         <div style={sshSessionPanelStyles.emptyState}>
           <p style={sshSessionPanelStyles.emptyStateText}>No SSH profiles yet</p>
-          <button 
-            style={
-              hoverStates.createFirst
-                ? { ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary, ...sshSessionPanelStyles.actionButtonPrimaryHover }
-                : { ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary }
-            }
+          <button
+            className="btn-primary"
+            style={{ ...sshSessionPanelStyles.actionButton, ...sshSessionPanelStyles.actionButtonPrimary }}
             onClick={onNewProfile}
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, createFirst: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, createFirst: false }))}
           >
             Create First Profile
           </button>

@@ -21,7 +21,6 @@ export interface ConversationMemory {
     verbosity?: 'concise' | 'detailed';
   };
   frequentTopics: Map<string, number>;
-  recentErrors: string[];
 }
 
 /**
@@ -32,7 +31,6 @@ export function buildConversationMemory(messages: ChatMessage[]): ConversationMe
     turns: [],
     userPreferences: {},
     frequentTopics: new Map(),
-    recentErrors: [],
   };
 
   let currentUserQuery: string | null = null;
@@ -62,10 +60,6 @@ export function buildConversationMemory(messages: ChatMessage[]): ConversationMe
       currentUserQuery = null;
     }
     
-    // Track errors
-    if (msg.content.toLowerCase().includes('error') || msg.content.toLowerCase().includes('failed')) {
-      memory.recentErrors.push(msg.content.substring(0, 200));
-    }
   }
 
   // Detect skill level from conversation

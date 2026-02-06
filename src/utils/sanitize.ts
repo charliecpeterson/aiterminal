@@ -6,6 +6,18 @@ import DOMPurify from 'isomorphic-dompurify';
  * Note: Uses isomorphic-dompurify for Node.js/browser compatibility.
  */
 
+// Shared list of forbidden event handler attributes — keep in sync across all sanitizers
+const FORBIDDEN_EVENT_ATTRS = [
+  'onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur',
+  'onanimationstart', 'onanimationend', 'onanimationiteration',
+  'ontransitionend', 'onmouseenter', 'onmouseleave', 'onmousedown',
+  'onmouseup', 'onkeydown', 'onkeyup', 'onkeypress', 'onsubmit',
+  'onchange', 'oninput', 'oncontextmenu', 'ondblclick', 'ondrag',
+  'ondragend', 'ondragenter', 'ondragleave', 'ondragover', 'ondragstart',
+  'ondrop', 'onscroll', 'onwheel', 'oncopy', 'oncut', 'onpaste',
+  'onresize', 'ontouchstart', 'ontouchend', 'ontouchmove',
+];
+
 /**
  * Sanitize HTML content with strict security settings.
  * Removes all scripts, event handlers, and dangerous elements.
@@ -29,7 +41,7 @@ export function sanitizeHTML(html: string): string {
     ],
     // Disallow scripts and dangerous protocols
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+    FORBID_ATTR: FORBIDDEN_EVENT_ATTRS,
     // Sanitize URLs to prevent javascript: and data: URIs in links
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     // Keep safe HTML entities
@@ -52,10 +64,7 @@ export function sanitizeSVG(svg: string): string {
     USE_PROFILES: { svg: true, svgFilters: true },
     ADD_TAGS: ['use'],  // SVG <use> element
     FORBID_TAGS: ['script', 'style', 'foreignObject'],
-    FORBID_ATTR: [
-      'onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur',
-      'onanimationstart', 'onanimationend', 'onanimationiteration'
-    ],
+    FORBID_ATTR: FORBIDDEN_EVENT_ATTRS,
     KEEP_CONTENT: false,
     RETURN_DOM: false,
     RETURN_DOM_FRAGMENT: false,
@@ -91,7 +100,8 @@ export function sanitizeNotebookHTML(html: string): string {
     ],
     // Still forbid dangerous elements
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input', 'button'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationstart'],
+    FORBID_ATTR: FORBIDDEN_EVENT_ATTRS,
+    // Note: data: URIs allowed here for notebook visualizations (e.g., inline images from matplotlib)
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     KEEP_CONTENT: true,
     RETURN_DOM: false,
@@ -122,7 +132,7 @@ export function sanitizeAsciiDocHTML(html: string): string {
       'aria-label', 'aria-describedby', 'role'
     ],
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input', 'button'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+    FORBID_ATTR: FORBIDDEN_EVENT_ATTRS,
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     KEEP_CONTENT: true,
     RETURN_DOM: false,

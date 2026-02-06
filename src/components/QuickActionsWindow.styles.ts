@@ -15,7 +15,7 @@ export const quickActionsStyles = {
     transform: 'translate(-50%, -50%)',
     width: '600px',
     maxHeight: '80vh',
-    background: 'rgba(30, 30, 40, 0.98)',
+    background: tokens.colors.bg.modal,
     border: `${tokens.borderWidth.thin} solid ${tokens.colors.overlay.stronger}`,
     borderRadius: tokens.borderRadius.xl,
     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
@@ -44,7 +44,7 @@ export const quickActionsStyles = {
   closeButton: {
     background: 'none',
     border: 'none',
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: tokens.colors.text.disabled,
     fontSize: '24px',
     cursor: 'pointer',
     padding: 0,
@@ -71,7 +71,7 @@ export const quickActionsStyles = {
 
   addActionButton: {
     padding: `${tokens.spacing[4]} ${tokens.spacing[8]}`,
-    background: '#0e639c',
+    background: tokens.colors.accent.focus,
     color: tokens.colors.white,
     border: 'none',
     borderRadius: tokens.borderRadius.default,
@@ -82,14 +82,14 @@ export const quickActionsStyles = {
   } as CSSProperties,
 
   addActionButtonHover: {
-    background: '#1177bb',
+    background: tokens.colors.accent.focusHover,
   } as CSSProperties,
 
   // Empty state
   empty: {
     padding: `${tokens.spacing[20]} ${tokens.spacing[10]}`,
     textAlign: 'center',
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: tokens.colors.text.disabled,
   } as CSSProperties,
 
   emptyText: {
@@ -119,7 +119,7 @@ export const quickActionsStyles = {
 
   itemHover: {
     background: tokens.colors.overlay.strong,
-    borderColor: 'rgba(91, 141, 232, 0.3)',
+    borderColor: tokens.colors.accentOverlay.borderStrong,
   } as CSSProperties,
 
   // Action info
@@ -145,7 +145,7 @@ export const quickActionsStyles = {
   command: {
     fontSize: tokens.fontSize.sm,
     fontFamily: tokens.fontFamily.mono,
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: tokens.colors.text.muted,
     background: tokens.colors.overlay.darker,
     padding: `${tokens.spacing[2]} ${tokens.spacing[4]}`,
     borderRadius: tokens.borderRadius.sm,
@@ -177,7 +177,7 @@ export const quickActionsStyles = {
 
   executeButton: {
     padding: `${tokens.spacing[3]} ${tokens.spacing[6]}`,
-    background: '#0e639c',
+    background: tokens.colors.accent.focus,
     color: tokens.colors.white,
     border: 'none',
     borderRadius: tokens.borderRadius.default,
@@ -188,7 +188,7 @@ export const quickActionsStyles = {
   } as CSSProperties,
 
   executeButtonHover: {
-    background: '#1177bb',
+    background: tokens.colors.accent.focusHover,
   } as CSSProperties,
 
   editButton: {
@@ -204,7 +204,7 @@ export const quickActionsStyles = {
   } as CSSProperties,
 
   editButtonHover: {
-    background: 'rgba(255, 255, 255, 0.15)',
+    background: tokens.colors.overlay.stronger,
   } as CSSProperties,
 
   deleteButton: {
@@ -221,7 +221,7 @@ export const quickActionsStyles = {
 
   deleteButtonHover: {
     background: 'rgba(220, 38, 38, 0.3)',
-    color: '#ff6b6b',
+    color: tokens.colors.semantic.errorLight,
   } as CSSProperties,
 
   // Form styles
@@ -239,7 +239,7 @@ export const quickActionsStyles = {
     marginBottom: tokens.spacing[4],
     fontSize: tokens.fontSize.md,
     fontWeight: tokens.fontWeight.medium,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: tokens.colors.text.tertiary,
   } as CSSProperties,
 
   formInput: {
@@ -257,7 +257,7 @@ export const quickActionsStyles = {
   } as CSSProperties,
 
   formInputFocus: {
-    borderColor: '#0e639c',
+    borderColor: tokens.colors.accent.focus,
     background: tokens.colors.overlay.strong,
   } as CSSProperties,
 
@@ -278,7 +278,7 @@ export const quickActionsStyles = {
   } as CSSProperties,
 
   formTextareaFocus: {
-    borderColor: '#0e639c',
+    borderColor: tokens.colors.accent.focus,
     background: tokens.colors.overlay.strong,
   } as CSSProperties,
 
@@ -296,12 +296,12 @@ export const quickActionsStyles = {
     fontWeight: tokens.fontWeight.medium,
     cursor: 'pointer',
     transition: 'background 0.2s',
-    background: '#0e639c',
+    background: tokens.colors.accent.focus,
     color: tokens.colors.white,
   } as CSSProperties,
 
   saveButtonHover: {
-    background: '#1177bb',
+    background: tokens.colors.accent.focusHover,
   } as CSSProperties,
 
   cancelButton: {
@@ -317,6 +317,6 @@ export const quickActionsStyles = {
   } as CSSProperties,
 
   cancelButtonHover: {
-    background: 'rgba(255, 255, 255, 0.15)',
+    background: tokens.colors.overlay.stronger,
   } as CSSProperties,
 };

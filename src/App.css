@@ -4,8 +4,52 @@
   line-height: 24px;
   font-weight: 400;
 
-  color: #ffffff;
-  background-color: #1e1e1e;
+  /* Color tokens as CSS custom properties */
+  --color-bg-primary: #1e1e1e;
+  --color-bg-secondary: #0d0e12;
+  --color-bg-tertiary: #14151a;
+  --color-bg-elevated: #16171d;
+  --color-bg-workbench: #1b1c21;
+  --color-bg-input: #3c3c3c;
+  --color-bg-card: #252526;
+  --color-bg-modal: rgba(30, 30, 40, 0.98);
+  --color-bg-header: #2d2d2d;
+
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #e8eaed;
+  --color-text-tertiary: #e0e0e0;
+  --color-text-muted: #cccccc;
+  --color-text-disabled: #858585;
+  --color-text-hint: #999999;
+  --color-text-code: #d4d4d4;
+
+  --color-border-subtle: #3e3e42;
+  --color-border-default: var(--color-overlay-strong);
+  --color-border-strong: var(--color-overlay-stronger);
+  --color-border-focus: rgba(255, 255, 255, 0.2);
+
+  --color-accent-primary: #5b8de8;
+  --color-accent-strong: #7aa3f0;
+  --color-accent-hover: #007acc;
+  --color-accent-light: #8db7ff;
+  --color-accent-pale: #dbe5ff;
+  --color-accent-focus: #0e639c;
+  --color-accent-focus-hover: #1177bb;
+
+  --color-semantic-success: #4caf50;
+  --color-semantic-error: #f44336;
+  --color-semantic-warning: #fbbf24;
+  --color-semantic-warning-light: #f59e0b;
+
+  --color-overlay-subtle: rgba(255, 255, 255, 0.02);
+  --color-overlay-light: var(--color-overlay-light);
+  --color-overlay-default: var(--color-overlay-default);
+  --color-overlay-medium: var(--color-overlay-medium);
+  --color-overlay-strong: var(--color-overlay-strong);
+  --color-overlay-stronger: var(--color-overlay-stronger);
+
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-primary);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -20,7 +64,7 @@ body, html, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background-color: #1e1e1e;
+  background-color: var(--color-bg-primary);
 }
 
 .katex {
@@ -36,14 +80,14 @@ body, html, #root {
 
 .tabs-header {
   display: flex;
-  background-color: #0d0e12;
+  background-color: var(--color-bg-secondary);
   height: 34px;
   align-items: center;
   padding-left: 8px;
   user-select: none;
   -webkit-user-select: none;
   -webkit-app-region: drag;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--color-overlay-default);
 }
 
 .main-content {
@@ -59,7 +103,7 @@ body, html, #root {
   gap: 8px;
   padding: 8px 12px;
   background-color: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--color-overlay-default);
   -webkit-app-region: no-drag;
 }
 
@@ -72,8 +116,8 @@ body, html, #root {
 .tab {
   padding: 5px 12px;
   margin-right: 2px;
-  background-color: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.5);
+  background-color: var(--color-overlay-light);
+  color: var(--color-text-disabled);
   cursor: pointer;
   border-radius: 6px 6px 0 0;
   font-size: 12px;
@@ -92,20 +136,20 @@ body, html, #root {
 }
 
 .tab:hover {
-  background-color: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.7);
+  background-color: var(--color-overlay-medium);
+  color: var(--color-text-muted);
 }
 
 .tab.active {
-  background-color: #14151a;
-  color: #e8eaed;
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
 }
 
 .tab-name-input {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-overlay-stronger);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 3px;
-  color: #ffffff;
+  color: var(--color-text-primary);
   padding: 2px 6px;
   font-size: 12px;
   outline: none;
@@ -123,7 +167,7 @@ body, html, #root {
   gap: 4px;
   margin-right: 6px;
   font-size: 11px;
-  color: #7aa3f0;
+  color: var(--color-accent-strong);
   font-weight: 600;
   animation: pulse 2s ease-in-out infinite;
 }
@@ -150,28 +194,28 @@ body, html, #root {
 }
 
 .close-tab:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  background-color: var(--color-border-focus);
+  color: var(--color-text-primary);
 }
 
 .new-tab-button {
   padding: 4px 8px;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--color-text-disabled);
   font-size: 18px;
   -webkit-app-region: no-drag;
 }
 
 .new-tab-button:hover {
-  color: #ffffff;
+  color: var(--color-text-primary);
 }
 
 .top-segmented {
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--color-border-focus);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-overlay-light);
   overflow: hidden;
   -webkit-app-region: no-drag;
 }
@@ -179,12 +223,12 @@ body, html, #root {
 .segmented-button {
   padding: 5px 12px;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--color-text-disabled);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.01em;
   background: transparent;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid var(--color-overlay-strong);
   -webkit-app-region: no-drag;
   transition: background 120ms ease, color 120ms ease;
   user-select: none;
@@ -195,64 +239,22 @@ body, html, #root {
 }
 
 .segmented-button:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-primary);
+  background: var(--color-overlay-medium);
 }
 
 .segmented-button:active {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-overlay-stronger);
 }
 
 .segmented-button-subtle {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--color-text-disabled);
   font-size: 10px;
   padding: 5px 8px;
 }
 
 .segmented-button-subtle:hover {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.ai-panel-button {
-  padding: 5px 12px;
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
-  margin-right: 6px;
-  -webkit-app-region: no-drag;
-  letter-spacing: 0.01em;
-  background: rgba(255, 255, 255, 0.03);
-  transition: all 100ms ease;
-}
-
-.ai-panel-button:hover {
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.quick-actions-button {
-  padding: 5px 12px;
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
-  margin-right: 6px;
-  -webkit-app-region: no-drag;
-  letter-spacing: 0.01em;
-  background: rgba(255, 255, 255, 0.03);
-  transition: all 100ms ease;
-}
-
-.quick-actions-button:hover {
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-muted);
 }
 
 .quick-actions-window-wrapper {
@@ -277,54 +279,12 @@ body, html, #root {
   box-shadow: none;
 }
 
-.settings-button {
-  padding: 5px 12px;
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
-  margin-right: 8px;
-  -webkit-app-region: no-drag;
-  letter-spacing: 0.01em;
-  background: rgba(255, 255, 255, 0.03);
-  transition: all 100ms ease;
-}
-
-.settings-button:hover {
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.ssh-panel-button {
-  padding: 5px 12px;
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
-  margin-right: 8px;
-  -webkit-app-region: no-drag;
-  letter-spacing: 0.01em;
-  background: rgba(255, 255, 255, 0.03);
-  transition: all 100ms ease;
-}
-
-.ssh-panel-button:hover {
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
-}
-
 .workbench {
   flex: 1;
   display: flex;
   flex-direction: column;
   width: 100%;
-  background: #1b1c21;
+  background: var(--color-bg-workbench);
 }
 
 .terminal-pane {
@@ -347,7 +307,7 @@ body, html, #root {
   position: absolute;
   top: 10px;
   right: 20px;
-  background: #252526;
+  background: var(--color-bg-card);
   padding: 6px;
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
@@ -355,13 +315,13 @@ body, html, #root {
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #3e3e42;
+  border: 1px solid var(--color-border-subtle);
 }
 
 .search-bar input {
-  background: #3c3c3c;
-  border: 1px solid #3e3e42;
-  color: #cccccc;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-muted);
   padding: 4px 8px;
   border-radius: 2px;
   outline: none;
@@ -370,13 +330,13 @@ body, html, #root {
 }
 
 .search-bar input:focus {
-  border-color: #007fd4;
+  border-color: var(--color-accent-hover);
 }
 
 .search-bar button {
   background: transparent;
   border: none;
-  color: #cccccc;
+  color: var(--color-text-muted);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 2px;
@@ -384,13 +344,13 @@ body, html, #root {
 }
 
 .search-bar button:hover {
-  background: #3e3e42;
+  background: var(--color-border-subtle);
 }
 
 .marker-copy-menu {
   position: fixed;
   background: #1f1f1f;
-  border: 1px solid #3e3e42;
+  border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   padding: 4px;
@@ -405,9 +365,9 @@ body, html, #root {
 .marker-duration {
   padding: 8px 10px;
   font-size: 12px;
-  color: #7aa3f0;
+  color: var(--color-accent-strong);
   font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--color-overlay-strong);
   margin-bottom: 4px;
   display: flex;
   align-items: center;
@@ -427,7 +387,7 @@ body, html, #root {
 .marker-quick-actions-label {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--color-text-disabled);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 6px 10px 2px;
@@ -435,7 +395,7 @@ body, html, #root {
 
 .marker-copy-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-overlay-strong);
   margin: 4px 0;
 }
 
@@ -471,7 +431,7 @@ body, html, #root {
 /* Output actions popup (when clicking the vertical line indicator) */
 .output-actions-popup {
   position: fixed;
-  background: #1e1e1e;
+  background: var(--color-bg-primary);
   border: 1px solid rgba(91, 141, 232, 0.5);
   border-radius: 6px;
   padding: 6px;
@@ -486,9 +446,9 @@ body, html, #root {
 
 .output-actions-popup .output-actions-header {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--color-text-disabled);
   padding: 2px 8px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--color-overlay-stronger);
   margin-bottom: 2px;
 }
 
@@ -547,7 +507,7 @@ body, html, #root {
 }
 
 .marker-copy-menu button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-overlay-strong);
 }
 
 .marker-copy-menu button:disabled {
@@ -700,8 +660,8 @@ body, html, #root {
   gap: 12px;
   padding: 0 10px;
   background: rgba(0, 0, 0, 0.5);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e0e0e0;
+  border-top: 1px solid var(--color-overlay-strong);
+  color: var(--color-text-tertiary);
   font-size: 12px;
   pointer-events: auto;
 }
@@ -728,7 +688,7 @@ body, html, #root {
 
 /* Git status */
 .status-git {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--color-text-muted);
 }
 
 .status-git .git-indicator {
@@ -764,7 +724,7 @@ body, html, #root {
 }
 
 .status-text {
-  color: #e0e0e0;
+  color: var(--color-text-tertiary);
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -911,13 +871,13 @@ body, html, #root {
 .ai-window {
   width: 100%;
   height: 100%;
-  background: #16171d;
+  background: var(--color-bg-elevated);
 }
 
 .ssh-window {
   width: 100%;
   height: 100vh;
-  background: #1e1e1e;
+  background: var(--color-bg-primary);
   color: #d4d4d4;
   overflow: hidden;
 }
@@ -926,13 +886,13 @@ body, html, #root {
 .terminal-link-tooltip {
   position: fixed;
   background: #2d2d30;
-  color: #e8eaed;
+  color: var(--color-text-secondary);
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 12px;
   font-family: system-ui, -apple-system, sans-serif;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-overlay-stronger);
   z-index: 10000;
   pointer-events: none;
   max-width: 400px;
@@ -950,4 +910,307 @@ body, html, #root {
 /* Style for links in terminal - xterm applies underline decoration inline */
 .xterm-screen .xterm-link-layer {
   cursor: pointer;
+}
+
+/* ============================================================================
+   UTILITY CLASSES — Buttons, focus, hover, animations
+   ============================================================================ */
+
+/* --- Base button reset --- */
+.btn-ghost,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-success,
+.btn-icon,
+.btn-outline {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: all 100ms ease;
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+
+.btn-ghost:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled,
+.btn-success:disabled,
+.btn-icon:disabled,
+.btn-outline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Ghost button (transparent, subtle hover) --- */
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 4px 10px;
+  border-radius: 5px;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--color-overlay-strong);
+  color: var(--color-text-primary);
+}
+
+/* --- Primary button (accent-colored) --- */
+.btn-primary {
+  background: var(--color-accent-primary);
+  color: var(--color-text-primary);
+  padding: 4px 12px;
+  border-radius: 5px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-strong);
+}
+
+/* --- Secondary button (muted background) --- */
+.btn-secondary {
+  background: var(--color-overlay-light);
+  color: var(--color-text-primary);
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border-strong);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-overlay-strong);
+  border-color: var(--color-border-focus);
+}
+
+/* --- Danger button (red) --- */
+.btn-danger {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.3);
+  border-color: rgba(244, 67, 54, 0.6);
+}
+
+/* --- Success button (green) --- */
+.btn-success {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.3);
+  border-color: rgba(76, 175, 80, 0.6);
+}
+
+/* --- Icon button (square, icon-only) --- */
+.btn-icon {
+  background: transparent;
+  color: var(--color-text-disabled);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--color-overlay-strong);
+  color: var(--color-text-primary);
+}
+
+/* --- Outline button (bordered, toolbar style) --- */
+.btn-outline {
+  padding: 4px 12px;
+  color: var(--color-text-disabled);
+  border: 1px solid var(--color-overlay-stronger);
+  border-radius: 5px;
+  background: var(--color-overlay-light);
+}
+
+.btn-outline:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-focus);
+  background: var(--color-overlay-default);
+}
+
+/* --- Global focus-visible ring --- */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 1px;
+}
+
+/* --- Spin animation for loading icons --- */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Component hover classes — replaces JS hoverStates */
+
+/* AutocompleteMenu */
+.autocomplete-item:hover {
+  background: var(--color-overlay-light);
+}
+
+/* CommandHistoryMenu */
+.cmd-history-item:hover {
+  background: var(--color-overlay-light);
+}
+.cmd-history-item .cmd-history-actions {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.cmd-history-item:hover .cmd-history-actions,
+.cmd-history-item.selected .cmd-history-actions {
+  opacity: 1;
+}
+
+/* OutputViewer */
+.output-viewer-btn {
+  background: transparent;
+  border: 1px solid var(--color-overlay-stronger);
+  color: var(--color-text-muted);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 150ms ease;
+}
+.output-viewer-btn:hover:not(:disabled) {
+  background: var(--color-overlay-strong);
+  color: var(--color-text-primary);
+}
+.output-viewer-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* QuickActionsWindow */
+.quick-action-item:hover {
+  background: var(--color-overlay-light);
+  border-color: var(--color-overlay-stronger);
+}
+.quick-action-expand:hover {
+  color: var(--color-text-primary);
+}
+
+/* AIChatTab */
+.chat-chip {
+  background: var(--color-overlay-light);
+  border: 1px solid var(--color-overlay-stronger);
+  color: var(--color-text-muted);
+  padding: 6px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 150ms ease;
+}
+.chat-chip:hover {
+  background: var(--color-overlay-strong);
+  border-color: var(--color-accent-primary);
+  color: var(--color-text-primary);
+}
+
+/* AIPanel tabs and mode buttons */
+.ai-panel-tab {
+  transition: all 150ms ease;
+}
+.ai-panel-tab:hover:not(.active) {
+  background: var(--color-overlay-light);
+  color: var(--color-text-primary);
+}
+.ai-panel-mode-btn:hover:not(.active):not(:disabled) {
+  background: var(--color-overlay-light);
+}
+.ai-panel-header-btn {
+  transition: all 150ms ease;
+}
+.ai-panel-header-btn:hover:not(:disabled) {
+  background: var(--color-overlay-strong);
+  color: var(--color-text-primary);
+}
+
+/* SSHSessionPanel */
+.ssh-profile-item:hover {
+  background: var(--color-overlay-light);
+}
+.ssh-group-header:hover {
+  background: var(--color-overlay-light);
+}
+.ssh-active-item:hover {
+  background: var(--color-overlay-light);
+}
+.ssh-action-btn {
+  transition: all 150ms ease;
+}
+.ssh-action-btn:hover {
+  opacity: 1;
+  background: var(--color-overlay-strong);
+}
+
+/* SettingsModal */
+.settings-tab {
+  transition: all 150ms ease;
+}
+.settings-tab:hover:not(.active) {
+  background: var(--color-overlay-light);
+  color: var(--color-text-secondary);
+}
+.settings-tab.active {
+  background: var(--color-overlay-strong);
+  color: var(--color-text-secondary);
+  border-left: 2px solid var(--color-accent-primary);
+}
+
+/* SSHProfileEditor */
+.ssh-remove-btn {
+  transition: all 150ms ease;
+}
+.ssh-remove-btn:hover {
+  background: var(--color-semantic-error);
+  border-color: var(--color-semantic-error);
+  color: #fff;
+}
+.ssh-add-item-btn {
+  transition: all 150ms ease;
+}
+.ssh-add-item-btn:hover {
+  background: var(--color-overlay-light);
+  border-color: var(--color-accent-primary);
+  color: var(--color-text-secondary);
+}
+
+/* Shared form input focus — replaces JS getFocusProps */
+.settings-input:focus {
+  border-color: var(--color-accent-primary);
+  outline: none;
+}
+.settings-input-alt:focus {
+  border-color: var(--color-accent-hover);
+  outline: none;
 }

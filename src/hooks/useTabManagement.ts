@@ -38,6 +38,7 @@ interface UseTabManagementReturn {
   updateSplitRatio: (tabId: number, ratio: number) => void;
   updateTabRemoteState: (tabId: number, paneId: number, isRemote: boolean, remoteHost?: string) => void;
   addSSHTab: (ptyId: number, displayName: string, profileId: string) => void;
+  addLocalTab: (ptyId: number, title: string) => void;
 }
 
 export function useTabManagement(
@@ -84,41 +85,57 @@ export function useTabManagement(
     setActiveTabId(ptyId);
   }, []);
 
-  const closeTab = useCallback((tabId: number) => {
-    const tab = tabs.find(t => t.id === tabId);
-    if (!tab) return;
-
-    // Update connection status to disconnected for all panes
-    tab.panes.forEach(pane => {
-      const profileId = ptyToProfileMap.get(pane.id);
-      if (profileId) {
-        updateConnection(String(pane.id), {
-          profileId,
-          tabId: String(pane.id),
-          status: 'disconnected',
-        });
-        
-        // Broadcast to SSH window
-        emitTo("ssh-panel", "connection-status-update", {
-          ptyId: String(pane.id),
-          profileId,
-          status: 'disconnected',
-          tabId: String(pane.id),
-        }).catch((err) => {
-          log.debug('Failed to emit disconnection status to SSH panel', err);
-        });
-      }
-    });
-
-    // Close all PTYs in all panes
-    tab.panes.forEach(pane => {
-      invoke("close_pty", { id: pane.id }).catch((error) => {
-        log.error("Failed to close PTY", error);
-      });
-    });
-
+  const addLocalTab = useCallback((ptyId: number, title: string) => {
     setTabs((prev) => {
-      const newTabs = prev.filter((t) => t.id !== tabId);
+      const newTab: Tab = {
+        id: ptyId,
+        title,
+        panes: [{ id: ptyId, isRemote: false }],
+        focusedPaneId: ptyId,
+        splitLayout: 'single',
+        splitRatio: 50,
+      };
+      return [...prev, newTab];
+    });
+    setActiveTabId(ptyId);
+  }, []);
+
+  const closeTab = useCallback((tabId: number) => {
+    // Use functional state update to avoid depending on tabs in closure
+    setTabs((prevTabs) => {
+      const tab = prevTabs.find(t => t.id === tabId);
+      if (!tab) return prevTabs;
+
+      // Update connection status to disconnected for all panes
+      tab.panes.forEach(pane => {
+        const profileId = ptyToProfileMap.get(pane.id);
+        if (profileId) {
+          updateConnection(String(pane.id), {
+            profileId,
+            tabId: String(pane.id),
+            status: 'disconnected',
+          });
+
+          // Broadcast to SSH window
+          emitTo("ssh-panel", "connection-status-update", {
+            ptyId: String(pane.id),
+            profileId,
+            status: 'disconnected',
+            tabId: String(pane.id),
+          }).catch((err) => {
+            log.debug('Failed to emit disconnection status to SSH panel', err);
+          });
+        }
+      });
+
+      // Close all PTYs in all panes
+      tab.panes.forEach(pane => {
+        invoke("close_pty", { id: pane.id }).catch((error) => {
+          log.error("Failed to close PTY", error);
+        });
+      });
+
+      const newTabs = prevTabs.filter((t) => t.id !== tabId);
 
       setActiveTabId((prevActive) => {
         if (newTabs.length === 0) {
@@ -139,7 +156,7 @@ export function useTabManagement(
 
       return newTabs;
     });
-  }, [tabs, ptyToProfileMap, updateConnection, isInitialized]);
+  }, [ptyToProfileMap, updateConnection, isInitialized]);
 
   const renameTab = useCallback((id: number, newName: string) => {
     setTabs((prev) =>
@@ -179,10 +196,21 @@ export function useTabManagement(
   }, []);
 
   const closePane = useCallback((tabId: number, paneId: number) => {
-    const tab = tabs.find(t => t.id === tabId);
-    if (!tab) return;
+    // Check if this is the last pane using functional update
+    let shouldCloseTab = false;
+    setTabs((prevTabs) => {
+      const tab = prevTabs.find(t => t.id === tabId);
+      if (!tab) return prevTabs;
 
-    if (tab.panes.length === 1) {
+      if (tab.panes.length === 1) {
+        shouldCloseTab = true;
+        return prevTabs; // Will close the entire tab below
+      }
+
+      return prevTabs;
+    });
+
+    if (shouldCloseTab) {
       closeTab(tabId);
       return;
     }
@@ -194,7 +222,7 @@ export function useTabManagement(
         tabId: String(paneId),
         status: 'disconnected',
       });
-      
+
       emitTo("ssh-panel", "connection-status-update", {
         ptyId: String(paneId),
         profileId,
@@ -216,7 +244,7 @@ export function useTabManagement(
         const newFocusedId = t.focusedPaneId === paneId
           ? newPanes[newPanes.length - 1]?.id
           : t.focusedPaneId;
-        
+
         return {
           ...t,
           panes: newPanes,
@@ -225,7 +253,7 @@ export function useTabManagement(
         };
       })
     );
-  }, [tabs, ptyToProfileMap, updateConnection, closeTab]);
+  }, [ptyToProfileMap, updateConnection, closeTab]);
 
   const setFocusedPane = useCallback((tabId: number, paneId: number) => {
     setTabs((prev) =>
@@ -270,5 +298,6 @@ export function useTabManagement(
     updateSplitRatio,
     updateTabRemoteState,
     addSSHTab,
+    addLocalTab,
   };
 }

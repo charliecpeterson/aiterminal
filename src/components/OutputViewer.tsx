@@ -15,14 +15,6 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const matchElementsRef = useRef<Map<number, HTMLElement>>(new Map());
 
-  // Hover states for interactive elements
-  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({
-    searchFocus: false,
-    prevBtn: false,
-    nextBtn: false,
-    copyBtn: false,
-    exportBtn: false,
-  });
 
   const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -202,16 +194,10 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
         <div style={outputViewerStyles.actions}>
           <input
             type="text"
-            style={
-              hoverStates.searchFocus
-                ? { ...outputViewerStyles.search, ...outputViewerStyles.searchFocus }
-                : outputViewerStyles.search
-            }
+            style={outputViewerStyles.search}
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setHoverStates(prev => ({ ...prev, searchFocus: true }))}
-            onBlur={() => setHoverStates(prev => ({ ...prev, searchFocus: false }))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -228,54 +214,30 @@ const OutputViewer: React.FC<OutputViewerProps> = () => {
             </div>
           ) : null}
           <button
-            style={
-              hoverStates.prevBtn
-                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
-                : outputViewerStyles.btn
-            }
+            className="output-viewer-btn"
             onClick={goToPrevMatch}
             disabled={matches.length === 0}
             title="Previous match (Shift+Enter)"
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, prevBtn: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, prevBtn: false }))}
           >
             Prev
           </button>
           <button
-            style={
-              hoverStates.nextBtn
-                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
-                : outputViewerStyles.btn
-            }
+            className="output-viewer-btn"
             onClick={goToNextMatch}
             disabled={matches.length === 0}
             title="Next match (Enter)"
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, nextBtn: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, nextBtn: false }))}
           >
             Next
           </button>
-          <button 
-            style={
-              hoverStates.copyBtn
-                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
-                : outputViewerStyles.btn
-            }
+          <button
+            className="output-viewer-btn"
             onClick={handleCopy}
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, copyBtn: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, copyBtn: false }))}
           >
             Copy
           </button>
-          <button 
-            style={
-              hoverStates.exportBtn
-                ? { ...outputViewerStyles.btn, ...outputViewerStyles.btnHover }
-                : outputViewerStyles.btn
-            }
+          <button
+            className="output-viewer-btn"
             onClick={handleExport}
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, exportBtn: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, exportBtn: false }))}
           >
             Export
           </button>

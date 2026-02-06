@@ -11,8 +11,9 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { 
-  searchActions, 
+import { Command, X as XIcon } from 'lucide-react';
+import {
+  searchActions,
   groupActionsByCategory, 
   sortCategories,
   type Action,
@@ -144,7 +145,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     <div className="command-palette-overlay" onClick={handleOverlayClick}>
       <div className="command-palette">
         <div className="command-palette-input-wrapper">
-          <span className="command-palette-icon">⌘</span>
+          <span className="command-palette-icon"><Command size={16} /></span>
           <input
             ref={inputRef}
             type="text"
@@ -160,7 +161,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               onClick={() => setQuery('')}
               tabIndex={-1}
             >
-              ×
+              <XIcon size={14} />
             </button>
           )}
         </div>

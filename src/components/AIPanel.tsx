@@ -14,183 +14,149 @@ import { estimateTokens, formatTokenCount } from "../utils/tokens";
 
 const log = createLogger('AIPanel');
 
-// Export functions for chat conversations
-function exportBasic(messages: any[]): string {
-  return messages
-    .filter(msg => msg.role !== 'system')
-    .map(msg => {
-      const timestamp = new Date(msg.timestamp).toLocaleTimeString();
-      const role = msg.role.toUpperCase();
-      return `## ${role} - ${timestamp}\n\n${msg.content}\n`;
-    })
-    .join('\n---\n\n');
-}
+// Export chat conversations with different levels of detail
+type ExportVerbosity = 'basic' | 'detailed' | 'verbose';
 
-function exportDetailed(messages: any[]): string {
+function exportConversation(messages: any[], verbosity: ExportVerbosity = 'detailed'): string {
   return messages
     .filter(msg => msg.role !== 'system')
     .map(msg => {
       const timestamp = new Date(msg.timestamp).toLocaleTimeString();
       const role = msg.role.toUpperCase();
-      
-      let content = `## ${role} - ${timestamp}\n\n`;
-      
-      // Add metadata for user messages (context sent)
-      if (msg.role === 'user' && msg.usedContext) {
-        const ctx = msg.usedContext;
-        content += `**Context Sent**: ${ctx.chunkCount || 0} items`;
-        if (ctx.contextBudget) content += ` (budget: ${ctx.contextBudget} tokens)`;
-        content += `\n`;
-        if (ctx.contextStrategy) content += `**Strategy**: ${ctx.contextStrategy}\n`;
-        content += `\n`;
-      }
-      
-      // Add routing info for user messages (standard detail)
-      if (msg.role === 'user' && msg.routingDecision) {
-        const rd = msg.routingDecision;
-        content += `**Routing**: ${rd.tier} tier → ${rd.model}`;
-        if (rd.fallbackUsed) content += ` (fallback from ${rd.originalTier})`;
-        content += `\n`;
-      }
-      
-      // Add metrics for assistant messages
-      if (msg.role === 'assistant' && msg.metrics) {
-        const m = msg.metrics;
-        content += `**Model**: ${m.model} | **Mode**: ${m.mode}\n`;
-        content += `**Tokens**: ${m.tokens.input} input / ${m.tokens.output} output\n`;
-        content += `**Duration**: ${(m.timings.total / 1000).toFixed(1)}s`;
-        if (m.timings.contextSelection) {
-          content += ` (context: ${m.timings.contextSelection}ms)`;
-        }
-        content += `\n\n`;
-      }
-      
-      content += `${msg.content}\n`;
-      return content;
-    })
-    .join('\n---\n\n');
-}
 
-function exportVerbose(messages: any[]): string {
-  return messages
-    .filter(msg => msg.role !== 'system')
-    .map(msg => {
-      const timestamp = new Date(msg.timestamp).toLocaleTimeString();
-      const role = msg.role.toUpperCase();
-      
       let content = `## ${role} - ${timestamp}\n`;
-      content += `**Message ID**: ${msg.id}\n\n`;
+      if (verbosity === 'verbose') {
+        content += `**Message ID**: ${msg.id}\n`;
+      }
+      content += `\n`;
       
-      // Verbose context details for user messages
+      // Context details for user messages (verbosity-dependent)
       if (msg.role === 'user' && msg.usedContext) {
         const ctx = msg.usedContext;
-        
-        // Calculate total context tokens
-        let totalContextTokens = 0;
-        if (ctx.contextItems && ctx.contextItems.length > 0) {
-          ctx.contextItems.forEach((item: any) => {
-            totalContextTokens += estimateTokens(item.content || '');
-          });
+
+        if (verbosity === 'detailed' || verbosity === 'verbose') {
+          // Detailed and verbose: Show context metadata
+          content += `**Context Sent**: ${ctx.chunkCount || 0} items`;
+          if (ctx.contextBudget) content += ` (budget: ${ctx.contextBudget} tokens)`;
+          content += `\n`;
+          if (ctx.contextStrategy) content += `**Strategy**: ${ctx.contextStrategy}\n`;
+          content += `\n`;
         }
-        
-        content += `### Request Metadata\n`;
-        content += `- **Context Strategy**: ${ctx.contextStrategy || 'unknown'}\n`;
-        content += `- **Context Budget**: ${ctx.contextBudget || 'unknown'} tokens\n`;
-        content += `- **Items Sent**: ${ctx.chunkCount || 0}\n`;
-        content += `- **Total Context Tokens** (est.): ~${formatTokenCount(totalContextTokens)}\n\n`;
-        
-        // List context items with details and token counts
-        if (ctx.contextItems && ctx.contextItems.length > 0) {
-          content += `### Context Items Selected\n`;
-          content += `> These items were ranked and selected for inclusion. Their content is embedded in the System Prompt below.\n\n`;
-          
-          ctx.contextItems.forEach((item: any, idx: number) => {
-            const itemTokens = estimateTokens(item.content || '');
-            content += `${idx + 1}. **${item.label || item.path || item.id}** (~${formatTokenCount(itemTokens)} tokens)\n`;
-            content += `   - Type: ${item.type}\n`;
-            if (item.usageCount) content += `   - Usage count: ${item.usageCount}\n`;
-            if (item.conversationMemoryPenalty !== undefined) {
-              content += `   - Conversation memory penalty: ${item.conversationMemoryPenalty}\n`;
-            }
-            content += `\n`;
-          });
-          
-          // Show full context content with token counts
-          content += `### Full Context Content\n`;
-          content += `> Raw content of each context item before embedding into the system prompt.\n\n`;
-          
-          ctx.contextItems.forEach((item: any, idx: number) => {
-            const itemTokens = estimateTokens(item.content || '');
-            const truncated = item.content && item.content.length > 5000;
-            content += `#### ${idx + 1}. ${item.label || item.path || item.id} (~${formatTokenCount(itemTokens)} tokens)\n`;
-            content += `\`\`\`\n${item.content ? item.content.substring(0, 5000) : '(empty)'}${truncated ? '\n... (truncated for export, full content sent to AI)' : ''}\n\`\`\`\n\n`;
-          });
-        }
-        
-        // Show system prompt if available
-        if (msg.systemPrompt) {
-          const systemPromptTokens = estimateTokens(msg.systemPrompt);
-          content += `### System Prompt (~${formatTokenCount(systemPromptTokens)} tokens)\n`;
-          content += `> This is the EXACT prompt sent to the AI. It includes the base system prompt + context items embedded above.\n`;
-          content += `> The context appears both above (for readability) and here (showing exactly what the AI receives).\n\n`;
-          content += `\`\`\`\n${msg.systemPrompt}\n\`\`\`\n\n`;
-        }
-        
-        // Add token summary for the request
-        const userMessageTokens = estimateTokens(msg.content || '');
-        const systemPromptTokens = msg.systemPrompt ? estimateTokens(msg.systemPrompt) : 0;
-        content += `### Token Summary (Estimated)\n`;
-        content += `| Component | Tokens |\n`;
-        content += `|-----------|--------|\n`;
-        content += `| System Prompt | ~${formatTokenCount(systemPromptTokens)} |\n`;
-        content += `| User Message | ~${formatTokenCount(userMessageTokens)} |\n`;
-        content += `| **Total Input** | ~${formatTokenCount(systemPromptTokens + userMessageTokens)} |\n\n`;
-      }
-      
-      // Verbose routing details for user messages
-      if (msg.role === 'user' && msg.routingDecision) {
-        const rd = msg.routingDecision;
-        content += `### Routing Decision\n`;
-        content += `- **Tier**: ${rd.tier}\n`;
-        content += `- **Complexity Level**: ${rd.complexity}/3\n`;
-        content += `- **Model Selected**: ${rd.model}\n`;
-        content += `- **Context Budget**: ${rd.contextBudget} tokens\n`;
-        content += `- **Temperature**: ${rd.temperature}\n`;
-        if (rd.fallbackUsed) {
-          content += `- **Fallback Used**: Yes (from ${rd.originalTier})\n`;
-        }
-        content += `\n`;
-        
-        // Routing reasoning
-        if (rd.reasoning) {
-          content += `#### Routing Reasoning\n`;
-          content += `- **Query Type**: ${rd.reasoning.queryType}\n`;
-          content += `- **Complexity Score**: ${rd.reasoning.score}/100\n\n`;
-          
-          // Scoring factors
-          if (rd.reasoning.factors && rd.reasoning.factors.length > 0) {
-            content += `##### Scoring Factors\n`;
-            rd.reasoning.factors.forEach((factor: any) => {
-              content += `- **${factor.name}**: ${factor.value} (weight: ${factor.weight})`;
-              if (factor.description) content += ` - ${factor.description}`;
+
+        if (verbosity === 'verbose') {
+          // Verbose only: Show full context details
+          let totalContextTokens = 0;
+          if (ctx.contextItems && ctx.contextItems.length > 0) {
+            ctx.contextItems.forEach((item: any) => {
+              totalContextTokens += estimateTokens(item.content || '');
+            });
+          }
+
+          content += `### Request Metadata\n`;
+          content += `- **Context Strategy**: ${ctx.contextStrategy || 'unknown'}\n`;
+          content += `- **Context Budget**: ${ctx.contextBudget || 'unknown'} tokens\n`;
+          content += `- **Items Sent**: ${ctx.chunkCount || 0}\n`;
+          content += `- **Total Context Tokens** (est.): ~${formatTokenCount(totalContextTokens)}\n\n`;
+
+          // List context items with details
+          if (ctx.contextItems && ctx.contextItems.length > 0) {
+            content += `### Context Items Selected\n`;
+            content += `> These items were ranked and selected for inclusion. Their content is embedded in the System Prompt below.\n\n`;
+
+            ctx.contextItems.forEach((item: any, idx: number) => {
+              const itemTokens = estimateTokens(item.content || '');
+              content += `${idx + 1}. **${item.label || item.path || item.id}** (~${formatTokenCount(itemTokens)} tokens)\n`;
+              content += `   - Type: ${item.type}\n`;
+              if (item.usageCount) content += `   - Usage count: ${item.usageCount}\n`;
+              if (item.conversationMemoryPenalty !== undefined) {
+                content += `   - Conversation memory penalty: ${item.conversationMemoryPenalty}\n`;
+              }
               content += `\n`;
             });
-            content += `\n`;
-          }
-          
-          // Alternatives considered
-          if (rd.reasoning.alternatives && rd.reasoning.alternatives.length > 0) {
-            content += `##### Alternatives Considered\n`;
-            rd.reasoning.alternatives.forEach((alt: any) => {
-              content += `- **${alt.tier}**: score ${alt.score} - ${alt.reason}\n`;
+
+            // Show full context content
+            content += `### Full Context Content\n`;
+            content += `> Raw content of each context item before embedding into the system prompt.\n\n`;
+
+            ctx.contextItems.forEach((item: any, idx: number) => {
+              const itemTokens = estimateTokens(item.content || '');
+              const truncated = item.content && item.content.length > 5000;
+              content += `#### ${idx + 1}. ${item.label || item.path || item.id} (~${formatTokenCount(itemTokens)} tokens)\n`;
+              content += `\`\`\`\n${item.content ? item.content.substring(0, 5000) : '(empty)'}${truncated ? '\n... (truncated for export, full content sent to AI)' : ''}\n\`\`\`\n\n`;
             });
-            content += `\n`;
+          }
+
+          // Show system prompt
+          if (msg.systemPrompt) {
+            const systemPromptTokens = estimateTokens(msg.systemPrompt);
+            content += `### System Prompt (~${formatTokenCount(systemPromptTokens)} tokens)\n`;
+            content += `> This is the EXACT prompt sent to the AI. It includes the base system prompt + context items embedded above.\n`;
+            content += `> The context appears both above (for readability) and here (showing exactly what the AI receives).\n\n`;
+            content += `\`\`\`\n${msg.systemPrompt}\n\`\`\`\n\n`;
+          }
+
+          // Token summary
+          const userMessageTokens = estimateTokens(msg.content || '');
+          const systemPromptTokens = msg.systemPrompt ? estimateTokens(msg.systemPrompt) : 0;
+          content += `### Token Summary (Estimated)\n`;
+          content += `| Component | Tokens |\n`;
+          content += `|-----------|--------|\n`;
+          content += `| System Prompt | ~${formatTokenCount(systemPromptTokens)} |\n`;
+          content += `| User Message | ~${formatTokenCount(userMessageTokens)} |\n`;
+          content += `| **Total Input** | ~${formatTokenCount(systemPromptTokens + userMessageTokens)} |\n\n`;
+        }
+      }
+
+      // Routing decision for user messages (verbosity-dependent)
+      if (msg.role === 'user' && msg.routingDecision) {
+        const rd = msg.routingDecision;
+
+        if (verbosity === 'detailed') {
+          // Detailed: Standard routing info
+          content += `**Routing**: ${rd.tier} tier → ${rd.model}`;
+          if (rd.fallbackUsed) content += ` (fallback from ${rd.originalTier})`;
+          content += `\n`;
+        } else if (verbosity === 'verbose') {
+          // Verbose: Full routing details
+          content += `### Routing Decision\n`;
+          content += `- **Tier**: ${rd.tier}\n`;
+          content += `- **Complexity Level**: ${rd.complexity}/3\n`;
+          content += `- **Model Selected**: ${rd.model}\n`;
+          content += `- **Context Budget**: ${rd.contextBudget} tokens\n`;
+          content += `- **Temperature**: ${rd.temperature}\n`;
+          if (rd.fallbackUsed) {
+            content += `- **Fallback Used**: Yes (from ${rd.originalTier})\n`;
+          }
+          content += `\n`;
+
+          if (rd.reasoning) {
+            content += `#### Routing Reasoning\n`;
+            content += `- **Query Type**: ${rd.reasoning.queryType}\n`;
+            content += `- **Complexity Score**: ${rd.reasoning.score}/100\n\n`;
+
+            if (rd.reasoning.factors && rd.reasoning.factors.length > 0) {
+              content += `##### Scoring Factors\n`;
+              rd.reasoning.factors.forEach((factor: any) => {
+                content += `- **${factor.name}**: ${factor.value} (weight: ${factor.weight})`;
+                if (factor.description) content += ` - ${factor.description}`;
+                content += `\n`;
+              });
+              content += `\n`;
+            }
+
+            if (rd.reasoning.alternatives && rd.reasoning.alternatives.length > 0) {
+              content += `##### Alternatives Considered\n`;
+              rd.reasoning.alternatives.forEach((alt: any) => {
+                content += `- **${alt.tier}**: score ${alt.score} - ${alt.reason}\n`;
+              });
+              content += `\n`;
+            }
           }
         }
       }
-      
-      // Verbose prompt enhancement for user messages
-      if (msg.role === 'user' && msg.promptEnhancement && msg.promptEnhancement.wasEnhanced) {
+
+      // Prompt enhancement for user messages (verbose only)
+      if (verbosity === 'verbose' && msg.role === 'user' && msg.promptEnhancement?.wasEnhanced) {
         const pe = msg.promptEnhancement;
         content += `### Prompt Enhancement\n`;
         content += `- **Pattern Matched**: ${pe.pattern || 'unknown'}\n`;
@@ -198,28 +164,46 @@ function exportVerbose(messages: any[]): string {
         content += `- **Original Prompt**:\n\`\`\`\n${pe.original}\n\`\`\`\n`;
         content += `- **Enhanced Prompt**:\n\`\`\`\n${pe.enhanced}\n\`\`\`\n\n`;
       }
-      
-      // Verbose metrics for assistant messages
+
+      // Metrics for assistant messages (verbosity-dependent)
       if (msg.role === 'assistant' && msg.metrics) {
         const m = msg.metrics;
-        content += `### Response Metadata\n`;
-        content += `- **Model**: ${m.model}\n`;
-        content += `- **Mode**: ${m.mode}\n`;
-        content += `- **Tokens**: ${m.tokens.input} input / ${m.tokens.output} output / ${m.tokens.total} total\n`;
-        content += `- **Duration**: ${(m.timings.total / 1000).toFixed(1)}s\n`;
-        if (m.timings.firstToken) {
-          content += `- **Time to first token**: ${m.timings.firstToken}ms\n`;
+
+        if (verbosity === 'detailed') {
+          // Detailed: Compact metrics
+          content += `**Model**: ${m.model} | **Mode**: ${m.mode}\n`;
+          content += `**Tokens**: ${m.tokens.input} input / ${m.tokens.output} output\n`;
+          content += `**Duration**: ${(m.timings.total / 1000).toFixed(1)}s`;
+          if (m.timings.contextSelection) {
+            content += ` (context: ${m.timings.contextSelection}ms)`;
+          }
+          content += `\n\n`;
+        } else if (verbosity === 'verbose') {
+          // Verbose: Full metrics
+          content += `### Response Metadata\n`;
+          content += `- **Model**: ${m.model}\n`;
+          content += `- **Mode**: ${m.mode}\n`;
+          content += `- **Tokens**: ${m.tokens.input} input / ${m.tokens.output} output / ${m.tokens.total} total\n`;
+          content += `- **Duration**: ${(m.timings.total / 1000).toFixed(1)}s\n`;
+          if (m.timings.firstToken) {
+            content += `- **Time to first token**: ${m.timings.firstToken}ms\n`;
+          }
+          if (m.timings.contextSelection) {
+            content += `- **Context selection time**: ${m.timings.contextSelection}ms\n`;
+          }
+          if (m.toolCalls) {
+            content += `- **Tool calls**: ${m.toolCalls}\n`;
+          }
+          content += `\n`;
         }
-        if (m.timings.contextSelection) {
-          content += `- **Context selection time**: ${m.timings.contextSelection}ms\n`;
-        }
-        if (m.toolCalls) {
-          content += `- **Tool calls**: ${m.toolCalls}\n`;
-        }
-        content += `\n`;
       }
-      
-      content += `### Message Content\n${msg.content}\n`;
+
+      // Message content
+      if (verbosity === 'verbose') {
+        content += `### Message Content\n${msg.content}\n`;
+      } else {
+        content += `${msg.content}\n`;
+      }
       return content;
     })
     .join('\n---\n\n');
@@ -245,8 +229,6 @@ const AIPanel = ({
   const [exportMode, setExportMode] = useState<'basic' | 'detailed' | 'verbose'>('basic');
   const { settings, updateSettings } = useSettings();
 
-  // Hover states for interactive elements
-  const [hoverStates, setHoverStates] = useState<Record<string, boolean>>({});
 
   const aiMode: 'chat' | 'agent' = settings?.ai?.mode === 'chat' ? 'chat' : 'agent';
 
@@ -543,30 +525,24 @@ const AIPanel = ({
         </div>
         <div style={aiPanelStyles.tabs}>
           <button
+            className={`ai-panel-tab ${activeTab === "chat" ? "active" : ""}`}
             style={
               activeTab === "chat"
                 ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabActive }
-                : hoverStates.chatTab
-                ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabHover }
                 : aiPanelStyles.tab
             }
             onClick={() => setActiveTab("chat")}
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, chatTab: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, chatTab: false }))}
           >
             Chat
           </button>
           <button
+            className={`ai-panel-tab ${activeTab === "context" ? "active" : ""}`}
             style={
               activeTab === "context"
                 ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabActive }
-                : hoverStates.contextTab
-                ? { ...aiPanelStyles.tab, ...aiPanelStyles.tabHover }
                 : aiPanelStyles.tab
             }
             onClick={() => setActiveTab("context")}
-            onMouseEnter={() => setHoverStates(prev => ({ ...prev, contextTab: true }))}
-            onMouseLeave={() => setHoverStates(prev => ({ ...prev, contextTab: false }))}
           >
             Context
             {contextItems.length > 0 && (
@@ -577,38 +553,32 @@ const AIPanel = ({
         <div style={aiPanelStyles.actions}>
           <div style={aiPanelStyles.mode} title="Chat: no tools. Agent: tools enabled.">
             <button
+              className={`ai-panel-mode-btn ${aiMode === 'chat' ? 'active' : ''}`}
               style={
                 !settings
                   ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonDisabled }
                   : aiMode === 'chat'
                   ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonActive }
-                  : hoverStates.chatMode
-                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonHover }
                   : aiPanelStyles.modeButton
               }
               onClick={() => setAiMode('chat')}
               disabled={!settings}
               type="button"
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, chatMode: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, chatMode: false }))}
             >
               Chat
             </button>
             <button
+              className={`ai-panel-mode-btn ${aiMode === 'agent' ? 'active' : ''}`}
               style={
                 !settings
                   ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonDisabled }
                   : aiMode === 'agent'
                   ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonActive }
-                  : hoverStates.agentMode
-                  ? { ...aiPanelStyles.modeButton, ...aiPanelStyles.modeButtonHover }
                   : aiPanelStyles.modeButton
               }
               onClick={() => setAiMode('agent')}
               disabled={!settings}
               type="button"
-              onMouseEnter={() => setHoverStates(prev => ({ ...prev, agentMode: true }))}
-              onMouseLeave={() => setHoverStates(prev => ({ ...prev, agentMode: false }))}
             >
               Agent
             </button>
@@ -631,14 +601,11 @@ const AIPanel = ({
                 <option value="detailed">Detailed</option>
                 <option value="verbose">Verbose</option>
               </select>
-              <button 
+              <button
+                className="ai-panel-header-btn"
                 style={{
                   ...aiPanelStyles.headerButton,
-                  ...(messages.length === 0
-                    ? aiPanelStyles.headerButtonDisabled
-                    : hoverStates.exportBtn
-                    ? aiPanelStyles.headerButtonHover
-                    : {}),
+                  ...(messages.length === 0 ? aiPanelStyles.headerButtonDisabled : {}),
                 }}
                 onClick={async () => {
                   if (messages.length === 0) return;
@@ -658,14 +625,7 @@ const AIPanel = ({
                     }
                     
                     log.debug('Generating export content', { mode: exportMode, filePath });
-                    let exportContent = '';
-                    if (exportMode === 'basic') {
-                      exportContent = exportBasic(messages);
-                    } else if (exportMode === 'detailed') {
-                      exportContent = exportDetailed(messages);
-                    } else {
-                      exportContent = exportVerbose(messages);
-                    }
+                    const exportContent = exportConversation(messages, exportMode);
                     
                     log.debug('Writing file', { filePath, contentLength: exportContent.length });
                     await writeTextFile(filePath, exportContent);
@@ -683,20 +643,14 @@ const AIPanel = ({
                 }}
                 disabled={messages.length === 0}
                 title="Export chat"
-                onMouseEnter={() => setHoverStates(prev => ({ ...prev, exportBtn: true }))}
-                onMouseLeave={() => setHoverStates(prev => ({ ...prev, exportBtn: false }))}
               >
                 Export
               </button>
-              <button 
-                style={{
-                  ...aiPanelStyles.headerButton,
-                  ...(hoverStates.clearBtn ? aiPanelStyles.headerButtonHover : {}),
-                }}
+              <button
+                className="ai-panel-header-btn"
+                style={aiPanelStyles.headerButton}
                 onClick={clearChat}
                 title="Clear chat"
-                onMouseEnter={() => setHoverStates(prev => ({ ...prev, clearBtn: true }))}
-                onMouseLeave={() => setHoverStates(prev => ({ ...prev, clearBtn: false }))}
               >
                 Clear
               </button>

@@ -43,6 +43,7 @@ export interface ContextItem {
   secretsRedacted: boolean;
   redactedContent?: string;
   secretFindings?: SecretFinding[];
+  scanFailed?: boolean;
   // Usage tracking
   lastUsedInMessageId?: string;
   lastUsedTimestamp?: number;
@@ -319,6 +320,9 @@ const aiReducer = (state: AIState, action: AIAction): AIState => {
         pendingApprovals: state.pendingApprovals.filter((a) => a.id !== action.id),
       };
     default:
+      // Exhaustiveness check: ensures all action types are handled
+      const _exhaustive: never = action;
+      void _exhaustive; // Suppress unused warning
       return state;
   }
 };
@@ -519,15 +523,17 @@ const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
       addContextItem(item);
     } catch (error) {
       log.error("Failed to scan content for secrets", error);
-      // Fall back to adding without secret detection
+      // Fail-safe: mark as potentially containing secrets since we couldn't scan
       const item: ContextItem = {
         id: crypto.randomUUID(),
         type,
         content,
         timestamp: Date.now(),
         metadata,
-        hasSecrets: false,
-        secretsRedacted: false,
+        hasSecrets: true,
+        secretsRedacted: true,
+        redactedContent: "[Secret scan failed — content hidden as a precaution. Toggle redaction to view.]",
+        scanFailed: true,
       };
       addContextItem(item);
     }
@@ -566,9 +572,15 @@ const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
     [formattedContextItems]
   );
 
-  const value = useMemo(
+  // Split context value into smaller memos to reduce re-render frequency
+  // Instead of one giant 18-dependency memo, create 3 focused memos that only
+  // update when their specific slice of state changes
+
+  // Context items slice
+  const contextItemsValue = useMemo(
     () => ({
-      ...state,
+      contextItems: state.contextItems,
+      contextSmartMode: state.contextSmartMode,
       formattedContextItems,
       addContextItem,
       removeContextItem,
@@ -576,20 +588,13 @@ const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
       setContextSmartMode,
       setContextItemIncludeMode,
       markContextAsUsed,
-      addMessage,
-      clearChat,
-      appendMessage,
-      updateMessageMetrics,
-      updateToolProgress,
-      archiveOldMessages,
       buildPrompt,
-      addPendingApproval,
-      removePendingApproval,
       addContextItemWithScan,
       toggleSecretRedaction,
     }),
     [
-      state,
+      state.contextItems,
+      state.contextSmartMode,
       formattedContextItems,
       addContextItem,
       removeContextItem,
@@ -597,18 +602,56 @@ const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
       setContextSmartMode,
       setContextItemIncludeMode,
       markContextAsUsed,
+      buildPrompt,
+      addContextItemWithScan,
+      toggleSecretRedaction,
+    ]
+  );
+
+  // Chat messages slice
+  const chatValue = useMemo(
+    () => ({
+      messages: state.messages,
+      archivedMessageCount: state.archivedMessageCount,
       addMessage,
       clearChat,
       appendMessage,
       updateMessageMetrics,
       updateToolProgress,
       archiveOldMessages,
-      buildPrompt,
+    }),
+    [
+      state.messages,
+      state.archivedMessageCount,
+      addMessage,
+      clearChat,
+      appendMessage,
+      updateMessageMetrics,
+      updateToolProgress,
+      archiveOldMessages,
+    ]
+  );
+
+  // Tool approvals slice
+  const approvalValue = useMemo(
+    () => ({
+      pendingApprovals: state.pendingApprovals,
       addPendingApproval,
       removePendingApproval,
-      addContextItemWithScan,
-      toggleSecretRedaction,
-    ]
+    }),
+    [state.pendingApprovals, addPendingApproval, removePendingApproval]
+  );
+
+  // Compose the final value from the three slices
+  // This final memo only updates when one of the sub-memos changes,
+  // not when individual state fields change
+  const value = useMemo(
+    () => ({
+      ...contextItemsValue,
+      ...chatValue,
+      ...approvalValue,
+    }),
+    [contextItemsValue, chatValue, approvalValue]
   );
 
   return <AIContext.Provider value={value}>{children}</AIContext.Provider>;
