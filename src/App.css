@@ -36,10 +36,10 @@
   --color-accent-focus: #0e639c;
   --color-accent-focus-hover: #1177bb;
 
-  --color-semantic-success: #4caf50;
+  --color-semantic-success: #22c55e;
   --color-semantic-error: #f44336;
-  --color-semantic-warning: #fbbf24;
-  --color-semantic-warning-light: #f59e0b;
+  --color-semantic-warning: #f59e0b;
+  --color-semantic-warning-light: #fb923c;
 
   --color-overlay-subtle: rgba(255, 255, 255, 0.02);
   --color-overlay-light: var(--color-overlay-light);
@@ -169,12 +169,16 @@ body, html, #root {
   font-size: 11px;
   color: var(--color-accent-strong);
   font-weight: 600;
-  animation: pulse 2s ease-in-out infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+.tab-running-indicator::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-strong);
+  margin-right: 2px;
 }
 
 .close-tab {
@@ -428,46 +432,6 @@ body, html, #root {
   color: #dbe5ff;
 }
 
-/* Output actions popup (when clicking the vertical line indicator) */
-.output-actions-popup {
-  position: fixed;
-  background: var(--color-bg-primary);
-  border: 1px solid rgba(91, 141, 232, 0.5);
-  border-radius: 6px;
-  padding: 6px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  animation: fadeIn 0.1s ease-out;
-  min-width: 140px;
-}
-
-.output-actions-popup .output-actions-header {
-  font-size: 10px;
-  color: var(--color-text-disabled);
-  padding: 2px 8px 4px;
-  border-bottom: 1px solid var(--color-overlay-stronger);
-  margin-bottom: 2px;
-}
-
-.output-actions-popup button {
-  background: transparent;
-  border: none;
-  color: #dddddd;
-  text-align: left;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background 0.1s ease;
-}
-
-.output-actions-popup button:hover {
-  background: rgba(91, 141, 232, 0.2);
-}
-
 .marker-copy-menu button {
   background: transparent;
   border: none;
@@ -530,29 +494,29 @@ body, html, #root {
 }
 
 .xterm-decoration-container .terminal-marker.success {
-  background-color: #4caf50;
+  background-color: #22c55e;
 }
 
 .xterm-decoration-container .terminal-marker.error {
   background-color: #f44336;
 }
 
-/* Python REPL markers - blue/yellow color scheme */
+/* Python REPL markers - blue/yellow color scheme (desaturated) */
 .xterm-decoration-container .terminal-marker.python.success {
-  background-color: #2196F3; /* Blue for successful Python commands */
+  background-color: #3b82f6; /* Muted blue for successful Python commands */
 }
 
 .xterm-decoration-container .terminal-marker.python.error {
-  background-color: #FFC107; /* Yellow/amber for Python errors */
+  background-color: #f59e0b; /* Muted amber for Python errors */
 }
 
-/* R REPL markers - distinct color scheme */
+/* R REPL markers - purple/orange color scheme (desaturated) */
 .xterm-decoration-container .terminal-marker.r.success {
-  background-color: #9C27B0; /* Purple for successful R commands */
+  background-color: #8b5cf6; /* Muted purple for successful R commands */
 }
 
 .xterm-decoration-container .terminal-marker.r.error {
-  background-color: #FF5722; /* Deep orange for R errors */
+  background-color: #f97316; /* Muted orange for R errors */
 }
 
 .aiterm-scroll-track {
@@ -587,7 +551,7 @@ body, html, #root {
 }
 
 .aiterm-scroll-tick.success {
-  background-color: #4caf50;
+  background-color: #22c55e;
 }
 
 .aiterm-scroll-tick.error {
@@ -595,19 +559,19 @@ body, html, #root {
 }
 
 .aiterm-scroll-tick.python.success {
-  background-color: #2196F3;
+  background-color: #3b82f6;
 }
 
 .aiterm-scroll-tick.python.error {
-  background-color: #FFC107;
+  background-color: #f59e0b;
 }
 
 .aiterm-scroll-tick.r.success {
-  background-color: #9C27B0;
+  background-color: #8b5cf6;
 }
 
 .aiterm-scroll-tick.r.error {
-  background-color: #FF5722;
+  background-color: #f97316;
 }
 
 .aiterm-scroll-thumb {
@@ -697,7 +661,7 @@ body, html, #root {
 }
 
 .status-git.has-changes .git-indicator {
-  color: #fbbf24;
+  color: #f59e0b;
 }
 
 .git-sync {
@@ -712,7 +676,7 @@ body, html, #root {
 }
 
 .git-sync .behind {
-  color: #f87171;
+  color: #ef4444;
 }
 
 .status-dot {
@@ -740,9 +704,9 @@ body, html, #root {
 }
 
 /* Latency color coding: <100ms green, 100-300ms yellow, >300ms red */
-.latency-good { background: #4ade80; color: #0a3d0a; }
-.latency-warn { background: #fbbf24; color: #422006; }
-.latency-bad { background: #f87171; color: #450a0a; }
+.latency-good { background: #22c55e; color: #022c22; }
+.latency-warn { background: #f59e0b; color: #422006; }
+.latency-bad { background: #ef4444; color: #450a0a; }
 .latency-unknown { background: #6b7280; color: #f9fafb; }
 
 /* Terminal health indicator */
@@ -761,24 +725,20 @@ body, html, #root {
 }
 
 .status-health-idle {
-  background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
 .status-health-unresponsive {
   background: rgba(251, 146, 60, 0.2);
   color: #fb923c;
-  animation: health-pulse 2s ease-in-out infinite;
+  border-left: 3px solid #fb923c;
 }
 
 .status-health-dead {
-  background: rgba(248, 113, 113, 0.2);
-  color: #f87171;
-}
-
-@keyframes health-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border-left: 3px solid #ef4444;
 }
 
 /* Ensure terminal content can scroll with a visible gutter on the right */
@@ -903,8 +863,7 @@ body, html, #root {
 }
 
 .terminal-link-tooltip::before {
-  content: '🔗 ';
-  opacity: 0.7;
+  content: '';
 }
 
 /* Style for links in terminal - xterm applies underline decoration inline */
@@ -1001,8 +960,8 @@ body, html, #root {
 
 /* --- Success button (green) --- */
 .btn-success {
-  background: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
   padding: 4px 12px;
   border-radius: 6px;
   border: 1px solid rgba(76, 175, 80, 0.4);

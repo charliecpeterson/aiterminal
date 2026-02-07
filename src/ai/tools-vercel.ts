@@ -481,11 +481,11 @@ Examples:
           
           // Add helpful suggestions
           if (result.is_binary) {
-            lines.push('\n⚠️  This is a binary file - cannot read with read_file');
+            lines.push('\nNote: This is a binary file - cannot read with read_file');
           } else if (result.size_bytes > FILE_SIZE_LARGE_THRESHOLD_BYTES) {
-            lines.push(`\n⚠️  Large file (${result.size_human}) - consider using max_bytes parameter with read_file`);
+            lines.push(`\nWarning: Large file (${result.size_human}) - consider using max_bytes parameter with read_file`);
           } else if (result.size_bytes > FILE_SIZE_WARNING_THRESHOLD_BYTES) {
-            lines.push(`\n💡 File is ${result.size_human} - safe to read but consider if full content is needed`);
+            lines.push(`\nNote: File is ${result.size_human} - safe to read but consider if full content is needed`);
           }
           
           return lines.join('\n');
@@ -630,10 +630,10 @@ Examples:
             `Contents of ${path}:`,
             '',
             'Directories:',
-            ...result.directories.map(d => `  📁 ${d}`),
+            ...result.directories.map(d => `  ${d}/`),
             '',
             'Files:',
-            ...result.files.map(f => `  📄 ${f}`),
+            ...result.files.map(f => `  ${f}`),
             '',
             `Total: ${result.directories.length} directories, ${result.files.length} files`,
           ].join('\n');

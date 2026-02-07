@@ -239,7 +239,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+B'),
       keywords: ['ai', 'assistant', 'chat', 'panel', 'open', 'copilot'],
       category: 'AI',
-      icon: '🤖',
       execute: () => openAIPanelWindow({ activeTabId, tabs }),
     },
     {
@@ -260,7 +259,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+Shift+O'),
       keywords: ['ssh', 'panel', 'connect', 'remote', 'server'],
       category: 'SSH',
-      icon: '🔐',
       execute: () => openSSHPanelWindow(),
     },
 
@@ -270,7 +268,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       label: 'Open Quick Actions',
       keywords: ['quick', 'actions', 'commands', 'scripts', 'macros'],
       category: 'Quick Actions',
-      icon: '⚡',
       execute: () => openQuickActionsWindow({ activeTabId, tabs }),
     },
 
@@ -281,7 +278,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+R'),
       keywords: ['history', 'command', 'previous', 'recent'],
       category: 'Terminal',
-      icon: '📜',
       execute: () => {
         window.dispatchEvent(new CustomEvent('toggle-command-history'));
       },
@@ -292,7 +288,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+F'),
       keywords: ['find', 'search', 'terminal', 'text'],
       category: 'Terminal',
-      icon: '🔍',
       execute: () => {
         window.dispatchEvent(new CustomEvent('terminal:find'));
       },
@@ -303,7 +298,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+K'),
       keywords: ['clear', 'terminal', 'reset', 'clean'],
       category: 'Terminal',
-      icon: '🧹',
       execute: () => {
         window.dispatchEvent(new CustomEvent('terminal:clear'));
       },
@@ -316,7 +310,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+,'),
       keywords: ['settings', 'preferences', 'options', 'config'],
       category: 'Settings',
-      icon: '⚙️',
       execute: () => setIsSettingsOpen(true),
     },
     {
@@ -324,7 +317,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       label: 'Toggle Theme',
       keywords: ['theme', 'dark', 'light', 'toggle', 'appearance'],
       category: 'Settings',
-      icon: '🎨',
       execute: () => {
         window.dispatchEvent(new CustomEvent('settings:toggle-theme'));
       },
@@ -337,7 +329,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl++'),
       keywords: ['zoom', 'in', 'bigger', 'increase', 'font'],
       category: 'Settings',
-      icon: '🔍+',
       execute: () => {
         window.dispatchEvent(new CustomEvent('terminal:zoom-in'));
       },
@@ -348,7 +339,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+-'),
       keywords: ['zoom', 'out', 'smaller', 'decrease', 'font'],
       category: 'Settings',
-      icon: '🔍-',
       execute: () => {
         window.dispatchEvent(new CustomEvent('terminal:zoom-out'));
       },
@@ -359,7 +349,6 @@ function buildActions(deps: ActionDependencies): Action[] {
       shortcut: formatShortcut('CmdOrCtrl+0'),
       keywords: ['zoom', 'reset', 'default', 'font'],
       category: 'Settings',
-      icon: '🔍',
       execute: () => {
         window.dispatchEvent(new CustomEvent('terminal:zoom-reset'));
       },

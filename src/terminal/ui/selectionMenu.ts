@@ -12,6 +12,7 @@ export interface AttachSelectionMenuParams {
   container: HTMLElement;
   selectionPointRef: React.MutableRefObject<{ x: number; y: number } | null>;
   setSelectionMenu: (value: SelectionMenuState | null) => void;
+  onSelectionStart?: () => void;
 }
 
 export interface SelectionMenuHandle {
@@ -23,6 +24,7 @@ export function attachSelectionMenu({
   container,
   selectionPointRef,
   setSelectionMenu,
+  onSelectionStart,
 }: AttachSelectionMenuParams): SelectionMenuHandle {
   const hideSelectionMenu = () => setSelectionMenu(null);
 
@@ -44,14 +46,29 @@ export function attachSelectionMenu({
     requestAnimationFrame(handleSelectionChange);
   };
 
+  const handleMouseDownSelection = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest('.terminal-marker') ||
+      target?.closest('.command-block-indicator')
+    ) {
+      return;
+    }
+    if (!term.hasSelection()) {
+      onSelectionStart?.();
+    }
+  };
+
   const selectionDisposable = term.onSelectionChange(handleSelectionChange) as unknown as
     | Disposable
     | undefined;
 
+  container.addEventListener('mousedown', handleMouseDownSelection);
   container.addEventListener('mouseup', handleMouseUpSelection);
 
   const cleanup = () => {
     selectionDisposable?.dispose?.();
+    container.removeEventListener('mousedown', handleMouseDownSelection);
     container.removeEventListener('mouseup', handleMouseUpSelection);
     hideSelectionMenu();
   };

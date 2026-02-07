@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Folder, ChevronUp, ChevronDown, X, Clock, FileText, ClipboardList } from 'lucide-react';
+import { Folder, ChevronUp, ChevronDown, X, Clock, FileText } from 'lucide-react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useSettings } from '../context/SettingsContext';
 import { useAIContext } from '../context/AIContext';
-import type { CopyMenuState, OutputActionsState } from '../terminal/ui/markers';
+import type { CopyMenuState } from '../terminal/ui/markers';
 import type { SelectionMenuState } from '../terminal/ui/selectionMenu';
 import { QUICK_ACTIONS, buildQuickActionPrompt, shouldShowAction, type QuickActionType } from '../ai/quickActions';
 import { useFloatingMenu } from '../terminal/hooks/useFloatingMenu';
@@ -65,8 +65,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
     const copyMenuRef = useRef<HTMLDivElement | null>(null);
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
     const selectionMenuRef = useRef<HTMLDivElement | null>(null);
-    const [outputActions, setOutputActions] = useState<OutputActionsState | null>(null);
-    const outputActionsRef = useRef<HTMLDivElement | null>(null);
     const selectionPointRef = useRef<{ x: number; y: number } | null>(null);
     const pendingFileCaptureRef = useRef<PendingFileCapture | null>(null);
     const [commandHistoryOpen, setCommandHistoryOpen] = useState(false);
@@ -74,25 +72,15 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
 
     const hideCopyMenu = useCallback(() => setCopyMenu(null), []);
     const hideSelectionMenu = useCallback(() => setSelectionMenu(null), []);
-    const hideOutputActions = useCallback(() => setOutputActions(null), []);
-
-    // Output actions handlers
-    const handleCopyOutput = useCallback(() => {
-        if (!outputActions) return;
-        navigator.clipboard.writeText(outputActions.content).catch((err) => {
-            log.error('Failed to copy output to clipboard', err);
-        });
-        hideOutputActions();
-    }, [outputActions, hideOutputActions]);
-
-    const handleViewInWindow = useCallback(async () => {
-        if (!outputActions) return;
+    const handleViewOutputInWindow = useCallback(async () => {
+        if (!copyMenu?.outputRange || !copyMenu.outputText) return;
         try {
-            const contentBase64 = btoa(encodeURIComponent(outputActions.content));
+            const lineCount = copyMenu.outputRange[1] - copyMenu.outputRange[0] + 1;
+            const contentBase64 = btoa(encodeURIComponent(copyMenu.outputText));
             const label = `output-viewer-${Date.now()}`;
             const outputWindow = new WebviewWindow(label, {
-                url: `#/output-viewer?lines=${outputActions.lineCount}&content=${contentBase64}`,
-                title: `Output (${outputActions.lineCount} lines)`,
+                url: `#/output-viewer?lines=${lineCount}&content=${contentBase64}`,
+                title: `Output (${lineCount} lines)`,
                 width: 800,
                 height: 600,
                 center: true,
@@ -106,8 +94,8 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         } catch (err) {
             log.error('Error opening output window', err);
         }
-        hideOutputActions();
-    }, [outputActions, hideOutputActions]);
+        hideCopyMenu();
+    }, [copyMenu, hideCopyMenu]);
 
     // Use refs to avoid recreating terminal wiring when callbacks change
     const onCommandRunningRef = useRef(onCommandRunning);
@@ -286,7 +274,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         selectionPointRef,
         pendingFileCaptureRef,
         setCopyMenu,
-        setOutputActions,
         setSelectionMenu,
         setShowSearch,
         setHostLabel: (label: string) => setHostLabelAndRemoteStateRef.current(label),
@@ -359,7 +346,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
   });
 
   useFloatingMenu(copyMenu, setCopyMenu, copyMenuRef);
-  useFloatingMenu(outputActions, setOutputActions, outputActionsRef);
   // Note: selectionMenu no longer uses useFloatingMenu since it's in the status bar
   // and should only be dismissed when selection is cleared, not on click
 
@@ -429,6 +415,12 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                         onClick={() => copyMenu.outputRange && copyRange(copyMenu.outputRange)}
                     >
                         Copy Output
+                    </button>
+                    <button
+                        disabled={copyMenu.disabled || copyMenu.outputDisabled || !copyMenu.outputRange}
+                        onClick={handleViewOutputInWindow}
+                    >
+                        <FileText size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> View Output in Window
                     </button>
                     <div className="marker-copy-divider" />
                     <button
@@ -534,23 +526,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
                 </div>
             )}
             {/* Output actions popup - appears when clicking the vertical line indicator */}
-            {outputActions && (
-                <div
-                    className="output-actions-popup"
-                    style={{ top: outputActions.y, left: outputActions.x }}
-                    ref={outputActionsRef}
-                >
-                    <div className="output-actions-header">
-                        {outputActions.lineCount} lines
-                    </div>
-                    <button onClick={handleViewInWindow} title="Open output in new window">
-                        <FileText size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> View in Window
-                    </button>
-                    <button onClick={handleCopyOutput} title="Copy output to clipboard">
-                        <ClipboardList size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Copy Output
-                    </button>
-                </div>
-            )}
             <div className="terminal-status">
                 {/* CWD */}
                 <div 

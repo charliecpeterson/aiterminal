@@ -248,9 +248,6 @@ export function ErrorFallbackUI({
   return (
     <div style={containerStyle}>
       <div style={contentStyle}>
-        {isFullScreen && (
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
-        )}
         <h2 style={titleStyle}>{title}</h2>
         <p style={messageStyle}>{message}</p>
         {subMessage && <p style={styles.subMessage}>{subMessage}</p>}
