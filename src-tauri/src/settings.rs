@@ -17,53 +17,26 @@ fn get_keychain_service(provider: &str) -> String {
 
 fn save_api_key_to_keychain(provider: &str, api_key: &str) -> Result<(), String> {
     if api_key.trim().is_empty() {
-        // Empty key means delete from keychain
         return delete_api_key_from_keychain(provider);
     }
 
     let service = get_keychain_service(provider);
-    eprintln!(
-        "[Keychain] Saving API key for service: {} (username: api_key)",
-        service
-    );
     let entry =
         Entry::new(&service, "api_key").map_err(|e| format!("Failed to access keychain: {}", e))?;
 
     entry
         .set_password(api_key)
-        .map_err(|e| {
-            eprintln!("[Keychain] Error saving: {}", e);
-            format!("Failed to save API key to keychain: {}", e)
-        })
-        .map(|_| {
-            eprintln!("[Keychain] Successfully saved API key");
-            ()
-        })
+        .map_err(|e| format!("Failed to save API key to keychain: {}", e))
 }
 
 fn load_api_key_from_keychain(provider: &str) -> Result<String, String> {
     let service = get_keychain_service(provider);
-    eprintln!(
-        "[Keychain] Loading API key for service: {} (username: api_key)",
-        service
-    );
-    let entry = Entry::new(&service, "api_key").map_err(|e| {
-        eprintln!("[Keychain] Failed to create Entry: {}", e);
-        format!("Failed to access keychain: {}", e)
-    })?;
+    let entry = Entry::new(&service, "api_key")
+        .map_err(|e| format!("Failed to access keychain: {}", e))?;
 
     entry
         .get_password()
-        .map(|key| {
-            eprintln!(
-                "[Keychain] Successfully loaded API key (length: {})",
-                key.len()
-            );
-            key
-        })
         .map_err(|e| {
-            eprintln!("[Keychain] Error loading: {}", e);
-            // Don't expose keychain errors if key simply doesn't exist
             if e.to_string().contains("No such item") || e.to_string().contains("not found") {
                 "API key not found".to_string()
             } else {
@@ -86,6 +59,20 @@ pub fn clamp_max_markers(value: u16) -> u16 {
     value.clamp(20, 2000)
 }
 
+/// Write data to a file atomically by writing to a temp file first, then renaming.
+/// This prevents corruption if the process crashes mid-write.
+fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
+    let temp_path = path.with_extension("tmp");
+    fs::write(&temp_path, data)
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    fs::rename(&temp_path, path)
+        .map_err(|e| {
+            // Clean up temp file on rename failure
+            let _ = fs::remove_file(&temp_path);
+            format!("Failed to rename temp file: {}", e)
+        })
+}
+
 #[tauri::command]
 pub fn load_settings(_state: State<AppState>) -> Result<AppSettings, String> {
     let config_path = get_config_path().ok_or("Could not determine config path")?;
@@ -96,7 +83,7 @@ pub fn load_settings(_state: State<AppState>) -> Result<AppSettings, String> {
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        fs::write(&config_path, json).map_err(|e| e.to_string())?;
+        atomic_write(&config_path, json.as_bytes())?;
         return Ok(default_settings);
     }
 
@@ -118,7 +105,7 @@ pub fn save_settings(settings: AppSettings) -> Result<(), String> {
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    fs::write(config_path, json).map_err(|e| e.to_string())?;
+    atomic_write(&config_path, json.as_bytes())?;
     Ok(())
 }
 

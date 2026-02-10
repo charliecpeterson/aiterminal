@@ -377,6 +377,7 @@ pub fn query_with_embedding(
     scored
 }
 
+#[allow(dead_code)]
 pub async fn context_index_sync(
     index: &mut ContextIndex,
     provider: &str,
@@ -496,6 +497,7 @@ pub async fn context_index_sync(
     })
 }
 
+#[allow(dead_code)]
 pub async fn context_index_query(
     index: &ContextIndex,
     provider: &str,

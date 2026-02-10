@@ -546,14 +546,13 @@ export function createMarkerManager({
     };
 
     const handleClick = (e: MouseEvent) => {
-      // If there's an active selection, don't handle the click as a block highlight
-      // This prevents the command block from stealing focus when selecting text
+      // If there's an active selection, don't handle the click
       if (term.hasSelection()) {
         mouseDownPos = null;
         return;
       }
 
-      // Check if this was a drag (selection attempt) rather than a click
+      // Check if this was a drag rather than a click
       if (mouseDownPos) {
         const dx = Math.abs(e.clientX - mouseDownPos.x);
         const dy = Math.abs(e.clientY - mouseDownPos.y);
@@ -565,73 +564,93 @@ export function createMarkerManager({
       mouseDownPos = null;
 
       const target = e.target as HTMLElement;
+      
+      // Shift+Click: Show menu
+      if (e.shiftKey) {
+        // Don't show menu if clicking on markers or existing menu
+        if (
+          target.closest('.marker-copy-menu') ||
+          target.closest('.terminal-marker') ||
+          target.closest('.command-block-indicator')
+        ) {
+          return;
+        }
+        
+        // Only handle Shift+Click on terminal viewport/screen area
+        const isInTerminal = target.closest('.xterm-viewport') || target.closest('.xterm-screen') || target.closest('.xterm-rows');
+        if (!isInTerminal) return;
+
+        // Get click position relative to terminal
+        const terminalElement = term.element;
+        if (!terminalElement) return;
+
+        let clickedLine: number | null = null;
+        const core = (term as unknown as { _core?: { _mouseService?: { getCoords: (...args: any[]) => [number, number] | undefined } } })._core;
+        const mouseService = core?._mouseService;
+        const screenElement = term.element?.querySelector('.xterm-screen') as HTMLElement | null;
+        if (mouseService && screenElement) {
+          const coords = mouseService.getCoords(e, screenElement, term.cols, term.rows);
+          if (coords) {
+            clickedLine = term.buffer.active.viewportY + coords[1] - 1;
+          }
+        }
+
+        if (clickedLine == null) {
+          const rowsEl = term.element?.querySelector('.xterm-rows') as HTMLElement | null;
+          const rowEl = target.closest('.xterm-rows > div') as HTMLElement | null;
+          if (rowsEl && rowEl) {
+            const rowIndex = Array.prototype.indexOf.call(rowsEl.children, rowEl);
+            if (rowIndex >= 0) {
+              clickedLine = term.buffer.active.viewportY + rowIndex;
+            }
+          }
+        }
+
+        if (clickedLine == null) {
+          const rect = terminalElement.getBoundingClientRect();
+          const y = e.clientY - rect.top;
+          const cellHeight = term.element?.querySelector('.xterm-rows')?.firstElementChild?.getBoundingClientRect().height || 17;
+          clickedLine = Math.floor(y / cellHeight) + term.buffer.active.viewportY;
+        }
+        
+        // Find marker at this line
+        const marker = findMarkerAtLine(clickedLine);
+        if (!marker) {
+          // Ctrl+clicked outside any command block - don't show menu
+          return;
+        }
+
+        // Check if this is a completed command (has exitCode)
+        const meta = markerMeta.get(marker);
+        if (!meta || meta.exitCode === undefined) {
+          // This is the current/pending command (gray marker) - don't show menu
+          return;
+        }
+
+        // Show the menu at Shift+click position
+        setCopyMenu(
+          buildCopyMenuState(marker, {
+            x: e.clientX + 10,
+            y: e.clientY - 20,
+          })
+        );
+        
+        // Prevent default to avoid text selection on Shift+click
+        e.preventDefault();
+        return;
+      }
+      
+      // Regular click (no Shift): Close menu if it's open
+      // Don't close menu if clicking on the menu itself or markers
       if (
+        target.closest('.marker-copy-menu') ||
         target.closest('.terminal-marker') ||
         target.closest('.command-block-indicator')
       ) {
         return;
       }
       
-      // Only handle clicks on terminal viewport/screen area
-      const isInTerminal = target.closest('.xterm-viewport') || target.closest('.xterm-screen') || target.closest('.xterm-rows');
-      if (!isInTerminal) return;
-
-      // Get click position relative to terminal
-      const terminalElement = term.element;
-      if (!terminalElement) return;
-
-      let clickedLine: number | null = null;
-      const core = (term as unknown as { _core?: { _mouseService?: { getCoords: (...args: any[]) => [number, number] | undefined } } })._core;
-      const mouseService = core?._mouseService;
-      const screenElement = term.element?.querySelector('.xterm-screen') as HTMLElement | null;
-      if (mouseService && screenElement) {
-        const coords = mouseService.getCoords(e, screenElement, term.cols, term.rows);
-        if (coords) {
-          clickedLine = term.buffer.active.viewportY + coords[1] - 1;
-        }
-      }
-
-      if (clickedLine == null) {
-        const rowsEl = term.element?.querySelector('.xterm-rows') as HTMLElement | null;
-        const rowEl = target.closest('.xterm-rows > div') as HTMLElement | null;
-        if (rowsEl && rowEl) {
-          const rowIndex = Array.prototype.indexOf.call(rowsEl.children, rowEl);
-          if (rowIndex >= 0) {
-            clickedLine = term.buffer.active.viewportY + rowIndex;
-          }
-        }
-      }
-
-      if (clickedLine == null) {
-        const rect = terminalElement.getBoundingClientRect();
-        const y = e.clientY - rect.top;
-        const cellHeight = term.element?.querySelector('.xterm-rows')?.firstElementChild?.getBoundingClientRect().height || 17;
-        clickedLine = Math.floor(y / cellHeight) + term.buffer.active.viewportY;
-      }
-      
-      // Find marker at this line
-      const marker = findMarkerAtLine(clickedLine);
-      if (!marker) {
-        // Clicked outside any command block - close menu
-        setCopyMenu(null);
-        return;
-      }
-
-      // Check if this is a completed command (has exitCode)
-      const meta = markerMeta.get(marker);
-      if (!meta || meta.exitCode === undefined) {
-        // This is the current/pending command (gray marker) - don't show menu
-        setCopyMenu(null);
-        return;
-      }
-
-      // Show the menu directly at click position (no visual line indicator)
-      setCopyMenu(
-        buildCopyMenuState(marker, {
-          x: e.clientX + 10,
-          y: e.clientY - 20,
-        })
-      );
+      setCopyMenu(null);
     };
 
     term.element?.addEventListener('mousedown', handleMouseDown);

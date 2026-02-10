@@ -3,6 +3,7 @@ use crate::models::AppState;
 use portable_pty::PtySize;
 use serde::Serialize;
 use std::io::Write;
+use std::sync::atomic::Ordering;
 use tauri::State;
 
 /// Terminal health status
@@ -296,4 +297,24 @@ pub fn check_pty_health(id: u32, state: State<AppState>) -> Result<TerminalHealt
         ms_since_last_output,
         status,
     })
+}
+
+/// Set the currently active/focused terminal
+#[tauri::command]
+pub fn focus_terminal(id: u32, state: State<AppState>) {
+    let old_id = state.active_terminal.swap(id, Ordering::Release);
+    if old_id != id {
+        println!("[PTY] Active terminal changed: {} -> {}", old_id, id);
+    }
+}
+
+/// Get the currently active/focused terminal
+#[tauri::command]
+pub fn get_active_terminal(state: State<AppState>) -> Result<u32, String> {
+    let id = state.active_terminal.load(Ordering::Acquire);
+    if id == 0 {
+        Err("No active terminal".to_string())
+    } else {
+        Ok(id)
+    }
 }

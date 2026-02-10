@@ -355,7 +355,9 @@ pub async fn write_file_tool(
 
     // Create backup before modifying (if file exists)
     if safe_path.exists() {
-        let _ = create_file_backup(&state, &safe_path); // Ignore backup errors, don't block write
+        if let Err(e) = create_file_backup(&state, &safe_path) {
+            eprintln!("[Backup] Failed to backup {}: {}", safe_path.display(), e);
+        }
     }
 
     if let Some(parent) = safe_path.parent() {
@@ -394,7 +396,9 @@ pub async fn append_to_file_tool(
 
     // Create backup before modifying (if file exists)
     if safe_path.exists() {
-        let _ = create_file_backup(&state, &safe_path);
+        if let Err(e) = create_file_backup(&state, &safe_path) {
+            eprintln!("[Backup] Failed to backup {}: {}", safe_path.display(), e);
+        }
     }
 
     let mut file = OpenOptions::new()
@@ -439,7 +443,9 @@ pub async fn replace_in_file_tool(
     }
 
     // Create backup before modifying
-    let _ = create_file_backup(&state, &safe_path);
+    if let Err(e) = create_file_backup(&state, &safe_path) {
+        eprintln!("[Backup] Failed to backup {}: {}", safe_path.display(), e);
+    }
 
     // Read the file content
     let content = fs::read_to_string(&safe_path)
@@ -1924,7 +1930,6 @@ pub async fn diff_files_tool(
     let max_lines = lines1.len().max(lines2.len());
     let mut changes = 0;
     let mut in_change_block = false;
-    let mut block_start = 0;
     
     for i in 0..max_lines {
         let line1 = lines1.get(i);
@@ -1940,7 +1945,6 @@ pub async fn diff_files_tool(
             }
             (Some(l1), Some(l2)) => {
                 if !in_change_block {
-                    block_start = i;
                     in_change_block = true;
                     output.push(format!("@@ Line {} @@", i + 1));
                 }

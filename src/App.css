@@ -42,11 +42,11 @@
   --color-semantic-warning-light: #fb923c;
 
   --color-overlay-subtle: rgba(255, 255, 255, 0.02);
-  --color-overlay-light: var(--color-overlay-light);
-  --color-overlay-default: var(--color-overlay-default);
-  --color-overlay-medium: var(--color-overlay-medium);
-  --color-overlay-strong: var(--color-overlay-strong);
-  --color-overlay-stronger: var(--color-overlay-stronger);
+  --color-overlay-light: rgba(255, 255, 255, 0.05);
+  --color-overlay-default: rgba(255, 255, 255, 0.08);
+  --color-overlay-medium: rgba(255, 255, 255, 0.12);
+  --color-overlay-strong: rgba(255, 255, 255, 0.16);
+  --color-overlay-stronger: rgba(255, 255, 255, 0.22);
 
   color: var(--color-text-primary);
   background-color: var(--color-bg-primary);
@@ -304,6 +304,7 @@ body, html, #root {
   flex: 1;
   overflow: hidden;
   position: relative;
+  cursor: text; /* Default text cursor for terminal */
 }
 
 /* Search Bar Styles */
@@ -489,8 +490,15 @@ body, html, #root {
   margin-left: -10px; /* Pull it out to the gutter */
   position: relative;
   pointer-events: auto;
-  cursor: pointer;
+  cursor: pointer; /* Pointer only on the marker gutter itself */
   z-index: 10;
+}
+
+/* Ensure terminal itself has text cursor, not pointer */
+.xterm,
+.xterm-screen,
+.xterm-viewport {
+  cursor: text !important;
 }
 
 .xterm-decoration-container .terminal-marker.success {
@@ -867,8 +875,15 @@ body, html, #root {
 }
 
 /* Style for links in terminal - xterm applies underline decoration inline */
+.xterm-screen .xterm-link-layer a,
 .xterm-screen .xterm-link-layer {
-  cursor: pointer;
+  cursor: pointer; /* Pointer only for clickable links */
+}
+
+/* Ensure normal text cursor for terminal viewport */
+.xterm-viewport,
+.xterm-screen {
+  cursor: text;
 }
 
 /* ============================================================================

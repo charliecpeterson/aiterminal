@@ -426,9 +426,9 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     });
 
     // Create tools only when enabled (Agent mode)
+    // Tools now query active terminal ID at runtime (no need to pass it)
     const tools = enableTools
       ? createTools(
-          terminalId,
           settingsAi.require_command_approval !== false,
           addPendingApproval
         )

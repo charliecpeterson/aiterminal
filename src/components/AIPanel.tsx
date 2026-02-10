@@ -218,6 +218,11 @@ interface AIPanelProps {
 const AIPanel = ({
   activeTerminalId,
 }: AIPanelProps) => {
+  // Debug: Log whenever activeTerminalId changes
+  useEffect(() => {
+    console.log('[AIPanel] activeTerminalId changed:', activeTerminalId);
+  }, [activeTerminalId]);
+  
   const [activeTab, setActiveTab] = useState<PanelTab>("chat");
   const [prompt, setPrompt] = useState("");
   const [expandedContextId, setExpandedContextId] = useState<string | null>(null);
@@ -345,7 +350,7 @@ const AIPanel = ({
     
     // Use override if provided, otherwise use state
     const promptToSend = promptOverride ?? prompt;
-    if (!promptToSend.trim()) {
+    if (!promptToSend || typeof promptToSend !== 'string' || !promptToSend.trim()) {
       return;
     }
     

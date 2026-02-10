@@ -1,3 +1,4 @@
+use crate::security::path_validator::validate_path;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
@@ -48,7 +49,10 @@ pub enum GitSubcommand {
     Status,
     Diff { files: Vec<String> },
     Log { max_count: Option<usize>, files: Vec<String> },
-    Branch { list: bool },
+    Branch {
+        #[allow(dead_code)]
+        list: bool
+    },
     Show { commit: Option<String> },
 }
 
@@ -60,7 +64,7 @@ impl SafeCommand {
         
         // Check for shell metacharacters that indicate injection attempts
         if Self::contains_shell_metacharacters(cmd) {
-            return Err("Command contains shell metacharacters (;|&$`()<>)".to_string());
+            return Err("Command contains shell metacharacters (;|&$`()<>{}#!~)".to_string());
         }
         
         // Split into parts (simple whitespace splitting)
@@ -101,11 +105,22 @@ impl SafeCommand {
     
     /// Check if string contains shell metacharacters
     fn contains_shell_metacharacters(s: &str) -> bool {
-        // These characters are used for command chaining, substitution, redirection, etc.
-        let dangerous_chars = [';', '|', '&', '$', '`', '<', '>', '(', ')', '\n', '\r'];
+        // These characters are used for command chaining, substitution, redirection, brace expansion, etc.
+        let dangerous_chars = [';', '|', '&', '$', '`', '<', '>', '(', ')', '\n', '\r', '{', '}', '#', '!', '~'];
         s.chars().any(|c| dangerous_chars.contains(&c))
     }
     
+    /// Validate a file path argument, resolving relative to cwd if provided.
+    fn validate_file_path(file: &str, cwd: Option<&Path>) -> Result<String, String> {
+        let path = if let Some(dir) = cwd {
+            dir.join(file)
+        } else {
+            Path::new(file).to_path_buf()
+        };
+        let safe = validate_path(&path)?;
+        Ok(safe.to_string_lossy().to_string())
+    }
+
     /// Execute the safe command without using a shell
     pub fn execute(&self, cwd: Option<&Path>) -> Result<CommandResult, String> {
         let mut cmd = match self {
@@ -115,14 +130,16 @@ impl SafeCommand {
                     c.arg(flag);
                 }
                 if !path.is_empty() {
-                    c.arg(path);
+                    let safe_path = Self::validate_file_path(path, cwd)?;
+                    c.arg(safe_path);
                 }
                 c
             }
             SafeCommand::Pwd => Command::new("pwd"),
             SafeCommand::Cat { file } => {
+                let safe_file = Self::validate_file_path(file, cwd)?;
                 let mut c = Command::new("cat");
-                c.arg(file);
+                c.arg(safe_file);
                 c
             }
             SafeCommand::Echo { text } => {
@@ -137,32 +154,36 @@ impl SafeCommand {
                 }
                 c.arg(pattern);
                 if let Some(f) = file {
-                    c.arg(f);
+                    let safe_file = Self::validate_file_path(f, cwd)?;
+                    c.arg(safe_file);
                 }
                 c
             }
             SafeCommand::Head { file, lines } => {
+                let safe_file = Self::validate_file_path(file, cwd)?;
                 let mut c = Command::new("head");
                 if let Some(n) = lines {
                     c.arg("-n").arg(n.to_string());
                 }
-                c.arg(file);
+                c.arg(safe_file);
                 c
             }
             SafeCommand::Tail { file, lines } => {
+                let safe_file = Self::validate_file_path(file, cwd)?;
                 let mut c = Command::new("tail");
                 if let Some(n) = lines {
                     c.arg("-n").arg(n.to_string());
                 }
-                c.arg(file);
+                c.arg(safe_file);
                 c
             }
             SafeCommand::Wc { file, flags } => {
+                let safe_file = Self::validate_file_path(file, cwd)?;
                 let mut c = Command::new("wc");
                 for flag in flags {
                     c.arg(flag);
                 }
-                c.arg(file);
+                c.arg(safe_file);
                 c
             }
             SafeCommand::Git { subcommand } => Self::build_git_command(subcommand),
@@ -547,6 +568,10 @@ mod tests {
         assert!(SafeCommand::from_string("ls $(whoami)").is_err());
         assert!(SafeCommand::from_string("ls > file.txt").is_err());
         assert!(SafeCommand::from_string("cat < file.txt").is_err());
+        assert!(SafeCommand::from_string("echo {a,b,c}").is_err());
+        assert!(SafeCommand::from_string("echo foo #comment").is_err());
+        assert!(SafeCommand::from_string("ls !1").is_err());
+        assert!(SafeCommand::from_string("ls ~/secret").is_err());
     }
     
     #[test]

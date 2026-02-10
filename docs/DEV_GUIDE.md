@@ -61,17 +61,16 @@ AIterminal is built with a **modular, hook-based architecture** that separates c
 
 - **Frontend**: React + TypeScript + xterm.js
 - **Backend**: Rust + Tauri + portable-pty
-- **AI System**: Vercel AI SDK with 28 automated tools
+- **AI System**: Vercel AI SDK with 26 automated tools
 - **State Management**: React hooks + Context API
 
 ### Recent Refactoring (2026)
 
-The project underwent a major refactoring that reduced `App.tsx` from 1,002 lines to 207 lines (79% reduction):
+The project underwent a major refactoring that significantly reduced `App.tsx` (now ~241 lines):
 
-- **9 custom React hooks** for state management (plus useAIPanelAutoOpen)
-- **4 focused components** for UI composition
-- **2 utility modules** for window and detection logic
-- **Removed 57 unnecessary style helper functions**
+- **10 custom React hooks** for state management
+- **5+ focused components** for UI composition (TabBar, AppToolbar, TerminalGrid, WindowRouter, CommandPalette)
+- **Utility modules** for window management and detection logic
 
 This makes the codebase:
 - ✅ Easier to understand and navigate
@@ -97,6 +96,7 @@ App (Root)
     └── Main Window
         ├── TabBar
         ├── AppToolbar
+        ├── CommandPalette (Cmd+K)
         └── TerminalGrid
             └── Terminal (multiple instances)
 ```
@@ -116,7 +116,7 @@ App (Root)
 | `useWindowCloseHandler` | Shutdown cleanup | Save session on window close |
 | `useAIPanelAutoOpen` | AI Panel auto-open | Auto-show AI panel for new users or on errors |
 
-See [notes/HOOKS_REFERENCE.md](notes/HOOKS_REFERENCE.md) for detailed API documentation.
+See the hook source files in `src/hooks/` for detailed implementation.
 
 ---
 
@@ -165,46 +165,77 @@ See [Pull Request Process](#pull-request-process) below.
 
 ```
 AIterminal/
-├── src/                      # React + TypeScript frontend
-│   ├── ai/                   # AI assistant implementation
-│   │   ├── tools-vercel.ts   # 28 tool definitions
-│   │   ├── chatSend-vercel.ts # Streaming chat with tool execution
-│   │   ├── prompts.ts        # System prompts
-│   │   ├── conversationHistory.ts # Sliding window history
-│   │   ├── streamingBuffer.ts # Batch text updates
-│   │   └── contextRanker.ts  # Context relevance ranking
-│   ├── app/                  # Application wiring
-│   ├── components/           # React components
-│   │   ├── TabBar.tsx        # Tab bar with drag/drop
-│   │   ├── AppToolbar.tsx    # Top toolbar buttons
-│   │   ├── TerminalGrid.tsx  # Terminal pane grid
-│   │   ├── WindowRouter.tsx  # Window type routing
-│   │   └── ...               # Other UI components
-│   ├── hooks/                # Custom React hooks
+├── src/                        # React + TypeScript frontend
+│   ├── ai/                     # AI assistant implementation
+│   │   ├── tools-vercel.ts     # 26 tool definitions (Vercel AI SDK + Zod)
+│   │   ├── chatSend-vercel.ts  # Streaming chat with tool execution (max 15 steps)
+│   │   ├── prompts.ts          # System prompts
+│   │   ├── commandSafety.ts    # Command safety classification
+│   │   ├── conversationHistory.ts # Sliding window + auto-summarization
+│   │   ├── streamingBuffer.ts  # Batch text updates (70-90% fewer re-renders)
+│   │   ├── contextRanker.ts    # Keyword-based context relevance scoring
+│   │   └── smartContext.ts     # Embedding-based context retrieval
+│   ├── actions/                # Action registry (command palette actions)
+│   ├── app/                    # Application wiring (SSH integration)
+│   ├── components/             # React components (~40+ files)
+│   │   ├── TabBar.tsx          # Tab bar
+│   │   ├── AppToolbar.tsx      # Top toolbar buttons
+│   │   ├── TerminalGrid.tsx    # Terminal pane grid
+│   │   ├── WindowRouter.tsx    # Window type routing
+│   │   ├── CommandPalette.tsx  # Cmd+K command palette
+│   │   ├── Terminal.tsx        # Main terminal component
+│   │   ├── AIPanel.tsx         # AI chat interface
+│   │   └── ...                 # Other UI components
+│   ├── hooks/                  # 10 custom React hooks
 │   │   ├── useTabManagement.ts
 │   │   ├── useSessionPersistence.ts
 │   │   ├── useSSHConnection.ts
-│   │   └── ...               # Other hooks
-│   ├── context/              # React Context providers
-│   ├── utils/                # Shared utilities
-│   ├── types/                # TypeScript type definitions
-│   └── App.tsx               # Root component (207 lines)
-├── src-tauri/                # Rust backend
+│   │   ├── useCrossWindowEvents.ts
+│   │   ├── useKeyboardShortcuts.ts
+│   │   ├── useCommandTracking.ts
+│   │   └── ...                 # Other hooks
+│   ├── context/                # React Context providers (AI, Settings, SSH)
+│   ├── terminal/               # Terminal logic
+│   │   ├── core/executeInPty.ts  # PTY command execution with markers
+│   │   ├── ui/markers.ts        # Command block visualization & menus
+│   │   └── hooks/                # Terminal-specific hooks
+│   ├── utils/                  # Shared utilities (logger, tokens, etc.)
+│   ├── types/                  # TypeScript type definitions
+│   └── App.tsx                 # Root component (~241 lines)
+├── src-tauri/                  # Rust backend
 │   ├── src/
-│   │   ├── lib.rs            # Main Tauri entry point
-│   │   ├── pty.rs            # PTY management
-│   │   ├── tools/            # AI tool implementations
-│   │   │   └── commands.rs   # All tool commands
-│   │   └── ...
-│   ├── shell-integration/    # Shell integration scripts
-│   │   ├── bash_init.sh      # Bash/Zsh markers
-│   │   └── ssh_helper.sh     # SSH integration
-│   └── tauri.conf.json       # Tauri configuration
-├── tests/                    # Vitest test files
-├── docs/                     # User documentation
-├── notes/                    # Internal developer notes (git-ignored)
-├── public/                   # Static assets
-└── package.json              # npm dependencies
+│   │   ├── lib.rs              # Main Tauri entry point & handler registration
+│   │   ├── models.rs           # App state, settings structs, constants
+│   │   ├── settings.rs         # Settings persistence (atomic writes)
+│   │   ├── pty/                # PTY management (directory)
+│   │   │   ├── mod.rs          # Module entry
+│   │   │   ├── commands.rs     # PTY Tauri commands
+│   │   │   ├── spawn.rs        # PTY spawning
+│   │   │   ├── reader.rs       # Async PTY output reader
+│   │   │   ├── osc_parser.rs   # OSC sequence parsing
+│   │   │   ├── shell.rs        # Shell detection
+│   │   │   └── integration.rs  # Shell integration injection
+│   │   ├── tools/              # AI tool implementations
+│   │   │   ├── commands.rs     # All tool commands
+│   │   │   └── safe_commands.rs # Safe command whitelist & parsing
+│   │   ├── security/           # Path validation, secret scanning
+│   │   ├── autocomplete/       # LLM-based autocomplete
+│   │   ├── chat/               # Chat/streaming backend
+│   │   ├── utils/              # Mutex utilities
+│   │   ├── tests/              # Rust test modules
+│   │   ├── ssh.rs              # SSH profile management
+│   │   ├── context_index.rs    # Embedding-based context index
+│   │   ├── health_check.rs     # Health check endpoint
+│   │   ├── preview.rs          # File preview support
+│   │   └── quick_actions.rs    # Quick actions persistence
+│   ├── shell-integration/      # Shell integration scripts
+│   │   ├── bash_init.sh        # Bash/Zsh markers + SSH wrapper
+│   │   └── ssh_helper.sh       # SSH integration bootstrap
+│   └── tauri.conf.json         # Tauri configuration
+├── tests/                      # Vitest test files
+├── docs/                       # User & developer documentation
+├── public/                     # Static assets
+└── package.json                # npm dependencies
 ```
 
 ---
@@ -267,19 +298,16 @@ The AI tools automatically create backups before modifying files, enabling undo 
 
 - **FileBackup struct**: Stores path, content, and timestamp
 - **Limits**: 5 backups per file, 50 total across all files
-- **Auto-creation**: `write_file_tool`, `append_to_file_tool`, `replace_in_file_tool` create backups
-- **Restore**: `undo_file_change_tool` restores most recent backup
-- **List**: `list_file_backups_tool` shows available backups
-- **Diff**: `diff_files_tool` compares current vs backup
+- **Auto-creation**: `write_file_tool`, `append_to_file_tool`, `replace_in_file_tool` create backups before modifying
+- **Diff**: `diff_files` tool compares two files
 
 **Storage**: In-memory via `AppState.file_backups: Mutex<Vec<FileBackup>>`
 
 **Helper function** in `commands.rs`:
 ```rust
-fn create_file_backup(
+pub fn create_file_backup(
     state: &tauri::State<'_, AppState>,
-    path: &str,
-    content: &str,
+    path: &Path,
 ) -> Result<(), String>
 ```
 
@@ -357,7 +385,7 @@ import { YourComponent } from './components/YourComponent';
 
 ### Adding an AI Tool
 
-See [AGENTS.md](AGENTS.md) for comprehensive AI tool implementation guide.
+See [CLAUDE.md](../CLAUDE.md) for comprehensive AI tool implementation guide.
 
 **Quick overview:**
 
@@ -694,12 +722,8 @@ Open PR on GitHub with:
 
 ## Additional Resources
 
-- **User Guide**: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
-- **Repository Guidelines**: [AGENTS.md](AGENTS.md)
-- **Architecture Deep Dive**: [notes/ARCHITECTURE.md](notes/ARCHITECTURE.md)
-- **Hooks Reference**: [notes/HOOKS_REFERENCE.md](notes/HOOKS_REFERENCE.md)
-- **Components Reference**: [notes/COMPONENTS_REFERENCE.md](notes/COMPONENTS_REFERENCE.md)
-- **Refactoring Summary**: [notes/REFACTORING_SUMMARY.md](notes/REFACTORING_SUMMARY.md)
+- **User Guide**: [USER_GUIDE.md](USER_GUIDE.md)
+- **AI Agent Guidelines**: [CLAUDE.md](../CLAUDE.md)
 
 ---
 

@@ -1,3 +1,8 @@
+// Suppress cfg warnings from objc 0.2 crate macros (msg_send!, class!)
+// These warnings come from the third-party objc crate and cannot be fixed
+// without updating to objc 0.3+, which may break the macOS touch gesture code.
+#![allow(unexpected_cfgs)]
+
 // Module declarations
 mod autocomplete;
 mod chat;
@@ -43,7 +48,7 @@ use keychain::{
 };
 pub use models::AppState;
 use preview::{get_preview_content, open_preview_window, read_preview_file, stop_preview_watcher};
-use pty::{check_pty_health, close_pty, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
+use pty::{check_pty_health, close_pty, focus_terminal, get_active_terminal, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
 use quick_actions::{load_quick_actions, save_quick_actions};
 use secret_scanner::scan_content_for_secrets;
 use sessions::{clear_session_state, has_saved_session, load_session_state, save_session_state};
@@ -261,6 +266,8 @@ pub fn run() {
             get_pty_info,
             get_pty_cwd,
             check_pty_health,
+            focus_terminal,
+            get_active_terminal,
             get_shell_history,
             spawn_pty,
             write_to_pty,

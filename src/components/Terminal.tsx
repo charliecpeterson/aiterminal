@@ -204,6 +204,15 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
     }
   }, [polledHostLabel, hostLabel]);
 
+  // Notify Rust backend when this terminal becomes visible (focused)
+  useEffect(() => {
+    if (visible) {
+      invoke('focus_terminal', { id }).catch((err: unknown) => {
+        log.warn('Failed to notify Rust of terminal focus:', err);
+      });
+    }
+  }, [visible, id]);
+
   // Simple Fish-style autocomplete (clean rewrite)
   useAutocompleteSimple(
     xtermRef, 

@@ -15,6 +15,15 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('AITools');
 
+/**
+ * Escape shell arguments for safe command execution.
+ * Uses single quotes and escapes embedded single quotes.
+ */
+function shellEscape(str: string): string {
+  if (!str) return "''";
+  return `'${str.replace(/'/g, "'\\''")}'`;
+}
+
 // Tool timeout and size limit constants
 const COMMAND_TIMEOUT_QUICK_MS = 10000;   // 10s for quick commands (ls, cat, pwd)
 const COMMAND_TIMEOUT_DEFAULT_MS = 30000; // 30s for most commands
@@ -91,9 +100,12 @@ function getCommandTimeout(command: string): number {
 }
 
 // Store pending approval promises
+const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 const pendingApprovalPromises = new Map<string, {
   resolve: (result: string) => void;
   reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 }>();
 
 /**
@@ -102,6 +114,7 @@ const pendingApprovalPromises = new Map<string, {
 export function resolveApproval(id: string, result: string) {
   const promise = pendingApprovalPromises.get(id);
   if (promise) {
+    clearTimeout(promise.timer);
     promise.resolve(result);
     pendingApprovalPromises.delete(id);
   }
@@ -113,6 +126,7 @@ export function resolveApproval(id: string, result: string) {
 export function rejectApproval(id: string, reason: string) {
   const promise = pendingApprovalPromises.get(id);
   if (promise) {
+    clearTimeout(promise.timer);
     promise.reject(new Error(reason));
     pendingApprovalPromises.delete(id);
   }
@@ -123,35 +137,17 @@ export function rejectApproval(id: string, reason: string) {
  */
 async function getTerminalCwd(terminalId: number): Promise<string> {
   try {
-    const cwd = await invoke<string>('get_pty_cwd', { id: terminalId });
-    return cwd;
+    const result = await executeInPty({
+      terminalId,
+      command: ' pwd', // Leading space to suppress history
+      timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
+    });
+    return result.output.trim();
   } catch (error) {
     log.error('Failed to get terminal CWD', error);
     // Fallback to home directory
     return '~';
   }
-}
-
-/**
- * Create a cached CWD getter to avoid repeated IPC calls within a single agent turn.
- * The cache is scoped to a single createTools() invocation.
- */
-function createCwdCache(terminalId: number) {
-  let cachedCwd: string | null = null;
-  let cacheTimestamp: number = 0;
-  const CACHE_TTL_MS = 30000; // 30 seconds - covers most agent turns
-  
-  return async function getCachedCwd(): Promise<string> {
-    const now = Date.now();
-    if (cachedCwd && (now - cacheTimestamp) < CACHE_TTL_MS) {
-      return cachedCwd;
-    }
-    
-    cachedCwd = await getTerminalCwd(terminalId);
-    cacheTimestamp = now;
-    log.debug('CWD cached', { cwd: cachedCwd });
-    return cachedCwd;
-  };
 }
 
 /**
@@ -263,15 +259,34 @@ function createFileReadCache() {
  * Execute a shell command using the active terminal PTY
  * This ensures commands run in the current terminal context (local, SSH, docker, etc.)
  * Timeout is automatically adjusted based on command type.
+ * 
+ * History suppression: Commands are prefixed with a space to avoid shell history
+ * (works when HISTCONTROL=ignorespace is set, which is common in bash/zsh)
  */
-async function executeCommand(command: string, terminalId: number): Promise<string> {
+async function executeCommand(
+  command: string, 
+  terminalId: number,
+  options?: {
+    suppressHistory?: boolean;
+  }
+): Promise<string> {
   const timeoutMs = getCommandTimeout(command);
-  log.debug('Executing command', { command: command.substring(0, 50), timeoutMs });
+  
+  // Prefix command with space to suppress history (if HISTCONTROL=ignorespace is set)
+  // This is a common default in bash and zsh
+  const suppressHistory = options?.suppressHistory !== false; // Default to true
+  const finalCommand = suppressHistory ? ` ${command}` : command;
+  
+  log.debug('Executing command', { 
+    command: command.substring(0, 50), 
+    timeoutMs,
+    suppressHistory 
+  });
   
   try {
     const result = await executeInPty({
       terminalId,
-      command,
+      command: finalCommand,
       timeoutMs,
     });
     return result.output || '(no output)';
@@ -281,16 +296,63 @@ async function executeCommand(command: string, terminalId: number): Promise<stri
 }
 
 /**
- * Create tools with terminal context
+ * Create tools without terminal context (queries active terminal at runtime)
  */
 export function createTools(
-  terminalId: number = 0, 
   requireApproval: boolean = true,
   onPendingApproval?: (approval: PendingApproval) => void
 ) {
-  // Create a cached CWD getter for this tool set
-  // This avoids repeated IPC calls within a single agent turn
-  const getCwd = createCwdCache(terminalId);
+  /**
+   * Helper to get the current active terminal ID from Rust backend.
+   * Queries fresh every time to avoid stale state.
+   */
+  const getActiveTerminalId = async (): Promise<number> => {
+    try {
+      const id = await invoke<number>('get_active_terminal');
+      log.debug('[AITools]', `Using terminal ID: ${id}`);
+      return id;
+    } catch (error) {
+      throw new Error(`No active terminal found: ${error}`);
+    }
+  };
+  
+  /**
+   * Helper to get the current working directory of the active terminal.
+   * Queries the active terminal ID first, then gets its CWD.
+   */
+  const getCwd = async (): Promise<string> => {
+    const terminalId = await getActiveTerminalId();
+    return await getTerminalCwd(terminalId);
+  };
+  
+  // Track if we've checked HISTCONTROL (one-time check per tool session)
+  let histControlChecked = false;
+  
+  /**
+   * Check if history suppression is supported in the user's shell.
+   * Most modern shells (bash, zsh) support HISTCONTROL=ignorespace.
+   */
+  const checkHistoryControl = async () => {
+    if (histControlChecked) return;
+    histControlChecked = true;
+    
+    try {
+      const terminalId = await getActiveTerminalId();
+      const result = await executeInPty({
+        terminalId,
+        command: 'echo "$HISTCONTROL"',
+        timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
+      });
+      
+      const histControl = result.output.trim();
+      if (!histControl.includes('ignorespace') && !histControl.includes('ignoreboth')) {
+        log.warn('[AITools]', 'HISTCONTROL does not include ignorespace - AI commands may appear in shell history');
+        log.info('[AITools]', 'To enable: export HISTCONTROL=ignorespace');
+      }
+    } catch (error) {
+      log.debug('[AITools]', 'Could not check HISTCONTROL:', error);
+    }
+  };
   
   // Create file read cache for this tool set
   // Avoids re-reading the same file multiple times in one agent turn
@@ -302,10 +364,16 @@ export function createTools(
       inputSchema: z.object({}),
       execute: async () => {
         try {
-          const result = await invoke<string>('get_current_directory_tool', {
+          // Check history control on first execution
+          await checkHistoryControl();
+          
+          const terminalId = await getActiveTerminalId();
+          const result = await executeInPty({
             terminalId,
+            command: ' pwd', // Leading space to suppress history
+            timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
           });
-          return result;
+          return result.output.trim();
         } catch (error) {
           return `Error getting current directory: ${error}`;
         }
@@ -327,6 +395,9 @@ Examples:
         command: z.string().describe('The shell command to execute (e.g., "ls -la", "pwd")'),
       }),
       execute: async ({ command }) => {
+        // Get active terminal ID first
+        const terminalId = await getActiveTerminalId();
+        
         // Check if command requires approval
         if (requireApproval && onPendingApproval) {
           const safetyCheck = isCommandSafe(command);
@@ -345,19 +416,16 @@ Examples:
               timestamp: Date.now(),
             };
             
-            const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
             // Create a promise that waits for user approval/denial (with timeout)
             const approvalPromise = new Promise<string>((resolve, reject) => {
-              pendingApprovalPromises.set(approval.id, { resolve, reject });
-
-              // Auto-reject after timeout to prevent agent from hanging forever
-              setTimeout(() => {
+              const timer = setTimeout(() => {
                 if (pendingApprovalPromises.has(approval.id)) {
                   pendingApprovalPromises.delete(approval.id);
-                  reject(new Error('Approval timed out after 5 minutes'));
+                  reject(new Error('Approval timed out after 10 minutes'));
                 }
               }, APPROVAL_TIMEOUT_MS);
+
+              pendingApprovalPromises.set(approval.id, { resolve, reject, timer });
             });
 
             // Add to pending approvals immediately (shows UI)
@@ -390,7 +458,8 @@ Examples:
         max_bytes: z.number().optional().describe('Maximum bytes to read (default: 50000)'),
       }),
       execute: async ({ path, max_bytes }) => {
-        const cwd = await getCwd();
+        const terminalId = await getActiveTerminalId();
+        const cwd = await getTerminalCwd(terminalId);
         
         // Check cache first (only for default max_bytes to ensure consistency)
         if (!max_bytes || max_bytes === 50000) {
@@ -401,13 +470,33 @@ Examples:
         }
         
         try {
-          const result = await invoke<string>('read_file_tool', {
-            path,
-            maxBytes: max_bytes || 50000,
-            workingDirectory: cwd,
+          // Use head to limit bytes read for large files
+          const maxBytes = max_bytes || 50000;
+          const command = ` head -c ${maxBytes} ${shellEscape(path)} 2>&1`; // Leading space
+          
+          const result = await executeInPty({
+            terminalId,
+            command,
+            timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
           });
+          
+          // Check for common error patterns
+          if (result.exitCode !== 0) {
+            const output = result.output.toLowerCase();
+            if (output.includes('no such file') || output.includes('cannot find')) {
+              return `Error: File not found: ${path}`;
+            }
+            if (output.includes('permission denied')) {
+              return `Error: Permission denied: ${path}`;
+            }
+            if (output.includes('is a directory')) {
+              return `Error: Path is a directory, not a file: ${path}`;
+            }
+            return `Error reading file: ${result.output}`;
+          }
+          
           // Truncate large results to prevent context bloat
-          const truncated = truncateToolResult(result);
+          const truncated = truncateToolResult(result.output);
           
           // Cache the result (only for default max_bytes)
           if (!max_bytes || max_bytes === 50000) {
@@ -446,46 +535,68 @@ Examples:
         path: z.string().describe('Path to the file (absolute or relative to terminal directory)'),
       }),
       execute: async ({ path }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<{
-            path: string;
-            size_bytes: number;
-            size_human: string;
-            line_count: number | null;
-            is_text: boolean;
-            is_binary: boolean;
-            extension: string | null;
-            file_type: string;
-            last_modified: string | null;
-          }>('get_file_info_tool', {
-            path,
-            workingDirectory: cwd,
-          });
+          // Use stat, wc, and file commands to get file info
+          const escapedPath = shellEscape(path);
           
-          const lines = [
-            `File: ${result.path}`,
-            `Size: ${result.size_human} (${result.size_bytes} bytes)`,
-            `Type: ${result.file_type}${result.extension ? ` (.${result.extension})` : ''}`,
-            `Format: ${result.is_binary ? 'Binary' : 'Text'}`,
-          ];
+          // Get size in bytes and last modified time
+          const statCmd = `stat -f "%z %m" ${escapedPath} 2>/dev/null || stat -c "%s %Y" ${escapedPath} 2>/dev/null`;
+          const statOutput = await executeCommand(statCmd, terminalId);
           
-          if (result.line_count !== null) {
-            lines.push(`Lines: ${result.line_count}`);
+          if (!statOutput || statOutput.includes('cannot stat')) {
+            return `Error: File not found or cannot access: ${path}`;
           }
           
-          if (result.last_modified) {
-            lines.push(`Modified: ${result.last_modified}`);
+          const [sizeStr] = statOutput.trim().split(/\s+/);
+          const size_bytes = parseInt(sizeStr) || 0;
+          
+          // Convert size to human readable
+          let size_human: string;
+          if (size_bytes < 1024) {
+            size_human = `${size_bytes} B`;
+          } else if (size_bytes < 1024 * 1024) {
+            size_human = `${(size_bytes / 1024).toFixed(1)} KB`;
+          } else if (size_bytes < 1024 * 1024 * 1024) {
+            size_human = `${(size_bytes / (1024 * 1024)).toFixed(1)} MB`;
+          } else {
+            size_human = `${(size_bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+          }
+          
+          // Get file type
+          const fileCmd = `file -b ${escapedPath}`;
+          const fileType = await executeCommand(fileCmd, terminalId);
+          const is_binary = !fileType.toLowerCase().includes('text') && !fileType.toLowerCase().includes('empty');
+          
+          // Get line count for text files under 10MB
+          let line_count: number | null = null;
+          if (!is_binary && size_bytes < 10 * 1024 * 1024) {
+            const wcCmd = `wc -l < ${escapedPath}`;
+            const wcOutput = await executeCommand(wcCmd, terminalId);
+            line_count = parseInt(wcOutput.trim()) || 0;
+          }
+          
+          // Get extension
+          const extension = path.includes('.') ? path.split('.').pop() || null : null;
+          
+          const lines = [
+            `File: ${path}`,
+            `Size: ${size_human} (${size_bytes} bytes)`,
+            `Type: ${fileType.trim()}${extension ? ` (.${extension})` : ''}`,
+            `Format: ${is_binary ? 'Binary' : 'Text'}`,
+          ];
+          
+          if (line_count !== null) {
+            lines.push(`Lines: ${line_count}`);
           }
           
           // Add helpful suggestions
-          if (result.is_binary) {
+          if (is_binary) {
             lines.push('\nNote: This is a binary file - cannot read with read_file');
-          } else if (result.size_bytes > FILE_SIZE_LARGE_THRESHOLD_BYTES) {
-            lines.push(`\nWarning: Large file (${result.size_human}) - consider using max_bytes parameter with read_file`);
-          } else if (result.size_bytes > FILE_SIZE_WARNING_THRESHOLD_BYTES) {
-            lines.push(`\nNote: File is ${result.size_human} - safe to read but consider if full content is needed`);
+          } else if (size_bytes > FILE_SIZE_LARGE_THRESHOLD_BYTES) {
+            lines.push(`\nWarning: Large file (${size_human}) - consider using max_bytes parameter with read_file`);
+          } else if (size_bytes > FILE_SIZE_WARNING_THRESHOLD_BYTES) {
+            lines.push(`\nNote: File is ${size_human} - safe to read but consider if full content is needed`);
           }
           
           return lines.join('\n');
@@ -514,17 +625,41 @@ Examples:
         max_bytes_per_file: z.number().optional().describe('Max bytes per file (default: 50000)'),
       }),
       execute: async ({ paths, max_bytes_per_file }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('read_multiple_files_tool', {
-            paths,
-            maxBytesPerFile: max_bytes_per_file,
-            workingDirectory: cwd,
-          });
+          const maxBytes = max_bytes_per_file || 50000;
+          const filePaths = paths.slice(0, 20); // Limit to 20 files
+          
+          const results: string[] = [];
+          
+          for (const path of filePaths) {
+            const escapedPath = shellEscape(path);
+            
+            // Check if file exists first
+            const testCmd = `test -f ${escapedPath} && echo "exists" || echo "missing"`;
+            const testResult = await executeCommand(testCmd, terminalId);
+            
+            if (testResult.includes('missing')) {
+              results.push(`=== ${path} ===\nFile not found\n`);
+              continue;
+            }
+            
+            // Read file with size limit
+            const readCmd = `head -c ${maxBytes} ${escapedPath}`;
+            const content = await executeCommand(readCmd, terminalId);
+            
+            if (content.includes('cannot open') || content.includes('Permission denied')) {
+              results.push(`=== ${path} ===\nCannot read file: ${content}\n`);
+            } else {
+              const truncated = content.length >= maxBytes ? '\n\n... (truncated)' : '';
+              results.push(`=== ${path} ===\n${content}${truncated}\n`);
+            }
+          }
+          
+          const combined = results.join('\n');
+          
           // Truncate combined result to prevent context bloat
-          // Allow more chars since this is explicitly for multiple files
-          return truncateToolResult(result, TOOL_RESULT_MAX_CHARS * 2);
+          return truncateToolResult(combined, TOOL_RESULT_MAX_CHARS * 2);
         } catch (error) {
           return `Error reading files: ${error}`;
         }
@@ -552,17 +687,31 @@ Examples:
         case_sensitive: z.boolean().optional().describe('Case-sensitive search (default: false)'),
       }),
       execute: async ({ pattern, paths, case_sensitive }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('grep_in_files_tool', {
-            pattern,
-            paths,
-            caseSensitive: case_sensitive,
-            workingDirectory: cwd,
-          });
-          // Truncate large search results
-          return truncateToolResult(result);
+          // Limit to 50 files for performance
+          const filePaths = paths.slice(0, 50);
+          
+          // Build grep command
+          const caseFlag = case_sensitive ? '' : '-i';
+          const escapedPattern = shellEscape(pattern);
+          const escapedPaths = filePaths.map(p => shellEscape(p)).join(' ');
+          
+          const command = `grep -n ${caseFlag} ${escapedPattern} ${escapedPaths} 2>/dev/null || echo "No matches found"`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (output.includes('No matches found') || !output.trim()) {
+            return `No matches found for "${pattern}" in ${filePaths.length} file(s)`;
+          }
+          
+          // Count matches
+          const lines = output.trim().split('\n');
+          const matchCount = lines.length;
+          
+          // Truncate large results
+          const truncated = truncateToolResult(output);
+          
+          return `Found ${matchCount} matches for "${pattern}":\n\n${truncated}`;
         } catch (error) {
           return `Error searching files: ${error}`;
         }
@@ -619,26 +768,20 @@ Examples:
         path: z.string().describe('Absolute path to the directory to list'),
       }),
       execute: async ({ path }) => {
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<{
-            files: string[];
-            directories: string[];
-            total_count: number;
-          }>('list_directory_tool', { path });
+          // Use ls -la for detailed directory listing
+          const command = `ls -la ${shellEscape(path)}`;
+          const output = await executeCommand(command, terminalId);
           
-          const output = [
-            `Contents of ${path}:`,
-            '',
-            'Directories:',
-            ...result.directories.map(d => `  ${d}/`),
-            '',
-            'Files:',
-            ...result.files.map(f => `  ${f}`),
-            '',
-            `Total: ${result.directories.length} directories, ${result.files.length} files`,
-          ].join('\n');
+          // Parse the output to count directories and files
+          const lines = output.split('\n').filter(line => line.trim());
+          const entries = lines.slice(1); // Skip header line
           
-          return output;
+          const directories = entries.filter(line => line.startsWith('d')).length;
+          const files = entries.filter(line => !line.startsWith('d') && !line.startsWith('total')).length;
+          
+          return `Contents of ${path}:\n${output}\n\nTotal: ${directories} directories, ${files} files`;
         } catch (error) {
           return `Error listing directory: ${error}`;
         }
@@ -646,36 +789,55 @@ Examples:
     }),
 
     search_files: tool({
-      description: `Search for files by name pattern (glob) or content (grep). Use for finding files or text.
+      description: `Search for files by name pattern. Use for finding files by name.
 
 Examples:
 - Find all Python files: pattern="*.py"
-- Find TypeScript files: pattern="**/*.ts"
-- Search for text: pattern="TODO" (searches file contents)`,
+- Find TypeScript files: pattern="*.ts"
+- Find config files: pattern="*config*"`,
       inputSchema: z.object({
-        pattern: z.string().describe('Search pattern (glob for filenames, text for content search)'),
+        pattern: z.string().describe('File name pattern to search for'),
         path: z.string().optional().describe('Directory to search in (defaults to current)'),
       }),
       execute: async ({ pattern, path }) => {
-        const searchPath = path || await getCwd();
+        const terminalId = await getActiveTerminalId();
+        const searchPath = path || await getTerminalCwd(terminalId);
         
         try {
-          const result = await invoke<{ matches: string[]; count: number }>('search_files_tool', {
-            pattern,
-            path: searchPath,
-          });
+          // Use ls for simple pattern matching (works with shell wildcards)
+          // For exact filename search, use both ls and find as fallback
+          const isWildcard = pattern.includes('*') || pattern.includes('?');
           
-          if (result.count === 0) {
+          let command: string;
+          if (isWildcard) {
+            // Use ls with wildcards
+            command = `cd ${shellEscape(searchPath)} && ls -1 ${pattern} 2>/dev/null || echo ""`;
+          } else {
+            // Search for exact filename recursively with find
+            command = `find ${shellEscape(searchPath)} -name ${shellEscape(pattern)} -type f 2>&1 | grep -v 'Permission denied' | head -100`;
+          }
+          
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output || output.trim() === '' || output.includes('(no output)')) {
             return `No files found matching "${pattern}" in ${searchPath}`;
           }
           
-          const output = [
-            `Found ${result.count} matches for "${pattern}":`,
-            '',
-            ...result.matches.map(m => `  ${m}`),
-          ].join('\n');
+          const matches = output.trim().split('\n').filter(line => line.trim());
+          const count = matches.length;
+          const displayMatches = matches.slice(0, 50); // Limit display to first 50
           
-          return output;
+          const result = [
+            `Found ${count} file(s) matching "${pattern}" in ${searchPath}:`,
+            '',
+            ...displayMatches.map(m => `  ${m}`),
+          ];
+          
+          if (count > 50) {
+            result.push('', `... and ${count - 50} more files (showing first 50)`);
+          }
+          
+          return result.join('\n');
         } catch (error) {
           return `Error searching files: ${error}`;
         }
@@ -693,9 +855,17 @@ Examples:
         name: z.string().describe('Name of the environment variable'),
       }),
       execute: async ({ name }) => {
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string | null>('get_env_var_tool', { name });
-          return result || `Environment variable ${name} is not set`;
+          // Escape shell variable name
+          const command = `echo "$${name}"`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output.trim()) {
+            return `Environment variable ${name} is not set`;
+          }
+          
+          return `${name}=${output.trim()}`;
         } catch (error) {
           return `Error getting environment variable: ${error}`;
         }
@@ -722,19 +892,35 @@ Examples:
         all: z.boolean().optional().describe('Replace all occurrences (default: false, only replaces first)'),
       }),
       execute: async ({ path, search, replace, all }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
+        const cwd = await getTerminalCwd(terminalId);
         try {
-          const result = await invoke<string>('replace_in_file_tool', {
-            path,
-            search,
-            replace,
-            all: all || false,
-            workingDirectory: cwd,
-          });
+          // Use sed for find/replace via PTY
+          const escapedPath = shellEscape(path);
+          
+          // Escape special sed characters in search and replace strings
+          // For sed, we need to escape: / \ & 
+          const sedEscapedSearch = search.replace(/[/\\&]/g, '\\$&').replace(/\n/g, '\\n');
+          const sedEscapedReplace = replace.replace(/[/\\&]/g, '\\$&').replace(/\n/g, '\\n');
+          
+          // Use | as delimiter to avoid issues with / in strings
+          const sedCommand = all 
+            ? `s|${sedEscapedSearch}|${sedEscapedReplace}|g`
+            : `s|${sedEscapedSearch}|${sedEscapedReplace}|`;
+          
+          // sed -i.bak works on both macOS and Linux
+          const command = `sed -i.bak '${sedCommand}' ${escapedPath} && rm ${escapedPath}.bak`;
+          
+          const output = await executeCommand(command, terminalId);
+          
           // Invalidate cache since file was modified
           fileCache.invalidate(path, cwd);
-          return result;
+          
+          if (output.includes('No such file') || output.includes('sed:')) {
+            return `Error replacing in file: ${output}`;
+          }
+          
+          return `Successfully replaced "${search}" with "${replace}" in ${path}${all ? ' (all occurrences)' : ' (first occurrence)'}`;
         } catch (error) {
           return `Error replacing in file: ${error}`;
         }
@@ -757,17 +943,28 @@ Examples:
         content: z.string().describe('Content to write to the file'),
       }),
       execute: async ({ path, content }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
+        const cwd = await getTerminalCwd(terminalId);
         try {
-          const result = await invoke<string>('write_file_tool', {
-            path,
-            content,
-            workingDirectory: cwd,
-          });
+          // Use base64 encoding to avoid heredoc issues with special characters
+          const escapedPath = shellEscape(path);
+          
+          // Encode content as base64 (btoa works in browser)
+          const base64Content = btoa(unescape(encodeURIComponent(content)));
+          
+          // Write using base64 decode (works on both macOS and Linux)
+          const command = `echo '${base64Content}' | base64 -d > ${escapedPath}`;
+          
+          const output = await executeCommand(command, terminalId);
+          
           // Invalidate cache since file was modified
           fileCache.invalidate(path, cwd);
-          return result;
+          
+          if (output.includes('No such file') || output.includes('cannot create') || output.includes('decode')) {
+            return `Error writing file: ${output}`;
+          }
+          
+          return `Successfully wrote ${content.length} bytes to ${path}`;
         } catch (error) {
           return `Error writing file: ${error}`;
         }
@@ -785,17 +982,28 @@ Examples:
         content: z.string().describe('Content to append'),
       }),
       execute: async ({ path, content }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
+        const cwd = await getTerminalCwd(terminalId);
         try {
-          const result = await invoke<string>('append_to_file_tool', {
-            path,
-            content,
-            workingDirectory: cwd,
-          });
+          // Use base64 encoding to avoid heredoc issues
+          const escapedPath = shellEscape(path);
+          
+          // Encode content as base64 (btoa works in browser)
+          const base64Content = btoa(unescape(encodeURIComponent(content)));
+          
+          // Append using base64 decode
+          const command = `echo '${base64Content}' | base64 -d >> ${escapedPath}`;
+          
+          const output = await executeCommand(command, terminalId);
+          
           // Invalidate cache since file was modified
           fileCache.invalidate(path, cwd);
-          return result;
+          
+          if (output.includes('No such file') || output.includes('cannot create') || output.includes('decode')) {
+            return `Error appending to file: ${output}`;
+          }
+          
+          return `Successfully appended ${content.length} bytes to ${path}`;
         } catch (error) {
           return `Error appending to file: ${error}`;
         }
@@ -808,13 +1016,24 @@ Examples:
 Use this to understand the state of the git repository before making suggestions.`,
       inputSchema: z.object({}),
       execute: async () => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('git_status_tool', {
-            workingDirectory: cwd,
-          });
-          return result;
+          const command = `git status --short`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (output.includes('not a git repository')) {
+            return 'Not a git repository';
+          }
+          
+          if (!output.trim()) {
+            return 'Git repository is clean (no changes)';
+          }
+          
+          // Get branch name too
+          const branchCmd = `git branch --show-current`;
+          const branch = await executeCommand(branchCmd, terminalId);
+          
+          return `Branch: ${branch.trim()}\n\nStatus:\n${output}`;
         } catch (error) {
           return `Error getting git status: ${error}`;
         }
@@ -832,9 +1051,18 @@ Examples:
         pattern: z.string().describe('Search pattern for process name'),
       }),
       execute: async ({ pattern }) => {
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('find_process_tool', { pattern });
-          return result;
+          const escapedPattern = shellEscape(pattern);
+          const command = `ps aux | grep ${escapedPattern} | grep -v grep`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output.trim()) {
+            return `No processes found matching "${pattern}"`;
+          }
+          
+          const lines = output.trim().split('\n');
+          return `Found ${lines.length} process(es) matching "${pattern}":\n\n${output}`;
         } catch (error) {
           return `Error finding process: ${error}`;
         }
@@ -851,9 +1079,17 @@ Examples:
         port: z.number().describe('Port number to check (e.g., 8080, 3000)'),
       }),
       execute: async ({ port }) => {
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('check_port_tool', { port });
-          return result;
+          // Try lsof first (works on macOS/Linux), fallback to netstat
+          const command = `lsof -i :${port} 2>/dev/null || netstat -an | grep ${port} 2>/dev/null || echo "Port ${port} is not in use"`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (output.includes('not in use')) {
+            return `Port ${port} is not in use`;
+          }
+          
+          return `Port ${port} status:\n${output}`;
         } catch (error) {
           return `Error checking port: ${error}`;
         }
@@ -864,9 +1100,12 @@ Examples:
       description: `Get system information including OS, architecture, and disk space. Useful for debugging environment issues.`,
       inputSchema: z.object({}),
       execute: async () => {
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('get_system_info_tool');
-          return result;
+          const command = `uname -a && echo "---" && df -h / && echo "---" && free -h 2>/dev/null || vm_stat`;
+          const output = await executeCommand(command, terminalId);
+          
+          return `System Information:\n\n${output}`;
         } catch (error) {
           return `Error getting system info: ${error}`;
         }
@@ -884,15 +1123,20 @@ Examples:
         lines: z.number().optional().describe('Number of lines to read from end (default: 50)'),
       }),
       execute: async ({ path, lines }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('tail_file_tool', {
-            path,
-            lines: lines || 50,
-            workingDirectory: cwd,
-          });
-          return result;
+          const escapedPath = shellEscape(path);
+          const lineCount = lines || 50;
+          
+          const command = `tail -n ${lineCount} ${escapedPath}`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (output.includes('No such file') || output.includes('cannot open')) {
+            return `Error: File not found or cannot access: ${path}`;
+          }
+          
+          const actualLines = output.split('\n').length;
+          return `Last ${actualLines} lines of ${path}:\n\n${output}`;
         } catch (error) {
           return `Error reading file tail: ${error}`;
         }
@@ -902,24 +1146,25 @@ Examples:
     make_directory: tool({
       description: `Create a directory (and parent directories if needed).
 
-⚠️ NOTE: This tool only works on your LOCAL machine. If you're SSHed to a remote server,
-use execute_command instead with: mkdir -p directory_name
-
 Examples:
-- Local: Use this tool with path="new_project"
-- Remote (SSH): Use execute_command with command="mkdir -p new_project"`,
+- Create nested: path="project/src/components"
+- Create single: path="new_folder"`,
       inputSchema: z.object({
         path: z.string().describe('Path to the directory to create'),
       }),
       execute: async ({ path }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('make_directory_tool', {
-            path,
-            workingDirectory: cwd,
-          });
-          return result;
+          const escapedPath = shellEscape(path);
+          
+          const command = `mkdir -p ${escapedPath} && echo "Created directory: ${path}"`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (output.includes('cannot create') || output.includes('Permission denied')) {
+            return `Error creating directory: ${output}`;
+          }
+          
+          return output.trim() || `Successfully created directory: ${path}`;
         } catch (error) {
           return `Error creating directory: ${error}`;
         }
@@ -930,13 +1175,21 @@ Examples:
       description: `Get uncommitted changes in the git repository. Shows what has been modified but not yet committed.`,
       inputSchema: z.object({}),
       execute: async () => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('get_git_diff_tool', {
-            workingDirectory: cwd,
-          });
-          return result;
+          const command = `git diff`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (output.includes('not a git repository')) {
+            return 'Not a git repository';
+          }
+          
+          if (!output.trim()) {
+            return 'No uncommitted changes';
+          }
+          
+          // Truncate large diffs
+          return truncateToolResult(output, TOOL_RESULT_MAX_CHARS * 2);
         } catch (error) {
           return `Error getting git diff: ${error}`;
         }
@@ -987,25 +1240,34 @@ Use this when the user asks about external documentation or errors that might ne
 - Seeing patterns in their workflow
 - Helping debug issues by seeing recent activity
 
-⚠️ NOTE: This reads from the LOCAL machine's shell history file (~/.bash_history, ~/.zsh_history, etc.)
-
 Examples:
 - Recent commands: count=20
-- Find git commands: filter="git", count=50
-- All npm commands: filter="npm"`,
+- Find git commands: filter="git", count=50`,
       inputSchema: z.object({
         count: z.number().optional().describe('Number of commands to retrieve (default: 50, max: 500)'),
-        shell: z.string().optional().describe('Shell type: bash, zsh, or fish (auto-detected if not specified)'),
         filter: z.string().optional().describe('Filter commands containing this text (case-insensitive)'),
       }),
-      execute: async ({ count, shell, filter }) => {
+      execute: async ({ count, filter }) => {
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('get_shell_history_tool', {
-            count: count || 50,
-            shell: shell || null,
-            filter: filter || null,
-          });
-          return result;
+          const lineCount = Math.min(count || 50, 500);
+          
+          // Try both bash and zsh history files
+          let command = `tail -n ${lineCount} ~/.bash_history 2>/dev/null || tail -n ${lineCount} ~/.zsh_history 2>/dev/null || echo "No history file found"`;
+          
+          if (filter) {
+            const escapedFilter = shellEscape(filter);
+            command = `(tail -n ${lineCount * 2} ~/.bash_history 2>/dev/null || tail -n ${lineCount * 2} ~/.zsh_history 2>/dev/null) | grep -i ${escapedFilter} | tail -n ${lineCount}`;
+          }
+          
+          const output = await executeCommand(command, terminalId);
+          
+          if (output.includes('No history file found') || !output.trim()) {
+            return 'No shell history found';
+          }
+          
+          const lines = output.trim().split('\n');
+          return `Shell history (${lines.length} commands${filter ? ` matching "${filter}"` : ''}):\n\n${output}`;
         } catch (error) {
           return `Error reading shell history: ${error}`;
         }
@@ -1045,17 +1307,39 @@ Examples:
         custom_patterns: z.array(z.string()).optional().describe('Additional patterns to search for'),
       }),
       execute: async ({ path, context_lines, max_matches, custom_patterns }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('find_errors_in_file_tool', {
-            path,
-            workingDirectory: cwd,
-            contextLines: context_lines,
-            maxMatches: max_matches,
-            customPatterns: custom_patterns,
-          });
-          return result;
+          const escapedPath = shellEscape(path);
+          const context = context_lines || 2;
+          const maxHits = Math.min(max_matches || 50, 200);
+          
+          // Build grep pattern - common error keywords
+          const errorPatterns = [
+            'error', 'Error', 'ERROR',
+            'fatal', 'Fatal', 'FATAL',
+            'panic', 'Panic', 'PANIC',
+            'exception', 'Exception', 'EXCEPTION',
+            'failed', 'Failed', 'FAILED',
+            'crash', 'Crash', 'CRASH',
+            'killed', 'Killed', 'KILLED',
+            'timeout', 'Timeout', 'TIMEOUT'
+          ];
+          
+          if (custom_patterns) {
+            errorPatterns.push(...custom_patterns);
+          }
+          
+          // Use grep with extended regex and context
+          const pattern = errorPatterns.join('|');
+          const command = `grep -E -n -${context === 0 ? '' : `${context}`} '${pattern}' ${escapedPath} 2>/dev/null | head -n ${maxHits * (context * 2 + 1)}`;
+          
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output.trim()) {
+            return `No error patterns found in ${path}`;
+          }
+          
+          return `Found errors in ${path} (showing up to ${maxHits} matches with ${context} lines context):\n\n${output}`;
         } catch (error) {
           return `Error scanning file for errors: ${error}`;
         }
@@ -1085,115 +1369,63 @@ Examples:
         max_lines: z.number().optional().describe('Maximum lines to return (default: 200, max: 500)'),
       }),
       execute: async ({ path, start_line, end_line, max_lines }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('file_sections_tool', {
-            path,
-            workingDirectory: cwd,
-            startLine: start_line,
-            endLine: end_line,
-            maxLines: max_lines,
-          });
-          return result;
-        } catch (error) {
-          return `Error reading file section: ${error}`;
-        }
-      },
-    }),
-
-    undo_file_change: tool({
-      description: `Undo the last file modification by restoring from backup.
-File backups are automatically created when using write_file, append_to_file, or replace_in_file.
-
-Use this when:
-- User says "undo that" after a file was modified
-- A file change caused problems and needs to be reverted
-- You made a mistake in a file edit
-
-Examples:
-- Undo most recent change: (no parameters)
-- Undo specific file: path="config.json"
-
-Note: Keeps up to 5 backups per file, 50 total across all files.`,
-      inputSchema: z.object({
-        path: z.string().optional().describe('Specific file to restore (default: most recently modified file)'),
-      }),
-      execute: async ({ path }) => {
-        const cwd = await getCwd();
-        
-        try {
-          const result = await invoke<string>('undo_file_change_tool', {
-            path: path || null,
-            workingDirectory: cwd,
-          });
-          // Invalidate cache since file was restored
-          if (path) {
-            fileCache.invalidate(path, cwd);
+          const escapedPath = shellEscape(path);
+          const maxL = Math.min(max_lines || 200, 500);
+          const endL = end_line || (start_line + maxL - 1);
+          
+          // Use sed to extract line range
+          const command = `sed -n '${start_line},${endL}p' ${escapedPath}`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output.trim()) {
+            return `No content found in lines ${start_line}-${endL} of ${path}`;
           }
-          return result;
+          
+          const actualLines = output.split('\n').length;
+          return `Lines ${start_line}-${start_line + actualLines - 1} from ${path}:\n\n${output}`;
         } catch (error) {
-          return `Error undoing file change: ${error}`;
-        }
-      },
-    }),
-
-    list_file_backups: tool({
-      description: `List available file backups that can be restored with undo_file_change.
-Shows backup timestamps and sizes.
-
-Use this when:
-- User asks what can be undone
-- You want to see history of file changes
-- Before restoring to check available versions`,
-      inputSchema: z.object({
-        path: z.string().optional().describe('Filter backups for a specific file'),
-      }),
-      execute: async ({ path }) => {
-        const cwd = await getCwd();
-        
-        try {
-          const result = await invoke<string>('list_file_backups_tool', {
-            path: path || null,
-            workingDirectory: cwd,
-          });
-          return result;
-        } catch (error) {
-          return `Error listing backups: ${error}`;
+          return `Error reading file sections: ${error}`;
         }
       },
     }),
 
     diff_files: tool({
-      description: `Compare two files OR show changes made to a file since last backup.
-
-Two modes:
-1. Compare two files: file1="old.txt", file2="new.txt"
-2. Show recent changes: file1="config.json" (compares current vs backup)
+      description: `Compare two files using diff command.
 
 Use this when:
-- User asks "what did you change?"
 - Comparing two versions of a file
-- Reviewing modifications before committing
+- Reviewing differences between files
+- Understanding what changed
 
 Output shows:
 - Lines added (+)
 - Lines removed (-)
 - Context around changes`,
       inputSchema: z.object({
-        file1: z.string().describe('First file path (or only file to compare against its backup)'),
-        file2: z.string().optional().describe('Second file path (omit to compare file1 with its backup)'),
+        file1: z.string().describe('First file path'),
+        file2: z.string().describe('Second file path'),
       }),
       execute: async ({ file1, file2 }) => {
-        const cwd = await getCwd();
-        
+        const terminalId = await getActiveTerminalId();
         try {
-          const result = await invoke<string>('diff_files_tool', {
-            file1,
-            file2: file2 || null,
-            workingDirectory: cwd,
-          });
-          return result;
+          const escapedFile1 = shellEscape(file1);
+          const escapedFile2 = shellEscape(file2);
+          
+          const command = `diff -u ${escapedFile1} ${escapedFile2} || true`;
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output.trim()) {
+            return `Files are identical: ${file1} and ${file2}`;
+          }
+          
+          if (output.includes('No such file')) {
+            return `Error: One or both files not found`;
+          }
+          
+          // Truncate large diffs
+          return truncateToolResult(output, TOOL_RESULT_MAX_CHARS * 2);
         } catch (error) {
           return `Error comparing files: ${error}`;
         }

@@ -2,6 +2,7 @@ use portable_pty::{Child, MasterPty};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
+use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -10,28 +11,12 @@ pub const PTY_BUFFER_SIZE: usize = 8192; // 8KB for PTY read buffer
 pub const MAX_STREAM_BUFFER_SIZE: usize = 1024 * 1024; // 1MB limit for SSE stream buffer
 
 // Network and timeout constants
-pub const HTTP_TIMEOUT_SECS: u64 = 120; // 2 minutes for AI requests
-#[allow(dead_code)]
-pub const STREAM_CHUNK_FLUSH_MS: u64 = 50; // Flush stream chunks every 50ms
-
-// AI model constants
-pub const DEFAULT_MAX_TOKENS: u32 = 4096; // Default token limit for AI responses
+pub const HTTP_TIMEOUT_SECS: u64 = 120;
+pub const DEFAULT_MAX_TOKENS: u32 = 4096;
 pub const MIN_MAX_TOKENS: u32 = 256;
-pub const MAX_MAX_TOKENS: u32 = 128000; // Claude 3.5 Sonnet max
-
-// Terminal constants
-pub const DEFAULT_MAX_MARKERS: u16 = 500; // Increased from 200
-#[allow(dead_code)]
-pub const MIN_MAX_MARKERS: u16 = 20;
-#[allow(dead_code)]
-pub const MAX_MAX_MARKERS: u16 = 2000;
-pub const MAX_TERMINAL_DIMENSION: u16 = 10000; // Max rows/cols
-
-// Timing constants
-#[allow(dead_code)]
-pub const RESIZE_DEBOUNCE_MS: u64 = 100;
-#[allow(dead_code)]
-pub const LATENCY_PROBE_INTERVAL_MS: u64 = 10000; // 10 seconds
+pub const MAX_MAX_TOKENS: u32 = 128000;
+pub const DEFAULT_MAX_MARKERS: u16 = 500;
+pub const MAX_TERMINAL_DIMENSION: u16 = 10000;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AppearanceSettings {
@@ -85,21 +70,10 @@ pub struct AutocompleteSettings {
     pub llm_debounce_ms: u32, // 0-1000ms
 }
 
-fn default_inline_source() -> String {
-    "history".to_string()
-}
-
-fn default_llm_temperature() -> f32 {
-    0.1
-}
-
-fn default_llm_max_tokens() -> u32 {
-    15
-}
-
-fn default_llm_debounce_ms() -> u32 {
-    300
-}
+fn default_inline_source() -> String { "history".to_string() }
+fn default_llm_temperature() -> f32 { 0.1 }
+fn default_llm_max_tokens() -> u32 { 15 }
+fn default_llm_debounce_ms() -> u32 { 300 }
 
 impl Default for AutocompleteSettings {
     fn default() -> Self {
@@ -251,6 +225,7 @@ pub struct AppState {
     pub context_index: Mutex<crate::context_index::ContextIndex>,
     pub file_backups: Mutex<Vec<FileBackup>>, // Stack of file backups for undo functionality
     pub pty_last_output: Arc<Mutex<HashMap<u32, u64>>>, // PTY ID -> last output timestamp (ms since epoch)
+    pub active_terminal: AtomicU32, // Currently focused terminal ID (0 = none)
 }
 
 impl AppState {
@@ -265,6 +240,7 @@ impl AppState {
             context_index: Mutex::new(crate::context_index::ContextIndex::default()),
             file_backups: Mutex::new(Vec::new()),
             pty_last_output: Arc::new(Mutex::new(HashMap::new())),
+            active_terminal: AtomicU32::new(0),
         }
     }
 }
