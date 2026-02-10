@@ -3,10 +3,9 @@
  *
  * Combines all terminal polling into a single interval to reduce resource usage.
  * Previously, each terminal had 6+ separate intervals polling different data.
- * This consolidates: CWD, Git info, PTY info, latency, and health into one poll cycle.
+ * This consolidates: PTY info, latency, and health into one poll cycle.
  *
  * Refactored to compose smaller focused hooks:
- * - useTerminalCwd: CWD and git info
  * - useTerminalHealth: Health monitoring
  * - useLatency: Latency measurement
  */
@@ -14,7 +13,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '../../utils/logger';
-import { useTerminalCwd } from './useTerminalCwd';
 import { useTerminalHealth, getHealthDescription, getHealthIndicator } from './useTerminalHealth';
 import { useLatency } from './useLatency';
 
@@ -34,21 +32,6 @@ export type { TerminalHealth } from './useTerminalHealth';
 export { getHealthDescription, getHealthIndicator };
 
 export interface TerminalPollingState {
-  // CWD info
-  cwd: string;
-  displayCwd: string;
-  fullCwd: string;
-  isPathTruncated: boolean;
-
-  // Git info
-  gitInfo: {
-    branch: string | null;
-    is_git_repo: boolean;
-    has_changes: boolean;
-    ahead: number;
-    behind: number;
-  } | null;
-
   // PTY info
   isRemote: boolean;
   hostLabel: string;
@@ -102,13 +85,6 @@ export function useTerminalPolling(
   // Keep callback ref updated
   useEffect(() => {
     onRemoteStateChangeRef.current = onRemoteStateChange;
-  });
-
-  // Use composed hooks - each polls independently with coordinated intervals
-  const cwdState = useTerminalCwd(ptyId, {
-    enabled,
-    isRemote,
-    maxCacheAgeMs: intervalMs,
   });
 
   const health = useTerminalHealth(ptyId, { enabled, intervalMs });
@@ -172,7 +148,6 @@ export function useTerminalPolling(
   }, [fetchPtyInfo, enabled, intervalMs, ptyId]);
 
   return {
-    ...cwdState,
     isRemote,
     hostLabel,
     latencyMs,

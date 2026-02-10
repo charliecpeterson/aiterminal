@@ -844,20 +844,3 @@ aiterm_add() {
 }
 
 export -f aiterm_add 2>/dev/null || true
-
-# Configure history to ignore commands starting with space (for AI tool privacy)
-# This MUST be at the end after all user RC files are sourced, so it doesn't get overwritten
-# This allows AI commands to be hidden from shell history by prefixing with space
-if [ -n "$BASH_VERSION" ]; then
-    # For bash: use HISTCONTROL=ignorespace
-    if [[ ! "$HISTCONTROL" =~ (ignorespace|ignoreboth) ]]; then
-        if [ -n "$HISTCONTROL" ]; then
-            export HISTCONTROL="${HISTCONTROL}:ignorespace"
-        else
-            export HISTCONTROL="ignorespace"
-        fi
-    fi
-elif [ -n "$ZSH_VERSION" ]; then
-    # For zsh: use HIST_IGNORE_SPACE option
-    setopt HIST_IGNORE_SPACE 2>/dev/null || true
-fi

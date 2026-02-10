@@ -47,10 +47,9 @@ export function attachFileCaptureListener({
 
     pendingFileCaptureRef.current = { path, maxBytes };
 
-    const command = `HISTCONTROL=ignorespace HIST_IGNORE_SPACE=1 head -c ${maxBytes} ${shellQuote(path)}`;
+    const command = `head -c ${maxBytes} ${shellQuote(path)}`;
 
-    // Prepend a space so bash doesn't add it to history for common configs.
-    invoke('write_to_pty', { id, data: ` ${command}\n` });
+    invoke('write_to_pty', { id, data: `${command}\n` });
     focusTerminal();
   });
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Folder, ChevronUp, ChevronDown, X, Clock, FileText } from 'lucide-react';
+import { ChevronUp, ChevronDown, X, Clock, FileText } from 'lucide-react';
 import type { Terminal as XTermTerminal } from '@xterm/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 import type { FitAddon } from '@xterm/addon-fit';
@@ -193,7 +193,7 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
   });
 
   // Extract values from consolidated polling for compatibility
-  const { displayCwd, fullCwd, gitInfo, isPathTruncated, latencyMs, health: terminalHealth, isRemote, hostLabel: polledHostLabel } = polling;
+  const { latencyMs, health: terminalHealth, isRemote, hostLabel: polledHostLabel } = polling;
   const healthIndicator = getHealthIndicator(terminalHealth);
   const healthDescription = getHealthDescription(terminalHealth);
 
@@ -536,31 +536,6 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
             )}
             {/* Output actions popup - appears when clicking the vertical line indicator */}
             <div className="terminal-status">
-                {/* CWD */}
-                <div 
-                    className="status-cwd" 
-                    title={isPathTruncated ? fullCwd : undefined}
-                >
-                    <span className="status-icon"><Folder size={14} /></span>
-                    <span className="status-text">{displayCwd}</span>
-                </div>
-
-                {/* Git branch */}
-                {gitInfo?.is_git_repo && gitInfo.branch && (
-                    <div className={`status-git ${gitInfo.has_changes ? 'has-changes' : ''}`}>
-                        <span className="status-icon git-indicator">
-                            {gitInfo.has_changes ? '●' : '○'}
-                        </span>
-                        <span className="status-text">{gitInfo.branch}</span>
-                        {(gitInfo.ahead > 0 || gitInfo.behind > 0) && (
-                            <span className="git-sync">
-                                {gitInfo.ahead > 0 && <span className="ahead">↑{gitInfo.ahead}</span>}
-                                {gitInfo.behind > 0 && <span className="behind">↓{gitInfo.behind}</span>}
-                            </span>
-                        )}
-                    </div>
-                )}
-
                 {/* Terminal health indicator (only show when not healthy) */}
                 {healthIndicator && (
                     <div 

@@ -83,7 +83,7 @@ const LONG_COMMANDS = [
 /**
  * Get appropriate timeout for a command based on expected duration
  */
-function getCommandTimeout(command: string): number {
+export function getCommandTimeout(command: string): number {
   const trimmedCmd = command.trim().toLowerCase();
   
   // Check for quick commands
@@ -107,6 +107,46 @@ const pendingApprovalPromises = new Map<string, {
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }>();
+
+async function requestApproval(params: {
+  command: string;
+  terminalId: number;
+  cwd?: string;
+  reason: string;
+  category: string;
+  onPendingApproval?: (approval: PendingApproval) => void;
+}): Promise<string> {
+  const { command, terminalId, cwd, reason, category, onPendingApproval } = params;
+
+  if (!onPendingApproval) {
+    throw new Error('Approval required but handler is not available');
+  }
+
+  const approval: PendingApproval = {
+    id: `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    command,
+    reason,
+    category,
+    terminalId,
+    cwd,
+    timestamp: Date.now(),
+  };
+
+  const approvalPromise = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (pendingApprovalPromises.has(approval.id)) {
+        pendingApprovalPromises.delete(approval.id);
+        reject(new Error('Approval timed out after 10 minutes'));
+      }
+    }, APPROVAL_TIMEOUT_MS);
+
+    pendingApprovalPromises.set(approval.id, { resolve, reject, timer });
+  });
+
+  onPendingApproval(approval);
+
+  return approvalPromise;
+}
 
 /**
  * Resolve a pending approval with execution result
@@ -139,7 +179,7 @@ async function getTerminalCwd(terminalId: number): Promise<string> {
   try {
     const result = await executeInPty({
       terminalId,
-      command: ' pwd', // Leading space to suppress history
+      command: 'pwd',
       timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
     });
     return result.output.trim();
@@ -259,34 +299,22 @@ function createFileReadCache() {
  * Execute a shell command using the active terminal PTY
  * This ensures commands run in the current terminal context (local, SSH, docker, etc.)
  * Timeout is automatically adjusted based on command type.
- * 
- * History suppression: Commands are prefixed with a space to avoid shell history
- * (works when HISTCONTROL=ignorespace is set, which is common in bash/zsh)
  */
 async function executeCommand(
   command: string, 
-  terminalId: number,
-  options?: {
-    suppressHistory?: boolean;
-  }
+  terminalId: number
 ): Promise<string> {
   const timeoutMs = getCommandTimeout(command);
-  
-  // Prefix command with space to suppress history (if HISTCONTROL=ignorespace is set)
-  // This is a common default in bash and zsh
-  const suppressHistory = options?.suppressHistory !== false; // Default to true
-  const finalCommand = suppressHistory ? ` ${command}` : command;
-  
+
   log.debug('Executing command', { 
     command: command.substring(0, 50), 
-    timeoutMs,
-    suppressHistory 
+    timeoutMs
   });
   
   try {
     const result = await executeInPty({
       terminalId,
-      command: finalCommand,
+      command,
       timeoutMs,
     });
     return result.output || '(no output)';
@@ -325,35 +353,6 @@ export function createTools(
     return await getTerminalCwd(terminalId);
   };
   
-  // Track if we've checked HISTCONTROL (one-time check per tool session)
-  let histControlChecked = false;
-  
-  /**
-   * Check if history suppression is supported in the user's shell.
-   * Most modern shells (bash, zsh) support HISTCONTROL=ignorespace.
-   */
-  const checkHistoryControl = async () => {
-    if (histControlChecked) return;
-    histControlChecked = true;
-    
-    try {
-      const terminalId = await getActiveTerminalId();
-      const result = await executeInPty({
-        terminalId,
-        command: 'echo "$HISTCONTROL"',
-        timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
-      });
-      
-      const histControl = result.output.trim();
-      if (!histControl.includes('ignorespace') && !histControl.includes('ignoreboth')) {
-        log.warn('[AITools]', 'HISTCONTROL does not include ignorespace - AI commands may appear in shell history');
-        log.info('[AITools]', 'To enable: export HISTCONTROL=ignorespace');
-      }
-    } catch (error) {
-      log.debug('[AITools]', 'Could not check HISTCONTROL:', error);
-    }
-  };
-  
   // Create file read cache for this tool set
   // Avoids re-reading the same file multiple times in one agent turn
   const fileCache = createFileReadCache();
@@ -364,13 +363,10 @@ export function createTools(
       inputSchema: z.object({}),
       execute: async () => {
         try {
-          // Check history control on first execution
-          await checkHistoryControl();
-          
           const terminalId = await getActiveTerminalId();
           const result = await executeInPty({
             terminalId,
-            command: ' pwd', // Leading space to suppress history
+            command: 'pwd',
             timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
           });
           return result.output.trim();
@@ -405,35 +401,15 @@ Examples:
             // Get current directory for context
             const cwd = await getCwd();
             
-            // Create approval request
-            const approval: PendingApproval = {
-              id: `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              command,
-              reason: safetyCheck.reason || 'Unknown risk',
-              category: safetyCheck.category || 'unknown',
-              terminalId,
-              cwd,
-              timestamp: Date.now(),
-            };
-            
-            // Create a promise that waits for user approval/denial (with timeout)
-            const approvalPromise = new Promise<string>((resolve, reject) => {
-              const timer = setTimeout(() => {
-                if (pendingApprovalPromises.has(approval.id)) {
-                  pendingApprovalPromises.delete(approval.id);
-                  reject(new Error('Approval timed out after 10 minutes'));
-                }
-              }, APPROVAL_TIMEOUT_MS);
-
-              pendingApprovalPromises.set(approval.id, { resolve, reject, timer });
-            });
-
-            // Add to pending approvals immediately (shows UI)
-            onPendingApproval(approval);
-
-            // Wait for user decision
             try {
-              const result = await approvalPromise;
+              const result = await requestApproval({
+                command,
+                terminalId,
+                cwd,
+                reason: safetyCheck.reason || 'Unknown risk',
+                category: safetyCheck.category || 'unknown',
+                onPendingApproval,
+              });
               return result;
             } catch (error) {
               return `Command not executed: ${error instanceof Error ? error.message : 'User cancelled'}`;
@@ -472,7 +448,7 @@ Examples:
         try {
           // Use head to limit bytes read for large files
           const maxBytes = max_bytes || 50000;
-          const command = ` head -c ${maxBytes} ${shellEscape(path)} 2>&1`; // Leading space
+          const command = `head -c ${maxBytes} ${shellEscape(path)} 2>&1`;
           
           const result = await executeInPty({
             terminalId,
@@ -844,6 +820,59 @@ Examples:
       },
     }),
 
+    rg_search: tool({
+      description: `Fast text search using ripgrep (rg). Falls back to grep if rg is not available.
+
+Use this when:
+- Searching across a repo or large directory
+- Finding symbols, errors, or config keys
+- You want context lines around matches
+
+Examples:
+- Find symbol: pattern="executeInPty", path="src"
+- Search with glob: pattern="TODO", path=".", glob="**/*.ts"
+- Case-sensitive: pattern="ErrorCode", path="src", case_sensitive=true
+- Add context: pattern="panic", path="src-tauri", context_lines=2`,
+      inputSchema: z.object({
+        pattern: z.string().describe('Text pattern to search for'),
+        path: z.string().optional().describe('Directory to search in (defaults to current)'),
+        glob: z.string().optional().describe('File glob to include (e.g., "**/*.ts")'),
+        case_sensitive: z.boolean().optional().describe('Case-sensitive search (default: false)'),
+        context_lines: z.number().optional().describe('Lines of context before/after (default: 0)'),
+        max_matches: z.number().optional().describe('Maximum matches to return (default: 200, max: 1000)'),
+      }),
+      execute: async ({ pattern, path, glob, case_sensitive, context_lines, max_matches }) => {
+        const terminalId = await getActiveTerminalId();
+        const searchPath = path || await getTerminalCwd(terminalId);
+        
+        try {
+          const maxHits = Math.min(max_matches || 200, 1000);
+          const context = Math.max(0, Math.min(context_lines || 0, 10));
+          const caseFlag = case_sensitive ? '-s' : '-i';
+          
+          const globPart = glob ? `--glob ${shellEscape(glob)}` : '';
+          const contextPart = context > 0 ? `-C ${context}` : '';
+          
+          // Prefer rg, fall back to grep if rg isn't available
+          const command = [
+            `rg --line-number --max-count ${maxHits} ${caseFlag} ${contextPart} ${globPart} ${shellEscape(pattern)} ${shellEscape(searchPath)}`,
+            `||`,
+            `grep -R -n ${case_sensitive ? '' : '-i'} ${context > 0 ? `-C ${context}` : ''} ${shellEscape(pattern)} ${shellEscape(searchPath)} | head -n ${maxHits}`,
+          ].join(' ');
+          
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output.trim() || output.includes('No matches') || output.includes('not found')) {
+            return `No matches found for "${pattern}" in ${searchPath}`;
+          }
+          
+          return truncateToolResult(output, TOOL_RESULT_MAX_CHARS * 2);
+        } catch (error) {
+          return `Error searching with rg: ${error}`;
+        }
+      },
+    }),
+
     get_environment_variable: tool({
       description: `Get the value of an environment variable.
 
@@ -857,15 +886,21 @@ Examples:
       execute: async ({ name }) => {
         const terminalId = await getActiveTerminalId();
         try {
+          const trimmed = name.trim();
+          const isValidName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed);
+          if (!isValidName) {
+            return `Error: Invalid environment variable name "${name}". Use letters, digits, and underscores only, and do not start with a digit.`;
+          }
+          
           // Escape shell variable name
-          const command = `echo "$${name}"`;
+          const command = `printenv ${trimmed}`;
           const output = await executeCommand(command, terminalId);
           
           if (!output.trim()) {
-            return `Environment variable ${name} is not set`;
+            return `Environment variable ${trimmed} is not set`;
           }
           
-          return `${name}=${output.trim()}`;
+          return `${trimmed}=${output.trim()}`;
         } catch (error) {
           return `Error getting environment variable: ${error}`;
         }
@@ -880,6 +915,7 @@ IMPORTANT:
 - By default, only replaces the first occurrence
 - Use all=true to replace all occurrences
 - Returns error if search text is not found
+- Requires user approval before applying changes
 
 Examples:
 - Fix typo: path="config.ts", search="prot", replace="port"
@@ -911,16 +947,27 @@ Examples:
           // sed -i.bak works on both macOS and Linux
           const command = `sed -i.bak '${sedCommand}' ${escapedPath} && rm ${escapedPath}.bak`;
           
-          const output = await executeCommand(command, terminalId);
-          
-          // Invalidate cache since file was modified
-          fileCache.invalidate(path, cwd);
-          
-          if (output.includes('No such file') || output.includes('sed:')) {
-            return `Error replacing in file: ${output}`;
+          try {
+            const approvalResult = await requestApproval({
+              command,
+              terminalId,
+              cwd,
+              reason: 'Replace text in file',
+              category: 'file-write',
+              onPendingApproval,
+            });
+
+            // Invalidate cache since file was modified
+            fileCache.invalidate(path, cwd);
+
+            if (approvalResult.startsWith('Command failed') || approvalResult.startsWith('Error')) {
+              return `Error replacing in file: ${approvalResult}`;
+            }
+
+            return `Successfully replaced "${search}" with "${replace}" in ${path}${all ? ' (all occurrences)' : ' (first occurrence)'}`;
+          } catch (error) {
+            return `Command not executed: ${error instanceof Error ? error.message : 'User cancelled'}`;
           }
-          
-          return `Successfully replaced "${search}" with "${replace}" in ${path}${all ? ' (all occurrences)' : ' (first occurrence)'}`;
         } catch (error) {
           return `Error replacing in file: ${error}`;
         }
@@ -929,15 +976,12 @@ Examples:
 
     write_file: tool({
       description: `Write content to a file (creates new file or overwrites existing).
-
-⚠️ NOTE: This tool only works on your LOCAL machine. If you're SSHed to a remote server, 
-use execute_command instead with: cat > filename << 'EOF'
-content here
-EOF
+Runs in the active terminal environment (local, SSH, container).
+Requires user approval before writing.
 
 Examples:
 - Local: Use this tool with path="config.json", content="{\\"key\\": \\"value\\"}"
-- Remote (SSH): Use execute_command with command="cat > config.json << 'EOF'\\n{\\"key\\": \\"value\\"}\\nEOF"`,
+- Remote (SSH): Use this tool the same way; it writes in the active terminal session`,
       inputSchema: z.object({
         path: z.string().describe('Path to the file (absolute or relative)'),
         content: z.string().describe('Content to write to the file'),
@@ -955,16 +999,27 @@ Examples:
           // Write using base64 decode (works on both macOS and Linux)
           const command = `echo '${base64Content}' | base64 -d > ${escapedPath}`;
           
-          const output = await executeCommand(command, terminalId);
-          
-          // Invalidate cache since file was modified
-          fileCache.invalidate(path, cwd);
-          
-          if (output.includes('No such file') || output.includes('cannot create') || output.includes('decode')) {
-            return `Error writing file: ${output}`;
+          try {
+            const approvalResult = await requestApproval({
+              command,
+              terminalId,
+              cwd,
+              reason: 'Write file content',
+              category: 'file-write',
+              onPendingApproval,
+            });
+
+            // Invalidate cache since file was modified
+            fileCache.invalidate(path, cwd);
+
+            if (approvalResult.startsWith('Command failed') || approvalResult.startsWith('Error')) {
+              return `Error writing file: ${approvalResult}`;
+            }
+
+            return `Successfully wrote ${content.length} bytes to ${path}`;
+          } catch (error) {
+            return `Command not executed: ${error instanceof Error ? error.message : 'User cancelled'}`;
           }
-          
-          return `Successfully wrote ${content.length} bytes to ${path}`;
         } catch (error) {
           return `Error writing file: ${error}`;
         }
@@ -973,6 +1028,7 @@ Examples:
 
     append_to_file: tool({
       description: `Append content to the end of a file. Creates file if it doesn't exist.
+Requires user approval before writing.
 
 Examples:
 - Add to log: path="app.log", content="[INFO] Message\\n"
@@ -994,16 +1050,27 @@ Examples:
           // Append using base64 decode
           const command = `echo '${base64Content}' | base64 -d >> ${escapedPath}`;
           
-          const output = await executeCommand(command, terminalId);
-          
-          // Invalidate cache since file was modified
-          fileCache.invalidate(path, cwd);
-          
-          if (output.includes('No such file') || output.includes('cannot create') || output.includes('decode')) {
-            return `Error appending to file: ${output}`;
+          try {
+            const approvalResult = await requestApproval({
+              command,
+              terminalId,
+              cwd,
+              reason: 'Append content to file',
+              category: 'file-write',
+              onPendingApproval,
+            });
+
+            // Invalidate cache since file was modified
+            fileCache.invalidate(path, cwd);
+
+            if (approvalResult.startsWith('Command failed') || approvalResult.startsWith('Error')) {
+              return `Error appending to file: ${approvalResult}`;
+            }
+
+            return `Successfully appended ${content.length} bytes to ${path}`;
+          } catch (error) {
+            return `Command not executed: ${error instanceof Error ? error.message : 'User cancelled'}`;
           }
-          
-          return `Successfully appended ${content.length} bytes to ${path}`;
         } catch (error) {
           return `Error appending to file: ${error}`;
         }
@@ -1154,17 +1221,31 @@ Examples:
       }),
       execute: async ({ path }) => {
         const terminalId = await getActiveTerminalId();
+        const cwd = await getTerminalCwd(terminalId);
         try {
           const escapedPath = shellEscape(path);
           
           const command = `mkdir -p ${escapedPath} && echo "Created directory: ${path}"`;
-          const output = await executeCommand(command, terminalId);
           
-          if (output.includes('cannot create') || output.includes('Permission denied')) {
-            return `Error creating directory: ${output}`;
+          try {
+            const approvalResult = await requestApproval({
+              command,
+              terminalId,
+              cwd,
+              reason: 'Create directory',
+              category: 'file-write',
+              onPendingApproval,
+            });
+
+            if (approvalResult.startsWith('Command failed') || approvalResult.startsWith('Error')) {
+              return `Error creating directory: ${approvalResult}`;
+            }
+
+            return approvalResult.trim() || `Successfully created directory: ${path}`;
+          } catch (error) {
+            return `Command not executed: ${error instanceof Error ? error.message : 'User cancelled'}`;
           }
           
-          return output.trim() || `Successfully created directory: ${path}`;
         } catch (error) {
           return `Error creating directory: ${error}`;
         }

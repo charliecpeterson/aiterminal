@@ -52,19 +52,9 @@ export function useSessionPersistence({
               let workingDirectory: string | undefined;
               let restoreType: 'local' | 'ssh' | 'skip' = 'local';
 
-              try {
-                // Try to get current working directory
-                workingDirectory = await invoke<string>('get_pty_cwd', { id: pane.id });
-              } catch (error) {
-                log.warn(`Failed to get CWD for pane ${pane.id}:`, error);
-              }
-
               // Determine restore type
               if (pane.isRemote) {
                 restoreType = 'ssh';
-              } else if (!workingDirectory) {
-                // If we can't get CWD, skip restoration (PTY may be dead)
-                restoreType = 'skip';
               }
 
               const sshProfileId = ptyToProfileMap.get(pane.id);

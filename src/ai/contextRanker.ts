@@ -397,7 +397,8 @@ function filterByTokenBudget(
   let tokenCount = 0;
 
   for (const item of ranked) {
-    const estimatedItemTokens = estimateTokens(item.item.content);
+    const formatted = formatRankedContext([item])[0] || '';
+    const estimatedItemTokens = estimateTokens(formatted);
     
     if (tokenCount + estimatedItemTokens > maxTokens) {
       // Try to include at least one item

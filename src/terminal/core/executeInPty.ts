@@ -28,22 +28,14 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
   const startMarker = `__AITERM_START_${markerToken}__`;
   const endMarker = `__AITERM_END_${markerToken}__`;
   
-  // Strip leading space if present (we'll add it to the whole command)
-  const cleanCommand = command.trimStart();
-  const shouldSuppressHistory = command.startsWith(' ');
-  
-  // Build the command with markers AND history suppression
+  // Build the command with markers
   // We use printf to avoid extra newlines and escape sequences
-  // History suppression: wrap entire command in subshell with HISTFILE=/dev/null
-  // This prevents the command from being written to history file
-  const wrappedCommand = shouldSuppressHistory 
-    ? `(HISTFILE=/dev/null ; printf '%s\\n' "${startMarker}" ; (${cleanCommand}) ; status=$? ; printf '%s:%s\\n' "${endMarker}" "$status")`
-    : [
-        `printf '%s\\n' "${startMarker}"`,
-        `(${cleanCommand})`,
-        'status=$?',
-        `printf '%s:%s\\n' "${endMarker}" "$status"`,
-      ].join(' ; ');
+  const wrappedCommand = [
+    `printf '%s\\n' "${startMarker}"`,
+    `(${command})`,
+    'status=$?',
+    `printf '%s:%s\\n' "${endMarker}" "$status"`,
+  ].join(' ; ');
   
   const finalCommand = wrappedCommand + '\n';
   

@@ -30,7 +30,6 @@ This means:
 - TypeScript: `executeInPty()` in `src/terminal/core/executeInPty.ts`
 - Sends commands with `__AITERM_START_` and `__AITERM_END_` markers
 - Captures output via `pty-data` events
-- Leading space on commands (for history suppression via `HISTCONTROL`)
 
 ## Project Structure & Module Organization
 
@@ -257,7 +256,6 @@ Add tool to capabilities list and update workflow examples if needed.
 
 - ✅ **Menu trigger changed**: Now uses **Shift+Click** (not single click)
 - ✅ **Cursor styling fixed**: Text cursor by default, pointer only on links/markers
-- ✅ **History suppression**: Commands use leading space (requires `HISTCONTROL=ignorespace`)
 - ✅ **Shell history tool**: Uses `executeCommand()` (PTY path) for SSH support
 
 ## Terminal UI/UX
@@ -347,5 +345,3 @@ Add tool to capabilities list and update workflow examples if needed.
 ### PTY Debugging
 - Look for `__AITERM_START_` and `__AITERM_END_` markers in terminal
 - Check `pty-data:${terminalId}` events in browser console
-- Verify commands have leading space for history suppression
-

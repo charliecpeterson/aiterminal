@@ -15,7 +15,6 @@ const log = createLogger('Autocomplete');
 // Autocomplete timing constants
 const DEFAULT_DEBOUNCE_MS = 300;
 const HISTORY_REFRESH_INTERVAL_MS = 10000;
-const CWD_REFRESH_INTERVAL_MS = 5000;
 
 interface XTermKeyEvent {
   key: string;
@@ -103,25 +102,8 @@ export function useAutocompleteSimple(
 
     loadPathCommands();
     loadHomeDir();
+    historyEngineRef.current?.setCwd('/');
   }, [enabled, source]);
-
-  // Track CWD for deterministic file completion
-  useEffect(() => {
-    if (!enabled || !historyEngineRef.current) return;
-
-    const getCwd = async () => {
-      try {
-        const cwd = await invoke<string>('get_pty_cwd', { id: ptyId });
-        historyEngineRef.current?.setCwd(cwd);
-      } catch (error) {
-        historyEngineRef.current?.setCwd('/');
-      }
-    };
-
-    getCwd();
-    const interval = setInterval(getCwd, CWD_REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [enabled, ptyId, source]);
 
   const refreshDirEntries = useCallback((engine: SimpleAutocomplete, terminal: XTermTerminal) => {
     const { dirPath, prefix, showHidden } = engine.getFileCompletionContext();
@@ -159,24 +141,6 @@ export function useAutocompleteSimple(
       }
     };
   }, []);
-
-  // Get CWD for LLM context
-  useEffect(() => {
-    if (!enabled || source === 'history') return;
-
-    const getCwd = async () => {
-      try {
-        const cwd = await invoke<string>('get_pty_cwd', { id: ptyId });
-        cwdRef.current = cwd;
-      } catch (error) {
-        cwdRef.current = '/';
-      }
-    };
-
-    getCwd();
-    const interval = setInterval(getCwd, CWD_REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [enabled, source, ptyId]);
 
   // Handle keyboard events
   useEffect(() => {

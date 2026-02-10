@@ -141,12 +141,11 @@ export function useAutocompleteMenu(
     
     // Get suggestions
     try {
-      const cwd = await invoke<string>('get_pty_cwd', { id: ptyId }).catch(() => '/');
       const history = await invoke<string[]>('get_shell_history').catch(() => []);
       
       const results = await engine.getMenuSuggestions(currentInput, {
         shell: 'bash',
-        cwd,
+        cwd: '/',
         last_command: history[history.length - 1] || '',
         history,
       });
