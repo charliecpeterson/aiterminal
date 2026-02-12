@@ -70,6 +70,7 @@ export function AIChatTab(props: {
   } = props;
 
   const [inputFocus, setInputFocus] = useState(false);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   
   // Ref for auto-resize textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -92,18 +93,17 @@ export function AIChatTab(props: {
     adjustTextareaHeight();
   }, [prompt, adjustTextareaHeight]);
 
-  const renderMarkdown = (content: string) => (
-    <AIMarkdown
-      content={content}
-      onRunCommand={(command) => {
-        const payload =
-          targetTerminalId === null || targetTerminalId === undefined
-            ? { command, source: "ai-panel" }
-            : { command, terminalId: targetTerminalId, source: "ai-panel" };
-        invoke("emit_event", { event: "ai-run-command", payload });
-      }}
-    />
-  );
+  const handleRunCommand = useCallback((command: string) => {
+    const payload =
+      targetTerminalId === null || targetTerminalId === undefined
+        ? { command, source: "ai-panel" }
+        : { command, terminalId: targetTerminalId, source: "ai-panel" };
+    invoke("emit_event", { event: "ai-run-command", payload });
+  }, [targetTerminalId]);
+
+  const renderMarkdown = useCallback((content: string) => (
+    <AIMarkdown content={content} onRunCommand={handleRunCommand} />
+  ), [handleRunCommand]);
 
   // Convert pending approvals to tool executions (memoized to prevent unnecessary re-renders)
   const toolExecutions = useMemo<ToolExecution[]>(() => 
@@ -243,7 +243,31 @@ export function AIChatTab(props: {
         </div>
       </div>
 
-      {sendError && <div style={chatStyles.error}>{sendError}</div>}
+      {sendError && (() => {
+        const detailMatch = sendError.match(/^(.*) \\((.+)\\)$/);
+        const summary = detailMatch ? detailMatch[1] : sendError;
+        const details = detailMatch ? detailMatch[2] : null;
+
+        return (
+          <div style={chatStyles.error}>
+            <div style={chatStyles.errorSummary}>{summary}</div>
+            {details && (
+              <>
+                <button
+                  type="button"
+                  style={chatStyles.errorToggle}
+                  onClick={() => setShowErrorDetails(value => !value)}
+                >
+                  {showErrorDetails ? "Hide details" : "More details"}
+                </button>
+                {showErrorDetails && (
+                  <div style={chatStyles.errorDetails}>{details}</div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -98,6 +98,124 @@ function detectShellFromContext(contextItems: ContextItem[]): 'bash' | 'zsh' | '
   return 'bash';
 }
 
+interface ContextSelection {
+  formattedContextArray: string[];
+  contextForPrompt: string;
+  usedContextIds: string[];
+  useSmartContext: boolean;
+  rankedContext: ReturnType<typeof rankContextByRelevance> | undefined;
+  strategy: 'cached' | 'smart' | 'keyword';
+}
+
+async function selectContext(params: {
+  contextItems: ContextItem[];
+  prompt: string;
+  settingsAi: AiSettings;
+  aiMode: 'chat' | 'agent';
+  contextTokenBudget: number;
+  messages: ChatMessage[];
+}): Promise<ContextSelection> {
+  const { contextItems, prompt, settingsAi, aiMode, contextTokenBudget, messages } = params;
+
+  const cached = getCachedContext(contextItems, prompt);
+  if (cached) {
+    log.debug('Using cached context', { items: cached.ranked.length });
+    return {
+      formattedContextArray: cached.formatted,
+      contextForPrompt: cached.formatted.join('\n\n---\n\n'),
+      usedContextIds: cached.ranked.map((r: any) => r.item.id),
+      useSmartContext: false,
+      rankedContext: cached.ranked,
+      strategy: 'cached',
+    };
+  }
+
+  const hasEmbeddingModel = settingsAi.embedding_model?.trim();
+  const hasEnoughContext = contextItems.length >= 10;
+
+  if (hasEmbeddingModel && hasEnoughContext) {
+    try {
+      const smartTopK = aiMode === 'chat' ? 12 : 6;
+      const smartResult = await getSmartContextForPrompt({
+        ai: settingsAi,
+        contextItems,
+        query: prompt,
+        topK: smartTopK,
+        globalSmartMode: true,
+      });
+      log.debug('Using smart context', { items: smartResult.retrieved.length });
+      return {
+        formattedContextArray: smartResult.formatted,
+        contextForPrompt: smartResult.formatted.join('\n\n---\n\n'),
+        usedContextIds: smartResult.retrieved.map((r: any) => r.source_id),
+        useSmartContext: true,
+        rankedContext: undefined,
+        strategy: 'smart',
+      };
+    } catch (error) {
+      log.warn('Smart context failed, falling back to keyword ranking', error);
+    }
+  }
+
+  // Keyword ranking (default or smart-context fallback)
+  const recentTopics = extractRecentTopics(messages, 3);
+  const deduped = deduplicateContext(contextItems);
+  const rankedContext = rankContextByRelevance(deduped, prompt, contextTokenBudget, {
+    recentMessageTopics: recentTopics,
+    recentMessages: messages,
+    mode: aiMode,
+  });
+  const formattedContextArray = formatRankedContext(rankedContext);
+  const contextForPrompt = formattedContextArray.join('\n\n---\n\n');
+
+  setCachedContext(contextItems, prompt, rankedContext, formattedContextArray, estimateTokens(contextForPrompt));
+  log.debug('Using keyword ranking', { items: rankedContext.length });
+
+  return {
+    formattedContextArray,
+    contextForPrompt,
+    usedContextIds: rankedContext.map((r: any) => r.item.id),
+    useSmartContext: false,
+    rankedContext,
+    strategy: 'keyword',
+  };
+}
+
+function buildRequestErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const details: string[] = [];
+  const anyError = error as Error & {
+    cause?: unknown;
+    code?: string;
+    status?: number;
+    response?: { status?: number };
+  };
+
+  if (anyError.name && anyError.name !== 'Error') {
+    details.push(`name: ${anyError.name}`);
+  }
+  if (anyError.code) {
+    details.push(`code: ${anyError.code}`);
+  }
+  if (typeof anyError.status === 'number') {
+    details.push(`status: ${anyError.status}`);
+  } else if (typeof anyError.response?.status === 'number') {
+    details.push(`status: ${anyError.response.status}`);
+  }
+  if (anyError.cause) {
+    details.push(`cause: ${String(anyError.cause)}`);
+  }
+
+  if (details.length === 0) {
+    return error.message;
+  }
+
+  return `${error.message} (${details.join(', ')})`;
+}
+
 /**
  * Send a chat message using Vercel AI SDK
  */
@@ -152,6 +270,9 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
   // Track context selection timing
   const contextSelectionStart = Date.now();
 
+  let assistantMessageAdded = false;
+  let streamedText = false;
+  let streamError: Error | null = null;
   try {
     // Prepare conversation history with sliding window and summarization
     const conversationWindow = await prepareConversationHistory(messages, settingsAi);
@@ -162,7 +283,6 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         originalMessages: conversationWindow.totalOriginalCount,
         optimizedMessages: conversationWindow.recentMessages.length + (conversationWindow.summaryMessage ? 1 : 0),
         tokensSaved: conversationWindow.tokensSaved,
-        savingsPercent: Math.round((conversationWindow.tokensSaved / (conversationWindow.tokensSaved + 1000)) * 100),
       });
     }
 
@@ -266,92 +386,21 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       tier: routingDecision?.tier,
     });
 
-    // Extract recent conversation topics for better relevance scoring
-    const recentTopics = extractRecentTopics(messages, 3);
-
-    // Try to get cached context first
-    const cached = getCachedContext(deps.contextItems, trimmed);
-    
-    let formattedContextArray: string[];
-    let contextForPrompt: string;
-    let usedContextIds: string[];
-    let useSmartContext = false;
-    let rankedContext: any[] | undefined; // Store for verbose export
-
-    if (cached) {
-      // Use cached context
-      formattedContextArray = cached.formatted;
-      contextForPrompt = formattedContextArray.join('\n\n---\n\n');
-      usedContextIds = cached.ranked.map(r => r.item.id);
-      rankedContext = cached.ranked; // Store ranked context
-      log.debug('Using cached context', { items: cached.ranked.length });
-    } else {
-      // Decide whether to use smart context (embeddings) or keyword ranking
-      const hasEmbeddingModel = settingsAi.embedding_model?.trim();
-      const hasEnoughContext = deps.contextItems.length >= 10; // Smart context is most valuable with lots of context
-      
-      if (hasEmbeddingModel && hasEnoughContext) {
-        // Use smart context with embeddings for better relevance
-        try {
-          useSmartContext = true;
-          // Chat mode: Retrieve more context items (topK: 12)
-          // Agent mode: Retrieve fewer items, rely on tools (topK: 6)
-          const smartTopK = aiMode === 'chat' ? 12 : 6;
-          
-          const smartResult = await getSmartContextForPrompt({
-            ai: settingsAi,
-            contextItems: deps.contextItems,
-            query: trimmed,
-            topK: smartTopK,
-            globalSmartMode: true,
-          });
-          
-          formattedContextArray = smartResult.formatted;
-          contextForPrompt = formattedContextArray.join('\n\n---\n\n');
-          
-          // Extract context IDs from retrieved chunks
-          usedContextIds = smartResult.retrieved.map(r => r.source_id);
-          
-          log.debug('Using smart context', { items: smartResult.retrieved.length });
-        } catch (error) {
-          // Fallback to keyword ranking if smart context fails
-          log.warn('Smart context failed, falling back to keyword ranking', error);
-          useSmartContext = false;
-          
-          const deduped = deduplicateContext(deps.contextItems);
-          rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
-            recentMessageTopics: recentTopics,
-            recentMessages: messages, // Pass message history for conversation memory
-            mode: aiMode, // Pass mode for mode-specific scoring
-          });
-          
-          formattedContextArray = formatRankedContext(rankedContext);
-          contextForPrompt = formattedContextArray.join('\n\n---\n\n');
-          usedContextIds = rankedContext.map(r => r.item.id);
-        }
-      } else {
-        // Use traditional keyword-based ranking
-        const deduped = deduplicateContext(deps.contextItems);
-        rankedContext = rankContextByRelevance(deduped, trimmed, contextTokenBudget, {
-          recentMessageTopics: recentTopics,
-          recentMessages: messages, // Pass message history for conversation memory
-          mode: aiMode, // Pass mode for mode-specific scoring
-        });
-        
-        formattedContextArray = formatRankedContext(rankedContext);
-        contextForPrompt = formattedContextArray.join('\n\n---\n\n');
-        usedContextIds = rankedContext.map(r => r.item.id);
-        
-        log.debug('Using keyword ranking', { items: rankedContext.length });
-      }
-      
-      // Cache the results for future requests (only cache keyword ranking for now)
-      if (!useSmartContext && rankedContext) {
-        const cachedTokens = estimateTokens(contextForPrompt);
-        setCachedContext(deps.contextItems, trimmed, rankedContext, formattedContextArray, cachedTokens);
-        log.debug('Cached new context', { items: rankedContext.length });
-      }
-    }
+    const {
+      formattedContextArray,
+      contextForPrompt,
+      usedContextIds,
+      useSmartContext,
+      rankedContext,
+      strategy: contextStrategy,
+    } = await selectContext({
+      contextItems: deps.contextItems,
+      prompt: trimmed,
+      settingsAi,
+      aiMode: aiMode as 'chat' | 'agent',
+      contextTokenBudget,
+      messages,
+    });
     
     // Calculate context selection time
     const contextSelectionTime = Date.now() - contextSelectionStart;
@@ -408,7 +457,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         mode: useSmartContext ? 'smart' : 'full',
         chunkCount: usedContextIds.length,
         contextBudget: contextTokenBudget,
-        contextStrategy: useSmartContext ? 'smart' : (cached ? 'cached' : 'keyword'),
+        contextStrategy,
         // Store detailed context items for verbose export
         contextItems: rankedContext?.map(rc => ({
           id: rc.item.id,
@@ -472,6 +521,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     };
     
     addMessage(assistantMessage);
+    assistantMessageAdded = true;
 
     // Create streaming buffer to batch UI updates
     const streamBuffer = createStreamingBuffer((text) => {
@@ -494,6 +544,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
           firstTokenRecorded = true;
         }
         // Buffer the text instead of immediate append
+        streamedText = true;
         streamBuffer.append(part.text);
       } else if (part.type === 'tool-call') {
         // Flush buffer before tool call to ensure text appears first
@@ -532,6 +583,11 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         // Flush any remaining buffered text
         streamBuffer.flush();
       } else if (part.type === 'error') {
+        const streamPartError = part.error instanceof Error
+          ? part.error
+          : new Error(String(part.error || 'Stream error'));
+        streamError = streamPartError;
+        log.error('Stream error received', streamPartError);
         // Mark any running tools as failed
         for (const tool of toolProgressList) {
           if (tool.status === 'running') {
@@ -541,11 +597,20 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
           }
         }
         updateToolProgressUI();
+        break;
       }
+    }
+
+    if (streamError) {
+      streamBuffer.flush();
     }
 
     // Final flush to ensure all text is displayed
     streamBuffer.finalize();
+
+    if (streamError) {
+      throw streamError;
+    }
 
     // Log streaming stats
     const bufferStats = streamBuffer.getStats();
@@ -600,15 +665,19 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         timestamp: Date.now(),
       });
     } else {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = buildRequestErrorMessage(error);
       setSendError(message);
-      
-      addMessage({
-        id: crypto.randomUUID(),
-        role: 'system',
-        content: `Request failed: ${message}`,
-        timestamp: Date.now(),
-      });
+
+      if (assistantMessageAdded && !streamedText) {
+        appendMessage(assistantMsgId, `Request failed: ${message}`);
+      } else {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: `Request failed: ${message}`,
+          timestamp: Date.now(),
+        });
+      }
     }
     
     setIsSending(false);

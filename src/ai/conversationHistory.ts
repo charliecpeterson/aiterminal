@@ -121,8 +121,9 @@ SUMMARY:`;
     const result = await generateText({
       model: openai(summaryModel),
       prompt: summaryPrompt,
-      temperature: 0.3, // Low temperature for factual summary
-      maxOutputTokens: 300, // Limit summary length
+      temperature: 0.3,
+      maxOutputTokens: 300,
+      abortSignal: AbortSignal.timeout(15000),
     });
     
     const summary = result.text.trim();

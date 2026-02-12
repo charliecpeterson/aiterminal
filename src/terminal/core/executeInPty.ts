@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+const MAX_OUTPUT_BYTES = 2 * 1024 * 1024; // 2MB cap to prevent UI freeze
+
 interface ExecuteInPtyOptions {
   terminalId: number;
   command: string;
@@ -73,6 +75,17 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
     try {
       unlisten = await listen<string>(`pty-data:${terminalId}`, (event) => {
         const data = event.payload;
+
+        // Guard against runaway output consuming memory and freezing the UI
+        if (outputBuffer.length + data.length > MAX_OUTPUT_BYTES) {
+          cleanup();
+          resolve({
+            output: outputBuffer.slice(0, MAX_OUTPUT_BYTES) + '\n[output truncated: exceeded 2MB limit]',
+            exitCode: capturedExitCode,
+          });
+          return;
+        }
+
         outputBuffer += data;
         
         // Check for start marker

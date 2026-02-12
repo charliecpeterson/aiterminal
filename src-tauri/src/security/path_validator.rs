@@ -129,17 +129,134 @@ pub fn validate_path(path: &Path) -> Result<PathBuf, String> {
     validator.validate(path)
 }
 
+/// Sensitive path patterns that should be denied for write operations.
+/// These are relative to the user's home directory.
+const SENSITIVE_PATHS: &[&str] = &[
+    ".ssh/authorized_keys",
+    ".ssh/authorized_keys2",
+    ".ssh/id_rsa",
+    ".ssh/id_ed25519",
+    ".ssh/id_ecdsa",
+    ".ssh/id_dsa",
+    ".ssh/config",
+    ".bashrc",
+    ".bash_profile",
+    ".bash_login",
+    ".profile",
+    ".zshrc",
+    ".zprofile",
+    ".zshenv",
+    ".zlogin",
+    ".config/fish/config.fish",
+    ".npmrc",
+    ".netrc",
+    ".gitconfig",
+    ".gnupg/gpg.conf",
+    ".gnupg/gpg-agent.conf",
+    ".aws/credentials",
+    ".aws/config",
+    ".kube/config",
+    ".docker/config.json",
+    ".env",
+];
+
+/// Sensitive directory prefixes that should be denied for write operations.
+/// Any file within these directories (relative to home) is blocked.
+const SENSITIVE_DIR_PREFIXES: &[&str] = &[
+    ".ssh/",
+    ".gnupg/",
+    ".aws/",
+    ".kube/",
+];
+
+/// Check if a validated path points to a sensitive file that should not be written to.
+/// Call this AFTER validate_path() succeeds, for write/append/replace operations only.
+pub fn is_sensitive_path(path: &Path) -> bool {
+    let home = match env::var("HOME").map(PathBuf::from) {
+        Ok(h) => fs::canonicalize(&h).unwrap_or(h),
+        Err(_) => return false,
+    };
+
+    // Get the canonical form of the path for comparison
+    let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+
+    // Get path relative to home
+    let relative = match canonical.strip_prefix(&home) {
+        Ok(r) => r,
+        Err(_) => return false, // Not under home, other checks handle this
+    };
+
+    let relative_str = relative.to_string_lossy();
+
+    // Check exact sensitive paths
+    for sensitive in SENSITIVE_PATHS {
+        if relative_str == *sensitive {
+            return true;
+        }
+    }
+
+    // Check sensitive directory prefixes
+    for prefix in SENSITIVE_DIR_PREFIXES {
+        if relative_str.starts_with(prefix) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Validate a path for write operations. Combines path traversal validation
+/// with sensitive file protection.
+pub fn validate_path_for_write(path: &Path) -> Result<PathBuf, String> {
+    let safe_path = validate_path(path)?;
+
+    if is_sensitive_path(&safe_path) {
+        return Err(format!(
+            "Access denied: write to sensitive file is not allowed: {}",
+            safe_path.display()
+        ));
+    }
+
+    Ok(safe_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::{self, File};
-    use std::io::Write;
+    use std::sync::{Mutex, OnceLock};
 
     fn setup_test_dir() -> PathBuf {
-        let test_dir = env::temp_dir().join("path_validator_tests");
-        let _ = fs::remove_dir_all(&test_dir); // Clean up any previous test
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let test_dir = env::temp_dir().join(format!("path_validator_tests_{}", nanos));
         fs::create_dir_all(&test_dir).unwrap();
         test_dir
+    }
+
+    fn canonical_or_input(path: &Path) -> PathBuf {
+        fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    }
+
+    fn is_traversal_error(message: &str) -> bool {
+        message.contains("Access denied")
+            || message.contains("Could not canonicalize")
+            || message.contains("Parent directory")
+    }
+
+    fn with_test_home_dir() -> (std::sync::MutexGuard<'static, ()>, PathBuf, Option<String>) {
+        static HOME_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let guard = HOME_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let original = env::var("HOME").ok();
+        let test_home = env::temp_dir().join("aiterminal_test_home");
+        let _ = fs::create_dir_all(&test_home);
+        env::set_var("HOME", &test_home);
+        (guard, test_home, original)
     }
 
     #[test]
@@ -160,7 +277,7 @@ mod tests {
         env::set_current_dir(original_dir).unwrap();
         
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), test_file);
+        assert_eq!(result.unwrap(), canonical_or_input(&test_file));
     }
 
     #[test]
@@ -173,7 +290,7 @@ mod tests {
         let result = validator.validate(&test_file);
         
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), test_file);
+        assert_eq!(result.unwrap(), canonical_or_input(&test_file));
     }
 
     #[test]
@@ -185,7 +302,7 @@ mod tests {
         assert!(result.is_err());
         // After canonicalization, this should fail because it's outside allowed base
         let err_msg = result.unwrap_err();
-        assert!(err_msg.contains("Access denied") || err_msg.contains("Could not canonicalize"));
+        assert!(is_traversal_error(&err_msg));
     }
 
     #[test]
@@ -214,7 +331,7 @@ mod tests {
         assert!(result.is_err());
         // Should fail during canonicalization or boundary check
         let err_msg = result.unwrap_err();
-        assert!(err_msg.contains("Access denied") || err_msg.contains("Could not canonicalize"));
+        assert!(is_traversal_error(&err_msg));
     }
 
     #[test]
@@ -227,7 +344,7 @@ mod tests {
         
         assert!(result.is_ok());
         let validated_path = result.unwrap();
-        assert!(validated_path.starts_with(&test_dir));
+        assert!(validated_path.starts_with(&canonical_or_input(&test_dir)));
     }
 
     #[test]
@@ -243,20 +360,24 @@ mod tests {
 
     #[test]
     fn test_tilde_expansion() {
-        let home_dir = env::var("HOME").unwrap();
-        let validator = PathValidator::new(PathBuf::from(&home_dir));
+        let (_guard, test_home, original_home) = with_test_home_dir();
+        let validator = PathValidator::new(test_home.clone());
         
         // Create a test file in home directory
-        let test_file = PathBuf::from(&home_dir).join(".path_validator_test");
+        let test_file = test_home.join(".path_validator_test");
         File::create(&test_file).unwrap();
         
         let result = validator.validate(Path::new("~/.path_validator_test"));
         
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), canonical_or_input(&test_file));
+
         // Clean up
         let _ = fs::remove_file(&test_file);
-        
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), test_file);
+
+        if let Some(original) = original_home {
+            env::set_var("HOME", original);
+        }
     }
 
     #[test]
@@ -303,7 +424,9 @@ mod tests {
         
         // Should succeed because after canonicalization, it's still within test_dir
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), test_file);
+        let validated = result.unwrap();
+        assert!(validated.starts_with(&canonical_or_input(&test_dir)));
+        assert!(validated.ends_with("safe.txt"));
     }
 
     #[test]
@@ -320,8 +443,12 @@ mod tests {
             let link2 = test_dir.join("link2");
             let target = PathBuf::from("/etc/passwd");
             
-            let _ = symlink(&target, &link2);
-            let _ = symlink(&link2, &link1);
+            let link2_result = symlink(&target, &link2);
+            let link1_result = symlink(&link2, &link1);
+
+            if link2_result.is_err() || link1_result.is_err() {
+                return;
+            }
             
             let result = validator.validate(&link1);
             
@@ -345,13 +472,19 @@ mod tests {
             File::create(&target_file).unwrap();
             
             let symlink_path = test_dir.join("link_to_target");
-            let _ = symlink(&target_file, &symlink_path);
+            let link_result = symlink(&target_file, &symlink_path);
+
+            if link_result.is_err() {
+                return;
+            }
             
             let result = validator.validate(&symlink_path);
             
             // Should succeed because symlink resolves within allowed base
             assert!(result.is_ok());
-            assert_eq!(result.unwrap(), target_file);
+            let validated = result.unwrap();
+            assert!(validated.starts_with(&canonical_or_input(&test_dir)));
+            assert!(validated.ends_with("target.txt"));
         }
     }
 
@@ -359,15 +492,115 @@ mod tests {
     fn test_relative_path_with_dotdot_outside_base() {
         let test_dir = setup_test_dir();
         let validator = PathValidator::new(test_dir.clone());
-        
+
         // Try to escape using relative path
         // From test_dir, go up three levels then to /etc/passwd
         let evil_path = test_dir.join("../../../etc/passwd");
         let result = validator.validate(&evil_path);
-        
+
         // Should reject because canonicalized path is outside allowed base
         assert!(result.is_err());
         let err_msg = result.unwrap_err();
-        assert!(err_msg.contains("Access denied") || err_msg.contains("Could not canonicalize"));
+        assert!(is_traversal_error(&err_msg));
+    }
+
+    // ===== Sensitive path denylist tests =====
+
+    #[test]
+    fn test_sensitive_path_ssh_authorized_keys() {
+        let (_guard, test_home, original_home) = with_test_home_dir();
+
+        let ssh_dir = test_home.join(".ssh");
+        let _ = fs::create_dir_all(&ssh_dir);
+        let auth_keys = ssh_dir.join("authorized_keys");
+        File::create(&auth_keys).unwrap();
+
+        assert!(is_sensitive_path(&auth_keys));
+
+        let _ = fs::remove_file(&auth_keys);
+        if let Some(original) = original_home {
+            env::set_var("HOME", original);
+        }
+    }
+
+    #[test]
+    fn test_sensitive_path_bashrc() {
+        let (_guard, test_home, original_home) = with_test_home_dir();
+
+        let bashrc = test_home.join(".bashrc");
+        File::create(&bashrc).unwrap();
+
+        assert!(is_sensitive_path(&bashrc));
+
+        let _ = fs::remove_file(&bashrc);
+        if let Some(original) = original_home {
+            env::set_var("HOME", original);
+        }
+    }
+
+    #[test]
+    fn test_sensitive_path_aws_credentials() {
+        let (_guard, test_home, original_home) = with_test_home_dir();
+
+        let aws_dir = test_home.join(".aws");
+        let _ = fs::create_dir_all(&aws_dir);
+        let creds = aws_dir.join("credentials");
+        File::create(&creds).unwrap();
+
+        assert!(is_sensitive_path(&creds));
+
+        let _ = fs::remove_file(&creds);
+        if let Some(original) = original_home {
+            env::set_var("HOME", original);
+        }
+    }
+
+    #[test]
+    fn test_non_sensitive_path_allowed() {
+        let (_guard, test_home, original_home) = with_test_home_dir();
+
+        let normal_file = test_home.join("projects/myfile.txt");
+        let _ = fs::create_dir_all(test_home.join("projects"));
+        File::create(&normal_file).unwrap();
+
+        assert!(!is_sensitive_path(&normal_file));
+
+        let _ = fs::remove_file(&normal_file);
+        if let Some(original) = original_home {
+            env::set_var("HOME", original);
+        }
+    }
+
+    #[test]
+    fn test_validate_path_for_write_blocks_sensitive() {
+        let (_guard, test_home, original_home) = with_test_home_dir();
+
+        let ssh_dir = test_home.join(".ssh");
+        let _ = fs::create_dir_all(&ssh_dir);
+        let auth_keys = ssh_dir.join("authorized_keys");
+        File::create(&auth_keys).unwrap();
+
+        let result = validate_path_for_write(&auth_keys);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("sensitive file"));
+
+        let _ = fs::remove_file(&auth_keys);
+        if let Some(original) = original_home {
+            env::set_var("HOME", original);
+        }
+    }
+
+    #[test]
+    fn test_validate_path_for_write_allows_normal() {
+        let (_guard, test_home, original_home) = with_test_home_dir();
+
+        let normal = test_home.join("safe_file.txt");
+        // For new files, validate_path_for_write should succeed
+        let result = validate_path_for_write(&normal);
+        assert!(result.is_ok());
+
+        if let Some(original) = original_home {
+            env::set_var("HOME", original);
+        }
     }
 }

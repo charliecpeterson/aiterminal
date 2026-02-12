@@ -98,10 +98,12 @@ export function recordTokenUsage(
   cached?: number
 ): void {
   if (!metricsStore.current) return;
-  
-  metricsStore.current.inputTokens = input;
-  metricsStore.current.outputTokens = output;
-  metricsStore.current.cachedTokens = cached;
+
+  metricsStore.current.inputTokens = (metricsStore.current.inputTokens || 0) + input;
+  metricsStore.current.outputTokens = (metricsStore.current.outputTokens || 0) + output;
+  if (cached !== undefined) {
+    metricsStore.current.cachedTokens = (metricsStore.current.cachedTokens || 0) + cached;
+  }
 }
 
 export function finishRequestMetrics(): AIRequestMetrics | null {

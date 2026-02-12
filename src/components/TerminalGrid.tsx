@@ -3,7 +3,7 @@
  * Renders terminal grid with split panes and dividers
  */
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import Terminal from "./Terminal";
 import { TerminalErrorBoundary } from "./TerminalErrorBoundary";
 import { PortForwardStatus } from "./PortForwardStatus";
@@ -51,6 +51,16 @@ export function TerminalGrid(props: TerminalGridProps) {
     onUpdateSplitRatio,
     getProfileById,
   } = props;
+
+  // Track any in-progress drag cleanup so we can remove listeners on unmount
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+    };
+  }, []);
 
   return (
     <div className="workbench">
@@ -121,21 +131,31 @@ export function TerminalGrid(props: TerminalGridProps) {
                         if (!container) return;
 
                         const handleMouseMove = (e: MouseEvent) => {
-                          const containerRect = container.getBoundingClientRect();
-                          const containerStart = tab.splitLayout === 'vertical' ? containerRect.left : containerRect.top;
-                          const containerSize = tab.splitLayout === 'vertical' ? containerRect.width : containerRect.height;
-                          const currentPos = tab.splitLayout === 'vertical' ? e.clientX : e.clientY;
-                          const newRatio = ((currentPos - containerStart) / containerSize) * 100;
-                          onUpdateSplitRatio(tab.id, newRatio);
+                          if (rafIdRef.current !== null) return;
+                          rafIdRef.current = requestAnimationFrame(() => {
+                            rafIdRef.current = null;
+                            const containerRect = container.getBoundingClientRect();
+                            const containerStart = tab.splitLayout === 'vertical' ? containerRect.left : containerRect.top;
+                            const containerSize = tab.splitLayout === 'vertical' ? containerRect.width : containerRect.height;
+                            const currentPos = tab.splitLayout === 'vertical' ? e.clientX : e.clientY;
+                            const newRatio = ((currentPos - containerStart) / containerSize) * 100;
+                            onUpdateSplitRatio(tab.id, newRatio);
+                          });
                         };
 
                         const handleMouseUp = () => {
                           document.removeEventListener('mousemove', handleMouseMove);
                           document.removeEventListener('mouseup', handleMouseUp);
+                          if (rafIdRef.current !== null) {
+                            cancelAnimationFrame(rafIdRef.current);
+                            rafIdRef.current = null;
+                          }
+                          dragCleanupRef.current = null;
                         };
 
                         document.addEventListener('mousemove', handleMouseMove);
                         document.addEventListener('mouseup', handleMouseUp);
+                        dragCleanupRef.current = handleMouseUp;
                       }}
                     />
                   )}

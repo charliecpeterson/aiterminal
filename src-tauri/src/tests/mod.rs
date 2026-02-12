@@ -1,4 +1,5 @@
 // Test module organization
+pub mod helpers;
 pub mod security_tests;
 pub mod concurrency_tests;
 pub mod integration_tests;

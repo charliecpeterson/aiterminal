@@ -9,7 +9,6 @@ export interface ConversationTurn {
   userQuery: string;
   assistantResponse: string;
   contextUsed: string[];
-  toolsUsed: string[];
   wasSuccessful: boolean;
 }
 
@@ -53,7 +52,6 @@ export function buildConversationMemory(messages: ChatMessage[]): ConversationMe
         userQuery: currentUserQuery,
         assistantResponse: msg.content,
         contextUsed: msg.usedContext?.chunks?.map((c) => c.sourceType) || [],
-        toolsUsed: extractToolsUsed(msg.content),
         wasSuccessful: !msg.content.toLowerCase().includes('error'),
       });
       
@@ -97,25 +95,6 @@ function extractTopics(query: string): string[] {
 }
 
 /**
- * Extract tools that were used from assistant response
- */
-function extractToolsUsed(response: string): string[] {
-  const tools: string[] = [];
-  
-  if (response.includes('execute_command') || response.includes('Executing:')) {
-    tools.push('execute_command');
-  }
-  if (response.includes('read_file') || response.includes('Reading file:')) {
-    tools.push('read_file');
-  }
-  if (response.includes('list_directory') || response.includes('Listing directory:')) {
-    tools.push('list_directory');
-  }
-  
-  return tools;
-}
-
-/**
  * Detect user skill level from conversation patterns
  */
 function detectSkillLevel(memory: ConversationMemory): 'beginner' | 'intermediate' | 'expert' {
@@ -152,37 +131,3 @@ function detectSkillLevel(memory: ConversationMemory): 'beginner' | 'intermediat
   return 'intermediate';
 }
 
-/**
- * Generate memory summary for system prompt
- */
-export function getMemorySummary(memory: ConversationMemory): string {
-  if (memory.turns.length === 0) return '';
-  
-  const parts: string[] = [];
-  
-  // Skill level
-  if (memory.userPreferences.skillLevel) {
-    parts.push(`User appears to be ${memory.userPreferences.skillLevel} level`);
-  }
-  
-  // Frequent topics
-  if (memory.frequentTopics.size > 0) {
-    const topTopics = Array.from(memory.frequentTopics.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([topic]) => topic);
-    parts.push(`Frequent topics: ${topTopics.join(', ')}`);
-  }
-  
-  // Recent context
-  const recentTurns = memory.turns.slice(-3);
-  if (recentTurns.length > 0) {
-    parts.push(`\\nRecent discussion:`);
-    recentTurns.forEach((turn, idx) => {
-      const summary = turn.userQuery.substring(0, 60);
-      parts.push(`${idx + 1}. ${summary}...`);
-    });
-  }
-  
-  return parts.join('\\n');
-}

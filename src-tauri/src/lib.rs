@@ -57,7 +57,7 @@ use ssh::{get_ssh_config_hosts, load_ssh_profiles, save_ssh_profiles};
 use tauri::Emitter;
 use tools::{
     analyze_error_tool, append_to_file_tool, calculate_tool, check_port_tool, diff_files_tool,
-    execute_tool_command, file_sections_tool, find_errors_in_file_tool, find_process_tool,
+    file_sections_tool, find_errors_in_file_tool, find_process_tool,
     get_current_directory_tool, get_env_var_tool, get_file_info_tool, get_git_branch_tool,
     get_git_diff_tool, get_shell_history_tool, get_system_info_tool, git_status_tool,
     grep_in_files_tool, list_directory_tool, list_file_backups_tool, make_directory_tool,
@@ -188,11 +188,6 @@ fn context_index_clear(state: tauri::State<'_, AppState>) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
 async fn emit_event(
     app: tauri::AppHandle,
     event: String,
@@ -260,7 +255,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             emit_event,
             measure_pty_latency,
             get_pty_info,
@@ -298,7 +292,6 @@ pub fn run() {
             test_ai_connection,
             ai_chat,
             ai_chat_stream,
-            execute_tool_command,
             read_file_tool,
             get_file_info_tool,
             read_multiple_files_tool,

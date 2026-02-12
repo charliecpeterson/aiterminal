@@ -5,7 +5,8 @@
 
 #[cfg(test)]
 mod fuzz_tests {
-    use crate::tools::commands::{read_file_tool, write_file_tool, append_to_file_tool};
+    use crate::tests::helpers::*;
+    use crate::tools::commands::{read_file_tool, write_file_impl};
     use crate::security::path_validator::PathValidator;
     use std::env;
     use std::path::PathBuf;
@@ -55,6 +56,8 @@ mod fuzz_tests {
     // Test with special characters and edge cases
     #[tokio::test]
     async fn fuzz_special_characters() {
+        let (_home_guard, _home_dir) = with_test_home();
+        let state = new_state();
         let special_chars = vec![
             "\0",          // Null byte
             "\n",          // Newline
@@ -92,10 +95,11 @@ mod fuzz_tests {
             
             // Try to write - some will fail, some might succeed
             // The key is that no security boundary is crossed
-            let _result = write_file_tool(
+            let _result = write_file_impl(
                 test_path.to_string_lossy().to_string(),
                 "test".to_string(),
-                None
+                None,
+                &state
             ).await;
             
             // As long as we don't crash or escape the home directory, we're good
@@ -106,6 +110,8 @@ mod fuzz_tests {
     // Test with very long paths
     #[tokio::test]
     async fn fuzz_long_paths() {
+        let (_home_guard, _home_dir) = with_test_home();
+        let state = new_state();
         let home = env::var("HOME").unwrap();
         
         let lengths = vec![100, 1000, 4096, 10000, 100000];
@@ -114,10 +120,11 @@ mod fuzz_tests {
             let long_component = "a".repeat(len);
             let test_path = format!("{}/{}", home, long_component);
             
-            let result = write_file_tool(
+            let result = write_file_impl(
                 test_path,
                 "data".to_string(),
-                None
+                None,
+                &state
             ).await;
             
             // Should either succeed or fail gracefully (no panic)
@@ -227,6 +234,8 @@ mod fuzz_tests {
     // Test with Unicode and international characters
     #[tokio::test]
     async fn fuzz_unicode_paths() {
+        let (_home_guard, _home_dir) = with_test_home();
+        let state = new_state();
         let home = env::var("HOME").unwrap();
         let test_dir = PathBuf::from(&home).join("fuzz_unicode");
         let _ = std::fs::create_dir_all(&test_dir);
@@ -248,10 +257,11 @@ mod fuzz_tests {
         for name in unicode_names {
             let test_file = test_dir.join(name);
             
-            let result = write_file_tool(
+            let result = write_file_impl(
                 test_file.to_string_lossy().to_string(),
                 "unicode content".to_string(),
-                None
+                None,
+                &state
             ).await;
             
             // Should handle unicode gracefully
@@ -341,6 +351,8 @@ mod fuzz_tests {
     // Test with content size variations
     #[tokio::test]
     async fn fuzz_content_sizes() {
+        let (_home_guard, _home_dir) = with_test_home();
+        let state = new_state();
         let home = env::var("HOME").unwrap();
         let test_dir = PathBuf::from(&home).join("fuzz_content");
         let _ = std::fs::create_dir_all(&test_dir);
@@ -357,10 +369,11 @@ mod fuzz_tests {
             let test_file = test_dir.join(format!("size_{}.txt", size));
             let content = "x".repeat(size);
             
-            let write_result = write_file_tool(
+            let write_result = write_file_impl(
                 test_file.to_string_lossy().to_string(),
                 content,
-                None
+                None,
+                &state
             ).await;
             
             // Should handle various sizes

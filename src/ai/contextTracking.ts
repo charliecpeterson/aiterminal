@@ -14,8 +14,9 @@ export function markContextAsUsed(
   messageId: string,
   timestamp: number
 ): ContextItem[] {
+  const usedSet = new Set(usedContextIds);
   return contextItems.map(item => {
-    if (usedContextIds.includes(item.id)) {
+    if (usedSet.has(item.id)) {
       return {
         ...item,
         lastUsedInMessageId: messageId,
@@ -50,16 +51,14 @@ export function extractRecentTopics(messages: ChatMessage[], limit: number = 3):
   return Array.from(topics).slice(0, 10);
 }
 
-/**
- * Check if a word is a common stop word
- */
+const STOP_WORDS = new Set([
+  'about', 'after', 'before', 'could', 'should', 'would',
+  'there', 'their', 'these', 'those', 'which', 'while',
+  'please', 'thanks', 'hello'
+]);
+
 function isStopWord(word: string): boolean {
-  const stopWords = new Set([
-    'about', 'after', 'before', 'could', 'should', 'would',
-    'there', 'their', 'these', 'those', 'which', 'while',
-    'please', 'thanks', 'hello'
-  ]);
-  return stopWords.has(word);
+  return STOP_WORDS.has(word);
 }
 
 /**

@@ -27,7 +27,7 @@ function decideRunMode(command: string): { mode: RunMode; reason?: string } {
 
   const lower = trimmed.toLowerCase();
 
-  // High-risk patterns: destructive, privilege escalation, or common “pipe-to-shell”.
+  // High-risk patterns: destructive, privilege escalation, or common "pipe-to-shell".
   const riskyRegexes: Array<{ re: RegExp; reason: string }> = [
     { re: /\brm\s+-[\w-]*r[\w-]*f\b/i, reason: 'rm -rf' },
     { re: /\bmkfs(\.|\s)/i, reason: 'mkfs' },
@@ -67,14 +67,19 @@ export function attachAiRunCommandListener(params: {
   focusTerminal: () => void;
   auditToTerminal?: (line: string) => void;
 }): AiRunCommandHandle {
+  // Cancelled flag prevents stale listeners from firing during async cleanup gap
+  let cancelled = false;
+
   const unlistenPromise = listen<AiRunCommandPayload>('ai-run-command', (event) => {
+    if (cancelled) return;
+
     const targetId = event.payload?.terminalId;
     if (targetId !== null && targetId !== undefined && targetId !== params.id) return;
     if (!params.visibleRef.current) return;
 
     const rawCommand = event.payload?.command;
     if (!rawCommand || typeof rawCommand !== 'string') return;
-    
+
     const normalized = normalizeCommand(rawCommand);
     const { mode, reason } = decideRunMode(normalized);
     if (!normalized.trim()) return;
@@ -100,6 +105,9 @@ export function attachAiRunCommandListener(params: {
 
   return {
     cleanup: () => {
+      // Immediately mark as cancelled so the listener stops firing
+      // even before the async unlisten resolves
+      cancelled = true;
       unlistenPromise.then((f) => f());
     },
   };

@@ -178,8 +178,7 @@ YOUR CAPABILITIES:
 - \`write_file\`: Create or overwrite files
 - \`append_to_file\`: Add content to end of existing file (great for .gitignore, .env, logs)
 - \`replace_in_file\`: Search and replace text in files (safer than overwriting)
-- \`undo_file_change\`: **Restore file from backup** - automatically backs up before modifications, can undo mistakes
-- \`diff_files\`: **Compare files** - compare two files OR show what changed since last backup
+- \`diff_files\`: **Compare files** - compare two files
 - \`list_directory\`: List directory contents
 - \`search_files\`: Find files by name/content
 - \`get_environment_variable\`: Check env vars
@@ -197,11 +196,10 @@ WORKFLOW:
 6. **"What did I run?"**: Use \`get_shell_history\` to see recent commands
 7. **File creation**: When user asks to "create", "make", "generate", or "write" a file → use \`write_file\` to actually create it. Don't just show code in a code block - CREATE the file!
 8. **Adding to existing files**: When user asks to "add to", "append", "include in", or modify .gitignore/.env/config files → use \`append_to_file\` instead of \`write_file\` to avoid overwriting existing content
-9. **Undo/revert**: When user says "undo", "revert", "restore" a file → use \`undo_file_change\` to restore from backup
-10. **Show changes**: When user asks "what did you change?" or wants to review edits → use \`diff_files\` to show differences
-11. Then use the actual path with other tools
-12. Prefer tool calls over asking user to run commands
-13. Combine multiple observations in reasoning
+9. **Show changes**: When user asks "what did you change?" or wants to review edits → use \`diff_files\` to show differences
+10. Then use the actual path with other tools
+11. Prefer tool calls over asking user to run commands
+12. Combine multiple observations in reasoning
 
 ${userLevelGuidance}
 

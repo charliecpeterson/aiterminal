@@ -1,27 +1,31 @@
 use crate::models::AppState;
-use crate::security::path_validator::validate_path;
-use crate::tools::safe_commands::SafeCommand;
-// Removed unused imports: Deserialize, Serialize
-// (We use #[derive(serde::Serialize)] directly instead)
+use crate::security::path_validator::{validate_path, validate_path_for_write};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
 
-// Re-export CommandResult from safe_commands to avoid duplication
-pub use crate::tools::safe_commands::CommandResult;
+const GIT_NOT_FOUND_ERR: &str = "Not a git repository or git not installed";
 
-#[tauri::command]
-pub async fn execute_tool_command(
-    command: String,
-    working_directory: Option<String>,
-) -> Result<CommandResult, String> {
-    // NEW: Parse command into safe command structure (no shell execution)
-    let safe_cmd = SafeCommand::from_string(&command)?;
-    
-    // Execute without shell
-    let cwd = working_directory.as_ref().map(|s| Path::new(s));
-    safe_cmd.execute(cwd)
+/// Resolve working_directory to a PathBuf, with tilde expansion.
+/// Falls back to the current directory if not provided.
+fn resolve_base_dir(working_directory: &Option<String>) -> PathBuf {
+    working_directory
+        .as_deref()
+        .and_then(|wd| shellexpand::tilde(wd).parse::<PathBuf>().ok())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+}
+
+/// Resolve a path relative to an optional working directory.
+/// If the path is absolute, returns it as-is; otherwise joins with cwd.
+fn resolve_path(path: &str, working_directory: &Option<String>) -> PathBuf {
+    if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else if let Some(ref cwd) = working_directory {
+        Path::new(cwd).join(path)
+    } else {
+        PathBuf::from(path)
+    }
 }
 
 #[tauri::command]
@@ -76,11 +80,7 @@ pub async fn get_file_info_tool(
     path: String,
     working_directory: Option<String>,
 ) -> Result<FileInfo, String> {
-    // Resolve working directory
-    let base_dir = working_directory
-        .as_deref()
-        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let base_dir = resolve_base_dir(&working_directory);
 
     // Resolve path relative to working directory
     let file_path = if Path::new(&path).is_absolute() {
@@ -106,16 +106,7 @@ pub async fn get_file_info_tool(
 
     let size_bytes = metadata.len();
     
-    // Human-readable size
-    let size_human = if size_bytes < 1024 {
-        format!("{} bytes", size_bytes)
-    } else if size_bytes < 1024 * 1024 {
-        format!("{:.1} KB", size_bytes as f64 / 1024.0)
-    } else if size_bytes < 1024 * 1024 * 1024 {
-        format!("{:.1} MB", size_bytes as f64 / (1024.0 * 1024.0))
-    } else {
-        format!("{:.1} GB", size_bytes as f64 / (1024.0 * 1024.0 * 1024.0))
-    };
+    let size_human = format_file_size(size_bytes);
 
     // Get extension
     let extension = safe_path
@@ -151,16 +142,9 @@ pub async fn get_file_info_tool(
     let last_modified = metadata
         .modified()
         .ok()
-        .and_then(|time| {
-            time.duration_since(std::time::UNIX_EPOCH)
-                .ok()
-                .map(|d| d.as_secs())
-        })
-        .map(|secs| {
-            // Format as ISO 8601
-            use std::time::UNIX_EPOCH;
-            let datetime = UNIX_EPOCH + std::time::Duration::from_secs(secs);
-            format!("{:?}", datetime)
+        .map(|time| {
+            let datetime: chrono::DateTime<chrono::Local> = time.into();
+            datetime.format("%Y-%m-%d %H:%M:%S").to_string()
         });
 
     // Try to detect if file is text or binary by reading first 8KB
@@ -210,20 +194,30 @@ pub struct DirectoryListing {
 pub async fn list_directory_tool(
     path: Option<String>,
     show_hidden: Option<bool>,
+    working_directory: Option<String>,
 ) -> Result<DirectoryListing, String> {
     let dir_path = path.as_deref().unwrap_or(".");
-    let path = Path::new(dir_path);
+    let base_dir = resolve_base_dir(&working_directory);
+
+    let full_path = if Path::new(dir_path).is_absolute() {
+        Path::new(dir_path).to_path_buf()
+    } else {
+        base_dir.join(dir_path)
+    };
+
+    // SECURITY: Validate path to prevent directory traversal
+    let safe_path = validate_path(&full_path)?;
     let show_hidden = show_hidden.unwrap_or(false);
 
-    if !path.exists() {
-        return Err(format!("Directory does not exist: {}", path.display()));
+    if !safe_path.exists() {
+        return Err(format!("Directory does not exist: {}", safe_path.display()));
     }
 
-    if !path.is_dir() {
-        return Err(format!("Path is not a directory: {}", path.display()));
+    if !safe_path.is_dir() {
+        return Err(format!("Path is not a directory: {}", safe_path.display()));
     }
 
-    let entries = fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries = fs::read_dir(&safe_path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut files = Vec::new();
     let mut directories = Vec::new();
@@ -261,25 +255,25 @@ pub async fn list_directory_tool(
 }
 
 #[tauri::command]
-pub async fn search_files_tool(pattern: String, max_results: usize) -> Result<Vec<String>, String> {
-    let current_dir =
-        std::env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
+pub async fn search_files_tool(
+    pattern: String,
+    max_results: usize,
+    working_directory: Option<String>,
+) -> Result<Vec<String>, String> {
+    let base_dir = resolve_base_dir(&working_directory);
 
-    // Use glob pattern matching
-    let _glob_pattern = if pattern.contains('*') || pattern.contains('?') {
-        pattern.clone()
-    } else {
-        format!("**/{}", pattern)
-    };
+    // SECURITY: Validate the search root directory
+    let safe_dir = validate_path(&base_dir)?;
+
+    let max_results = max_results.min(500);
 
     let mut results = Vec::new();
-    let walker = WalkDir::new(&current_dir)
-        .max_depth(10) // Limit depth to avoid huge scans
+    let walker = WalkDir::new(&safe_dir)
+        .max_depth(10)
         .into_iter()
         .filter_entry(|e| {
-            // Skip hidden directories and common ignore patterns
             let name = e.file_name().to_string_lossy();
-            !name.starts_with('.') && name != "node_modules" && name != "target" && name != ".git"
+            !name.starts_with('.') && name != "node_modules" && name != "target"
         });
 
     for entry in walker {
@@ -287,11 +281,9 @@ pub async fn search_files_tool(pattern: String, max_results: usize) -> Result<Ve
             break;
         }
 
-        let entry = entry.ok();
-        if entry.is_none() {
+        let Some(entry) = entry.ok() else {
             continue;
-        }
-        let entry = entry.unwrap();
+        };
 
         if !entry.file_type().is_file() {
             continue;
@@ -300,9 +292,8 @@ pub async fn search_files_tool(pattern: String, max_results: usize) -> Result<Ve
         let path = entry.path();
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-        // Simple pattern matching
         if matches_pattern(file_name, &pattern) {
-            if let Ok(relative) = path.strip_prefix(&current_dir) {
+            if let Ok(relative) = path.strip_prefix(&safe_dir) {
                 results.push(relative.to_string_lossy().to_string());
             } else {
                 results.push(path.to_string_lossy().to_string());
@@ -328,34 +319,104 @@ pub async fn get_current_directory_tool(
     Ok(cwd.to_string_lossy().to_string())
 }
 
+/// Environment variable names that should not be exposed to the AI.
+/// These commonly contain secrets, API keys, or credentials.
+const SENSITIVE_ENV_VARS: &[&str] = &[
+    // API keys and tokens
+    "API_KEY",
+    "SECRET_KEY",
+    "ACCESS_TOKEN",
+    "REFRESH_TOKEN",
+    "AUTH_TOKEN",
+    "BEARER_TOKEN",
+    "JWT_SECRET",
+    // AWS
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    // Cloud providers
+    "AZURE_CLIENT_SECRET",
+    "GCP_SERVICE_ACCOUNT_KEY",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    // Database
+    "DATABASE_URL",
+    "DATABASE_PASSWORD",
+    "DB_PASSWORD",
+    "MONGO_URI",
+    "REDIS_URL",
+    "REDIS_PASSWORD",
+    // General secrets
+    "PASSWORD",
+    "PASSWD",
+    "SECRET",
+    "PRIVATE_KEY",
+    "ENCRYPTION_KEY",
+    // CI/CD
+    "GITHUB_TOKEN",
+    "GITLAB_TOKEN",
+    "NPM_TOKEN",
+    "DOCKER_PASSWORD",
+    // Misc
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "SENDGRID_API_KEY",
+    "STRIPE_SECRET_KEY",
+    "TWILIO_AUTH_TOKEN",
+];
+
+/// Check if an environment variable name matches any sensitive pattern.
+fn is_sensitive_env_var(name: &str) -> bool {
+    let upper = name.to_uppercase();
+
+    // Check exact matches
+    for sensitive in SENSITIVE_ENV_VARS {
+        if upper == *sensitive {
+            return true;
+        }
+    }
+
+    // Check suffix patterns (catches variants like MY_API_KEY, APP_SECRET_KEY, etc.)
+    let sensitive_suffixes = [
+        "_API_KEY", "_SECRET_KEY", "_SECRET", "_PASSWORD", "_TOKEN",
+        "_PRIVATE_KEY", "_ACCESS_KEY", "_AUTH_TOKEN",
+    ];
+    for suffix in &sensitive_suffixes {
+        if upper.ends_with(suffix) {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[tauri::command]
 pub async fn get_env_var_tool(variable: String) -> Result<Option<String>, String> {
+    if is_sensitive_env_var(&variable) {
+        return Err(format!(
+            "Access denied: '{}' may contain sensitive credentials and cannot be read",
+            variable
+        ));
+    }
     Ok(std::env::var(&variable).ok())
 }
 
 // Write content to a file (create or overwrite)
-#[tauri::command]
-pub async fn write_file_tool(
+pub(crate) async fn write_file_impl(
     path: String,
     content: String,
     working_directory: Option<String>,
-    state: tauri::State<'_, AppState>,
+    state: &AppState,
 ) -> Result<String, String> {
     use std::fs;
     use std::io::Write;
 
-    let full_path = if let Some(ref cwd) = working_directory {
-        Path::new(cwd).join(&path)
-    } else {
-        Path::new(&path).to_path_buf()
-    };
+    let full_path = resolve_path(&path, &working_directory);
 
-    // SECURITY: Validate path to prevent traversal attacks
-    let safe_path = validate_path(&full_path)?;
+    // SECURITY: Validate path for write (prevents traversal + blocks sensitive files)
+    let safe_path = validate_path_for_write(&full_path)?;
 
     // Create backup before modifying (if file exists)
     if safe_path.exists() {
-        if let Err(e) = create_file_backup(&state, &safe_path) {
+        if let Err(e) = create_file_backup(state, &safe_path) {
             eprintln!("[Backup] Failed to backup {}: {}", safe_path.display(), e);
         }
     }
@@ -374,29 +435,34 @@ pub async fn write_file_tool(
     Ok(format!("Successfully wrote to {}", safe_path.display()))
 }
 
-// Append content to a file
 #[tauri::command]
-pub async fn append_to_file_tool(
+pub async fn write_file_tool(
     path: String,
     content: String,
     working_directory: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
+    write_file_impl(path, content, working_directory, &state).await
+}
+
+// Append content to a file
+pub(crate) async fn append_to_file_impl(
+    path: String,
+    content: String,
+    working_directory: Option<String>,
+    state: &AppState,
+) -> Result<String, String> {
     use std::fs::OpenOptions;
     use std::io::Write;
 
-    let full_path = if let Some(ref cwd) = working_directory {
-        Path::new(cwd).join(&path)
-    } else {
-        Path::new(&path).to_path_buf()
-    };
+    let full_path = resolve_path(&path, &working_directory);
 
-    // SECURITY: Validate path to prevent traversal attacks
-    let safe_path = validate_path(&full_path)?;
+    // SECURITY: Validate path for write (prevents traversal + blocks sensitive files)
+    let safe_path = validate_path_for_write(&full_path)?;
 
     // Create backup before modifying (if file exists)
     if safe_path.exists() {
-        if let Err(e) = create_file_backup(&state, &safe_path) {
+        if let Err(e) = create_file_backup(state, &safe_path) {
             eprintln!("[Backup] Failed to backup {}: {}", safe_path.display(), e);
         }
     }
@@ -413,6 +479,16 @@ pub async fn append_to_file_tool(
     Ok(format!("Successfully appended to {}", safe_path.display()))
 }
 
+#[tauri::command]
+pub async fn append_to_file_tool(
+    path: String,
+    content: String,
+    working_directory: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    append_to_file_impl(path, content, working_directory, &state).await
+}
+
 // Replace text in a file (search and replace)
 #[tauri::command]
 pub async fn replace_in_file_tool(
@@ -425,14 +501,10 @@ pub async fn replace_in_file_tool(
 ) -> Result<String, String> {
     use std::fs;
 
-    let full_path = if let Some(ref cwd) = working_directory {
-        Path::new(cwd).join(&path)
-    } else {
-        Path::new(&path).to_path_buf()
-    };
+    let full_path = resolve_path(&path, &working_directory);
 
-    // SECURITY: Validate path to prevent traversal attacks
-    let safe_path = validate_path(&full_path)?;
+    // SECURITY: Validate path for write (prevents traversal + blocks sensitive files)
+    let safe_path = validate_path_for_write(&full_path)?;
 
     if !safe_path.exists() {
         return Err(format!("File does not exist: {}", safe_path.display()));
@@ -506,7 +578,7 @@ pub async fn git_status_tool(working_directory: Option<String>) -> Result<String
         .map_err(|e| format!("Failed to execute git: {}", e))?;
 
     if !output.status.success() {
-        return Err("Not a git repository or git not installed".to_string());
+        return Err(GIT_NOT_FOUND_ERR.to_string());
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -591,11 +663,7 @@ pub async fn tail_file_tool(
     lines: usize,
     working_directory: Option<String>,
 ) -> Result<String, String> {
-    let full_path = if let Some(cwd) = working_directory {
-        Path::new(&cwd).join(&path)
-    } else {
-        Path::new(&path).to_path_buf()
-    };
+    let full_path = resolve_path(&path, &working_directory);
 
     // SECURITY: Validate path to prevent traversal attacks
     let safe_path = validate_path(&full_path)?;
@@ -661,15 +729,24 @@ pub async fn get_git_diff_tool(working_directory: Option<String>) -> Result<Stri
         .map_err(|e| format!("Failed to execute git: {}", e))?;
 
     if !output.status.success() {
-        return Err("Not a git repository or git not installed".to_string());
+        return Err(GIT_NOT_FOUND_ERR.to_string());
     }
 
-    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    let diff = String::from_utf8_lossy(&output.stdout);
 
     if diff.trim().is_empty() {
-        Ok("No uncommitted changes".to_string())
+        return Ok("No uncommitted changes".to_string());
+    }
+
+    const MAX_DIFF_BYTES: usize = 100 * 1024; // 100KB
+    if diff.len() > MAX_DIFF_BYTES {
+        Ok(format!(
+            "{}\n\n... [diff truncated: {} total bytes, showing first 100KB]",
+            &diff[..MAX_DIFF_BYTES],
+            diff.len()
+        ))
     } else {
-        Ok(diff)
+        Ok(diff.into_owned())
     }
 }
 
@@ -767,64 +844,21 @@ pub async fn get_git_branch_tool(working_directory: Option<String>) -> Result<Gi
     }
 }
 
-// Calculate math expression
+// Calculate math expression using pure Rust (no shell execution)
 #[tauri::command]
 pub async fn calculate_tool(expression: String) -> Result<String, String> {
-    // Validate that expression only contains safe characters
-    // Allowed: digits, operators, parentheses, decimal points, spaces, and basic math functions
-    let safe_chars_regex = regex::Regex::new(r"^[0-9+\-*/().\s]+$")
-        .map_err(|e| format!("Regex error: {}", e))?;
-    
-    if !safe_chars_regex.is_match(&expression) {
-        return Err(
-            "Invalid expression: only numbers and basic operators (+, -, *, /, parentheses) are allowed".to_string()
-        );
+    if expression.trim().is_empty() {
+        return Err("Empty expression".to_string());
     }
-    
-    // Additional check for dangerous patterns
-    if expression.contains("..") || expression.is_empty() {
-        return Err("Invalid expression format".to_string());
-    }
-    
-    // Execute using bc directly (no shell piping to avoid command injection patterns)
-    let output = if cfg!(target_os = "windows") {
-        Command::new("powershell")
-            .args(["-Command", &expression])
-            .output()
+
+    let result: f64 = meval::eval_str(&expression)
+        .map_err(|e| format!("Invalid expression: {}", e))?;
+
+    // Format nicely: avoid trailing .0 for integers
+    if result.fract() == 0.0 && result.abs() < 1e15 {
+        Ok(format!("{}", result as i64))
     } else {
-        use std::io::Write;
-        let mut child = Command::new("bc")
-            .arg("-l")
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to start bc: {}", e))?;
-
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(expression.as_bytes())
-                .map_err(|e| format!("Failed to write to bc: {}", e))?;
-            stdin.write_all(b"\n")
-                .map_err(|e| format!("Failed to write to bc: {}", e))?;
-        }
-
-        child.wait_with_output()
-    };
-
-    let result = output.map_err(|e| format!("Failed to calculate: {}", e))?;
-
-    if result.status.success() {
-        let output = String::from_utf8_lossy(&result.stdout).trim().to_string();
-        if output.is_empty() {
-            Err("Calculation produced no output (invalid expression?)".to_string())
-        } else {
-            Ok(output)
-        }
-    } else {
-        Err(format!(
-            "Invalid expression: {}",
-            String::from_utf8_lossy(&result.stderr)
-        ))
+        Ok(format!("{}", result))
     }
 }
 
@@ -894,10 +928,7 @@ pub async fn read_multiple_files_tool(
     }
 
     let max_bytes = max_bytes_per_file.unwrap_or(50000);
-    let base_dir = working_directory
-        .as_deref()
-        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let base_dir = resolve_base_dir(&working_directory);
 
     let mut results = Vec::new();
 
@@ -936,9 +967,10 @@ pub async fn read_multiple_files_tool(
                     Ok(mut file) => {
                         use std::io::Read;
                         let mut buffer = vec![0u8; bytes_to_read];
-                        
+
                         match file.read(&mut buffer) {
-                            Ok(_) => {
+                            Ok(bytes_read) => {
+                                buffer.truncate(bytes_read);
                                 match String::from_utf8(buffer) {
                                     Ok(content) => {
                                         let truncated = if file_size > max_bytes {
@@ -995,10 +1027,7 @@ pub async fn grep_in_files_tool(
         pattern.to_lowercase()
     };
 
-    let base_dir = working_directory
-        .as_deref()
-        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let base_dir = resolve_base_dir(&working_directory);
 
     let mut results = Vec::new();
     let mut match_count = 0;
@@ -1025,14 +1054,14 @@ pub async fn grep_in_files_tool(
                 let mut file_matches = Vec::new();
 
                 for (line_num, line) in lines.iter().enumerate() {
-                    let search_line = if case_sensitive {
-                        line.to_string()
+                    let matched = if case_sensitive {
+                        line.contains(search_pattern.as_str())
                     } else {
-                        line.to_lowercase()
+                        line.to_lowercase().contains(&search_pattern)
                     };
 
-                    if search_line.contains(&search_pattern) {
-                        file_matches.push(format!("  {}:{}: {}", path, line_num + 1, line));
+                    if matched {
+                        file_matches.push(format!("  {}:{}: {}", safe_path.display(), line_num + 1, line));
                         match_count += 1;
 
                         if match_count >= 100 {
@@ -1042,7 +1071,7 @@ pub async fn grep_in_files_tool(
                 }
 
                 if !file_matches.is_empty() {
-                    results.push(format!("{}:\n{}", path, file_matches.join("\n")));
+                    results.push(format!("{}:\n{}", safe_path.display(), file_matches.join("\n")));
                 }
 
                 if match_count >= 100 {
@@ -1136,10 +1165,7 @@ pub async fn analyze_error_tool(
         analysis.push("FILES MENTIONED:".to_string());
         for file in mentioned_files.iter().take(10) {
             // Check if file exists
-            let base_dir = working_directory
-                .as_deref()
-                .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let base_dir = resolve_base_dir(&working_directory);
             
             let file_path = if Path::new(file).is_absolute() {
                 Path::new(file).to_path_buf()
@@ -1330,10 +1356,7 @@ pub async fn find_errors_in_file_tool(
     use std::io::{BufRead, BufReader};
 
     // Resolve path
-    let base_dir = working_directory
-        .as_deref()
-        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let base_dir = resolve_base_dir(&working_directory);
 
     let file_path = if Path::new(&path).is_absolute() {
         Path::new(&path).to_path_buf()
@@ -1536,10 +1559,7 @@ pub async fn file_sections_tool(
     use std::io::{BufRead, BufReader};
 
     // Resolve path
-    let base_dir = working_directory
-        .as_deref()
-        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let base_dir = resolve_base_dir(&working_directory);
 
     let file_path = if Path::new(&path).is_absolute() {
         Path::new(&path).to_path_buf()
@@ -1682,7 +1702,7 @@ fn truncate_line(line: &str, max_len: usize) -> String {
 
 /// Helper: Create a backup of a file before modifying it
 pub fn create_file_backup(
-    state: &tauri::State<'_, AppState>,
+    state: &AppState,
     path: &Path,
 ) -> Result<(), String> {
     use crate::models::{FileBackup, MAX_BACKUPS_PER_FILE, MAX_TOTAL_BACKUPS};
@@ -1746,11 +1766,7 @@ pub async fn undo_file_change_tool(
     
     // If path specified, find backup for that specific file
     let backup = if let Some(ref p) = path {
-        let full_path = if let Some(ref cwd) = working_directory {
-            Path::new(cwd).join(p)
-        } else {
-            Path::new(p).to_path_buf()
-        };
+        let full_path = resolve_path(p, &working_directory);
         
         let safe_path = validate_path(&full_path)?;
         let path_str = safe_path.to_string_lossy().to_string();
@@ -1762,19 +1778,19 @@ pub async fn undo_file_change_tool(
         backups.remove(idx)
     } else {
         // No path specified, restore most recent backup
-        backups.pop().unwrap()
+        backups.pop().ok_or_else(|| "No backups remaining".to_string())?
     };
     
-    // Restore the file
-    let restore_path = Path::new(&backup.path);
-    
+    // SECURITY: Re-validate the restore path before writing
+    let restore_path = validate_path_for_write(Path::new(&backup.path))?;
+
     // Create parent directories if needed
     if let Some(parent) = restore_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create parent directory: {}", e))?;
     }
-    
-    fs::write(restore_path, &backup.content)
+
+    fs::write(&restore_path, &backup.content)
         .map_err(|e| format!("Failed to restore file: {}", e))?;
     
     // Format timestamp
@@ -1806,11 +1822,7 @@ pub async fn list_file_backups_tool(
     
     // Filter by path if specified
     let filtered: Vec<_> = if let Some(ref p) = path {
-        let full_path = if let Some(ref cwd) = working_directory {
-            Path::new(cwd).join(p)
-        } else {
-            Path::new(p).to_path_buf()
-        };
+        let full_path = resolve_path(p, &working_directory);
         
         let safe_path = validate_path(&full_path)?;
         let path_str = safe_path.to_string_lossy().to_string();
@@ -1851,10 +1863,7 @@ pub async fn diff_files_tool(
     working_directory: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let base_dir = working_directory
-        .as_deref()
-        .and_then(|wd| shellexpand::tilde(wd).parse::<std::path::PathBuf>().ok())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let base_dir = resolve_base_dir(&working_directory);
     
     // Resolve file1 path
     let path1 = if Path::new(&file1).is_absolute() {

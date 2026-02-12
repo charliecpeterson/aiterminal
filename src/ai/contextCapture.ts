@@ -1,19 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
+import { executeInPty } from '../terminal/core/executeInPty';
 
 /**
  * SMART FILE CAPTURE SYSTEM
  * 
- * This module provides intelligent file content capture that works both locally and over SSH:
- * 
- * - LOCAL: Uses Tauri's direct filesystem access (no terminal output, fast)
- * - REMOTE (SSH): Uses silent command execution via execute_tool_command (no terminal spam)
- * 
+ * This module provides file content capture using the active terminal PTY.
+ *
  * Benefits:
- * - No terminal pollution (content doesn't appear in terminal)
- * - Works at any SSH depth
+ * - Always matches the user's active terminal environment (SSH, containers, etc.)
  * - Respects file size limits to prevent crashes
  * - Full context for AI (not truncated by terminal display)
- * - Automatic UTF-8 validation
  */
 
 export async function requestCaptureLast(count: number): Promise<void> {
@@ -29,12 +25,16 @@ export async function requestCaptureLast(count: number): Promise<void> {
  * - Local files: Uses direct Tauri filesystem access
  * - SSH files: Uses silent command execution (no terminal output)
  */
+function shellEscape(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 export async function captureFileContent(params: {
   path: string;
   fileLimitKb: number;
-  isRemote: boolean;
+  terminalId?: number;
   workingDirectory?: string;
-}): Promise<{ content: string; source: 'local' | 'remote' }> {
+}): Promise<{ content: string; source: 'pty' }> {
   const trimmedPath = params.path.trim();
   if (!trimmedPath) {
     throw new Error('File path is required');
@@ -42,60 +42,26 @@ export async function captureFileContent(params: {
 
   const maxBytes = Math.max(1024, Math.min(2 * 1024 * 1024, params.fileLimitKb * 1024));
 
-  if (!params.isRemote) {
-    // Local file: Use direct filesystem access (no terminal)
-    try {
-      const content = await invoke<string>('read_file_tool', {
-        path: trimmedPath,
-        maxBytes,
-      });
-      return { content, source: 'local' };
-    } catch (error) {
-      throw new Error(`Failed to read local file: ${error}`);
-    }
-  } else {
-    // Remote file (SSH): Use silent command execution
-    try {
-      const result = await invoke<{
-        stdout: string;
-        stderr: string;
-        exit_code: number;
-      }>('execute_tool_command', {
-        command: `head -c ${maxBytes} "${trimmedPath.replace(/"/g, '\\"')}" 2>&1`,
-        workingDirectory: params.workingDirectory || null,
-      });
+  try {
+    const terminalId = params.terminalId ?? await invoke<number>('get_active_terminal');
+    const cwdPrefix = params.workingDirectory
+      ? `cd ${shellEscape(params.workingDirectory)} && `
+      : '';
+    const command = `${cwdPrefix}head -c ${maxBytes} ${shellEscape(trimmedPath)} 2>&1`;
 
-      if (result.exit_code !== 0) {
-        throw new Error(`Command failed: ${result.stderr || result.stdout}`);
-      }
+    const result = await executeInPty({
+      terminalId,
+      command,
+      timeoutMs: 10000,
+    });
 
-      return { content: result.stdout, source: 'remote' };
-    } catch (error) {
-      throw new Error(`Failed to read remote file: ${error}`);
+    if (result.exitCode !== 0) {
+      throw new Error(result.output || 'Unknown error');
     }
+
+    return { content: result.output, source: 'pty' };
+  } catch (error) {
+    throw new Error(`Failed to read file via PTY: ${error}`);
   }
 }
 
-/**
- * Legacy event-based file capture (still used by terminal command approach).
- * @deprecated Use captureFileContent instead for better control
- */
-export async function requestCaptureFile(params: {
-  path: string;
-  fileLimitKb: number;
-}): Promise<void> {
-  const trimmedPath = params.path.trim();
-  if (!trimmedPath) return;
-
-  const kb = Number.isFinite(params.fileLimitKb)
-    ? Math.max(1, Math.min(2048, params.fileLimitKb))
-    : 200;
-
-  await invoke('emit_event', {
-    event: 'ai-context:capture-file',
-    payload: {
-      path: trimmedPath,
-      maxBytes: kb * 1024,
-    }
-  });
-}

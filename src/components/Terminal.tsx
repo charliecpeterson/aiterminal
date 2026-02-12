@@ -97,23 +97,19 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
         hideCopyMenu();
     }, [copyMenu, hideCopyMenu]);
 
-    // Use refs to avoid recreating terminal wiring when callbacks change
+    // Stable refs so terminal wiring can call the latest callbacks without recreating
     const onCommandRunningRef = useRef(onCommandRunning);
     const addContextItemRef = useRef(addContextItem);
     const addContextItemWithScanRef = useRef(addContextItemWithScan);
     const hideCopyMenuRef = useRef(hideCopyMenu);
     const hideSelectionMenuRef = useRef(hideSelectionMenu);
     const setHostLabelAndRemoteStateRef = useRef(setHostLabelAndRemoteState);
-    
-    // Sync refs only when callbacks actually change
-    useEffect(() => {
-        onCommandRunningRef.current = onCommandRunning;
-        addContextItemRef.current = addContextItem;
-        addContextItemWithScanRef.current = addContextItemWithScan;
-        hideCopyMenuRef.current = hideCopyMenu;
-        hideSelectionMenuRef.current = hideSelectionMenu;
-        setHostLabelAndRemoteStateRef.current = setHostLabelAndRemoteState;
-    }, [onCommandRunning, addContextItem, addContextItemWithScan, hideCopyMenu, hideSelectionMenu, setHostLabelAndRemoteState]);
+    onCommandRunningRef.current = onCommandRunning;
+    addContextItemRef.current = addContextItem;
+    addContextItemWithScanRef.current = addContextItemWithScan;
+    hideCopyMenuRef.current = hideCopyMenu;
+    hideSelectionMenuRef.current = hideSelectionMenu;
+    setHostLabelAndRemoteStateRef.current = setHostLabelAndRemoteState;
 
     const handleQuickAction = useCallback(
         (actionType: QuickActionType, commandText: string, outputText?: string, exitCode?: number) => {
@@ -199,10 +195,8 @@ const Terminal = ({ id, visible, onUpdateRemoteState, onClose, onCommandRunning 
 
   // Update host label from polling
   useEffect(() => {
-    if (polledHostLabel !== hostLabel) {
-      setHostLabel(polledHostLabel);
-    }
-  }, [polledHostLabel, hostLabel]);
+    setHostLabel(polledHostLabel);
+  }, [polledHostLabel]);
 
   // Notify Rust backend when this terminal becomes visible (focused)
   useEffect(() => {

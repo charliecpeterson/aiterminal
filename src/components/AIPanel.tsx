@@ -8,18 +8,25 @@ import { getSmartContextForPrompt } from "../ai/smartContext";
 import { AIChatTab, type QuickActionType } from "./AIChatTab";
 import { AIContextTab } from "./AIContextTab";
 import { invoke } from "@tauri-apps/api/core";
-import { resolveApproval, rejectApproval } from "../ai/tools-vercel";
+import { getCommandTimeout, resolveApproval, rejectApproval } from "../ai/tools-vercel";
 import { createLogger } from "../utils/logger";
 import { estimateTokens, formatTokenCount } from "../utils/tokens";
+import { executeInPty } from "../terminal/core/executeInPty";
 
 const log = createLogger('AIPanel');
+
+const QUICK_ACTION_PROMPTS: Record<QuickActionType, string> = {
+  'summarize': 'Summarize the last command and its output.',
+  'explain-error': 'Explain this error and suggest a fix.',
+  'draft-fix': 'Draft a fix for the issue shown in the output above.',
+};
 
 // Export chat conversations with different levels of detail
 type ExportVerbosity = 'basic' | 'detailed' | 'verbose';
 
 function exportConversation(messages: any[], verbosity: ExportVerbosity = 'detailed'): string {
   return messages
-    .filter(msg => msg.role !== 'system')
+    .filter(msg => verbosity === 'verbose' || msg.role !== 'system')
     .map(msg => {
       const timestamp = new Date(msg.timestamp).toLocaleTimeString();
       const role = msg.role.toUpperCase();
@@ -218,9 +225,8 @@ interface AIPanelProps {
 const AIPanel = ({
   activeTerminalId,
 }: AIPanelProps) => {
-  // Debug: Log whenever activeTerminalId changes
   useEffect(() => {
-    console.log('[AIPanel] activeTerminalId changed:', activeTerminalId);
+    log.debug('activeTerminalId changed:', activeTerminalId);
   }, [activeTerminalId]);
   
   const [activeTab, setActiveTab] = useState<PanelTab>("chat");
@@ -296,22 +302,16 @@ const AIPanel = ({
     if (!approval) return;
     
     try {
-      // Execute the command via Tauri (same format as executeCommand in tools-vercel.ts)
-      const result = await invoke<{
-        stdout: string;
-        stderr: string;
-        exit_code: number;
-      }>('execute_tool_command', {
-        command: approval.command,
-        workingDirectory: approval.cwd || null,
+      const timeoutMs = getCommandTimeout(approval.command);
+      const result = await executeInPty({
+        terminalId: approval.terminalId,
+        command: ` ${approval.command}`,
+        timeoutMs,
       });
 
-      // Format the result like executeCommand does
-      let formattedResult: string;
-      if (result.exit_code !== 0) {
-        formattedResult = `Command failed with exit code ${result.exit_code}\nstderr: ${result.stderr}\nstdout: ${result.stdout}`;
-      } else {
-        formattedResult = result.stdout || '(no output)';
+      let formattedResult = result.output || '(no output)';
+      if (result.exitCode !== 0) {
+        formattedResult = `Command failed with exit code ${result.exitCode}\n${formattedResult}`;
       }
 
       // Resolve the promise waiting in the tool
@@ -453,18 +453,12 @@ const AIPanel = ({
   const handleSendRef = useRef(handleSend);
   handleSendRef.current = handleSend;
 
-  // Quick action prompts mapping
-  const quickActionPrompts: Record<QuickActionType, string> = {
-    'summarize': 'Summarize the last command and its output.',
-    'explain-error': 'Explain this error and suggest a fix.',
-    'draft-fix': 'Draft a fix for the issue shown in the output above.',
-  };
 
   // Handle quick action: capture context, set prompt, and auto-send
   const handleQuickAction = useCallback(async (action: QuickActionType) => {
     if (isSending) return;
     
-    const actionPrompt = quickActionPrompts[action];
+    const actionPrompt = QUICK_ACTION_PROMPTS[action];
     const currentContextCount = contextItems.length;
     
     // Store the pending action
@@ -498,26 +492,9 @@ const AIPanel = ({
     }
   }, [contextItems.length]);
 
-  useEffect(() => {
-    const handleError = (event: ErrorEvent) => {
-      const message = event.error instanceof Error ? event.error.message : event.message;
-      setSendError(message || 'Unexpected error in AI panel');
-    };
-
-    const handleRejection = (event: PromiseRejectionEvent) => {
-      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
-      setSendError(reason || 'Unhandled promise rejection in AI panel');
-      event.preventDefault();
-    };
-
-    window.addEventListener('error', handleError);
-    window.addEventListener('unhandledrejection', handleRejection);
-
-    return () => {
-      window.removeEventListener('error', handleError);
-      window.removeEventListener('unhandledrejection', handleRejection);
-    };
-  }, []);
+  // Note: intentionally no global window error handler here.
+  // Errors from handleSend are caught directly in that function.
+  // Unhandled errors elsewhere should propagate to the ErrorBoundary.
 
   return (
     <div style={aiPanelStyles.panel}>

@@ -200,13 +200,6 @@ function calculateRelevanceScoreWithBreakdown(
         conversationMemory = -5;
       }
       
-      // Debug logging for conversation memory (query relevance check moved to after QUERY TERM MATCHING)
-      const displayName = item.metadata?.path || item.id.substring(0, 40);
-      log.debug(`Conversation memory: context "${displayName}" was sent ${messagesSinceUsed} messages ago`, {
-        itemId: item.id,
-        messagesSinceUsed,
-        penalty: conversationMemory,
-      });
     }
   }
 
@@ -341,22 +334,21 @@ function calculateRelevanceScoreWithBreakdown(
   };
 }
 
+const QUERY_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+  'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'is',
+  'this', 'that', 'what', 'why', 'how', 'can', 'should', 'would', 'could',
+  'my', 'me', 'i', 'you'
+]);
+
 /**
  * Extract key terms from query
  */
 function extractKeyTerms(query: string): string[] {
-  // Remove common words
-  const stopWords = new Set([
-    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-    'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'is',
-    'this', 'that', 'what', 'why', 'how', 'can', 'should', 'would', 'could',
-    'my', 'me', 'i', 'you'
-  ]);
-
   return query
     .split(/\s+/)
-    .filter(word => word.length > 2 && !stopWords.has(word))
-    .slice(0, 10); // Limit to 10 terms
+    .filter(word => word.length > 2 && !QUERY_STOP_WORDS.has(word))
+    .slice(0, 10);
 }
 
 /**
@@ -462,9 +454,7 @@ export function formatRankedContext(ranked: RankedContext[]): string[] {
   return ranked.map((r, index) => {
     const item = r.item;
     const header = `[Context ${index + 1}/${ranked.length}] Type: ${item.type}`;
-    const relevance = r.relevanceScore >= 70 ? ' 🔥' : r.relevanceScore >= 50 ? ' ⭐' : '';
-    
-    const parts = [header + relevance];
+    const parts = [header];
     
     if (item.metadata?.command) {
       parts.push(`Command: ${item.metadata.command}`);

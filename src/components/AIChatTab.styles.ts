@@ -267,4 +267,27 @@ export const chatStyles = {
     fontSize: tokens.fontSize.sm,
     lineHeight: '1.5',
   } as CSSProperties,
+
+  errorSummary: {
+    color: chatColors.error,
+  } as CSSProperties,
+
+  errorToggle: {
+    marginTop: tokens.spacing[6],
+    background: 'transparent',
+    border: 'none',
+    color: chatColors.error,
+    cursor: 'pointer',
+    fontSize: '12px',
+    padding: 0,
+    textDecoration: 'underline',
+  } as CSSProperties,
+
+  errorDetails: {
+    marginTop: tokens.spacing[6],
+    color: chatColors.textMuted,
+    fontSize: '12px',
+    lineHeight: '1.4',
+    wordBreak: 'break-word',
+  } as CSSProperties,
 };
