@@ -304,6 +304,23 @@ __aiterm_shell_bootstrap_cmd() {
     esac
 }
 
+__aiterm_inline_bootstrap_cmd() {
+    # Build a self-contained bootstrap snippet (like SSH remote_cmd).
+    # Encodes __AITERM_INLINE_CACHE as base64, child decodes to temp file,
+    # sources via --rcfile, temp self-deletes on source. Zero persistent files.
+    local encoded
+    encoded="$(printf '%s' "$__AITERM_INLINE_CACHE" | base64 | tr -d '\n')"
+    [ -n "$encoded" ] || return 1
+
+    local depth="${__AITERM_SSH_DEPTH:-0}"
+    local shell_path
+    shell_path="$(__aiterm_pick_shell_path)"
+
+    # Single-line bootstrap: decode → temp file → exec with --rcfile
+    # __AITERM_TEMP_FILE triggers self-cleanup in lines 4-8 of bash_init.sh
+    printf '%s' 'tmpfile="$(mktemp -t aiterminal.XXXXXX 2>/dev/null || mktemp /tmp/aiterminal.XXXXXX)" || exit 1; chmod 600 "$tmpfile" 2>/dev/null || true; if command -v base64 >/dev/null 2>&1; then printf "%s" "'"$encoded"'" | base64 -d > "$tmpfile" || exit 1; elif command -v openssl >/dev/null 2>&1; then printf "%s" "'"$encoded"'" | openssl base64 -d > "$tmpfile" || exit 1; else exec '"$shell_path"' -i; fi; export __AITERM_TEMP_FILE="$tmpfile" __AITERM_INLINE_CACHE="$(cat "$tmpfile")" __AITERM_SSH_DEPTH='"$depth"' TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1; exec '"$shell_path"' --rcfile "$tmpfile" -i'
+}
+
 aiterm_sudo() {
     if [ "$TERM_PROGRAM" != "aiterminal" ]; then
         command sudo "$@"
@@ -359,11 +376,23 @@ aiterm_sudo() {
     local shell_path
     shell_path="$(__aiterm_pick_shell_path)"
 
-    # Preserve marker behavior (and SSH state) inside the elevated shell.
-    # For bash, execute it directly so the session feels like a normal `sudo -s/-i` shell.
-    if [ "${shell_path##*/}" = "bash" ]; then
-        if [ $has_i -eq 1 ]; then
-            command sudo -i \
+    # If integration file exists on disk (local case), use existing --rcfile approach.
+    if [ -f "$integration_path" ]; then
+        # Preserve marker behavior (and SSH state) inside the elevated shell.
+        # For bash, execute it directly so the session feels like a normal `sudo -s/-i` shell.
+        if [ "${shell_path##*/}" = "bash" ]; then
+            if [ $has_i -eq 1 ]; then
+                command sudo -i \
+                    env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH="$integration_path" \
+                    __AITERM_SSH_DEPTH="${__AITERM_SSH_DEPTH:-0}" \
+                    SSH_CONNECTION="${SSH_CONNECTION:-}" SSH_CLIENT="${SSH_CLIENT:-}" SSH_TTY="${SSH_TTY:-}" \
+                    SHELL="$shell_path" \
+                    "$shell_path" --rcfile "$integration_path" -i
+                return $?
+            fi
+
+            # For `sudo -s`, avoid sudo's shell-wrapping of commands; execute bash directly.
+            command sudo \
                 env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH="$integration_path" \
                 __AITERM_SSH_DEPTH="${__AITERM_SSH_DEPTH:-0}" \
                 SSH_CONNECTION="${SSH_CONNECTION:-}" SSH_CLIENT="${SSH_CLIENT:-}" SSH_TTY="${SSH_TTY:-}" \
@@ -372,25 +401,32 @@ aiterm_sudo() {
             return $?
         fi
 
-        # For `sudo -s`, avoid sudo's shell-wrapping of commands; execute bash directly.
+        # For other shells (notably zsh), fall back to running a small bootstrap snippet.
+        local bootstrap
+        bootstrap="$(__aiterm_shell_bootstrap_cmd "$integration_path")"
         command sudo \
             env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH="$integration_path" \
             __AITERM_SSH_DEPTH="${__AITERM_SSH_DEPTH:-0}" \
             SSH_CONNECTION="${SSH_CONNECTION:-}" SSH_CLIENT="${SSH_CLIENT:-}" SSH_TTY="${SSH_TTY:-}" \
             SHELL="$shell_path" \
-            "$shell_path" --rcfile "$integration_path" -i
+            sh -lc "$bootstrap"
         return $?
     fi
 
-    # For other shells (notably zsh), fall back to running a small bootstrap snippet.
+    # File doesn't exist (SSH/remote case) - use inline injection from cache.
+    if [ -z "$__AITERM_INLINE_CACHE" ]; then
+        command sudo "$@"
+        return $?
+    fi
+
     local bootstrap
-    bootstrap="$(__aiterm_shell_bootstrap_cmd "$integration_path")"
+    bootstrap="$(__aiterm_inline_bootstrap_cmd)" || { command sudo "$@"; return $?; }
+
+    # Pass SSH context through sudo env, then bootstrap.
     command sudo \
-        env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH="$integration_path" \
-        __AITERM_SSH_DEPTH="${__AITERM_SSH_DEPTH:-0}" \
+        env TERM_PROGRAM=aiterminal \
         SSH_CONNECTION="${SSH_CONNECTION:-}" SSH_CLIENT="${SSH_CLIENT:-}" SSH_TTY="${SSH_TTY:-}" \
-        SHELL="$shell_path" \
-        sh -lc "$bootstrap"
+        bash -c "$bootstrap"
     return $?
 }
 
@@ -423,19 +459,74 @@ aiterm_su() {
     local shell_path
     shell_path="$(__aiterm_pick_shell_path)"
 
-    # Prefer executing bash directly so it behaves like a normal `su` shell.
-    if [ "${shell_path##*/}" = "bash" ]; then
+    # If integration file exists on disk (local case), use existing --rcfile approach.
+    if [ -f "$integration_path" ]; then
+        # Prefer executing bash directly so it behaves like a normal `su` shell.
+        if [ "${shell_path##*/}" = "bash" ]; then
+            command su \
+                -c "env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH=\"$integration_path\" __AITERM_SSH_DEPTH=\"${__AITERM_SSH_DEPTH:-0}\" SSH_CONNECTION=\"${SSH_CONNECTION:-}\" SSH_CLIENT=\"${SSH_CLIENT:-}\" SSH_TTY=\"${SSH_TTY:-}\" SHELL=\"$shell_path\" \"$shell_path\" --rcfile \"$integration_path\" -i" \
+                "$@"
+            return $?
+        fi
+
+        local bootstrap
+        bootstrap="$(__aiterm_shell_bootstrap_cmd "$integration_path")"
         command su \
-            -c "env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH=\"$integration_path\" __AITERM_SSH_DEPTH=\"${__AITERM_SSH_DEPTH:-0}\" SSH_CONNECTION=\"${SSH_CONNECTION:-}\" SSH_CLIENT=\"${SSH_CLIENT:-}\" SSH_TTY=\"${SSH_TTY:-}\" SHELL=\"$shell_path\" \"$shell_path\" --rcfile \"$integration_path\" -i" \
+            -c "env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH=\"$integration_path\" __AITERM_SSH_DEPTH=\"${__AITERM_SSH_DEPTH:-0}\" SSH_CONNECTION=\"${SSH_CONNECTION:-}\" SSH_CLIENT=\"${SSH_CLIENT:-}\" SSH_TTY=\"${SSH_TTY:-}\" SHELL=\"$shell_path\" sh -lc \"$bootstrap\"" \
             "$@"
         return $?
     fi
 
+    # File doesn't exist (SSH/remote case) - use inline injection from cache.
+    if [ -z "$__AITERM_INLINE_CACHE" ]; then
+        command su "$@"
+        return $?
+    fi
+
     local bootstrap
-    bootstrap="$(__aiterm_shell_bootstrap_cmd "$integration_path")"
-    command su \
-        -c "env TERM_PROGRAM=aiterminal AITERM_SUDO_BOOTSTRAP=1 AITERM_INTEGRATION_PATH=\"$integration_path\" __AITERM_SSH_DEPTH=\"${__AITERM_SSH_DEPTH:-0}\" SSH_CONNECTION=\"${SSH_CONNECTION:-}\" SSH_CLIENT=\"${SSH_CLIENT:-}\" SSH_TTY=\"${SSH_TTY:-}\" SHELL=\"$shell_path\" sh -lc \"$bootstrap\"" \
-        "$@"
+    bootstrap="$(__aiterm_inline_bootstrap_cmd)" || { command su "$@"; return $?; }
+
+    command su -c "$bootstrap" "$@"
+    return $?
+}
+
+aiterm_srun() {
+    if [ "$TERM_PROGRAM" != "aiterminal" ]; then
+        command srun "$@"
+        return $?
+    fi
+
+    # Detect --pty flag (interactive session).
+    local has_pty=0
+    for arg in "$@"; do
+        case "$arg" in --pty) has_pty=1; break ;; esac
+    done
+
+    if [ $has_pty -eq 0 ]; then
+        command srun "$@"
+        return $?
+    fi
+
+    # Try file-based approach first (shared $HOME on HPC).
+    local integration_path
+    integration_path="$(__aiterm_integration_path)"
+    if [ -f "$integration_path" ]; then
+        local shell_path
+        shell_path="$(__aiterm_pick_shell_path)"
+        command srun "$@" "$shell_path" --rcfile "$integration_path" -i
+        return $?
+    fi
+
+    # Inline injection from cache.
+    if [ -z "$__AITERM_INLINE_CACHE" ]; then
+        command srun "$@"
+        return $?
+    fi
+
+    local bootstrap
+    bootstrap="$(__aiterm_inline_bootstrap_cmd)" || { command srun "$@"; return $?; }
+
+    command srun "$@" bash -c "$bootstrap"
     return $?
 }
 
@@ -446,10 +537,16 @@ if [ "$TERM_PROGRAM" = "aiterminal" ]; then
     su() {
         aiterm_su "$@"
     }
+    srun() {
+        aiterm_srun "$@"
+    }
     export -f sudo 2>/dev/null || true
     export -f su 2>/dev/null || true
+    export -f srun 2>/dev/null || true
     export -f aiterm_sudo 2>/dev/null || true
     export -f aiterm_su 2>/dev/null || true
+    export -f aiterm_srun 2>/dev/null || true
+    export -f __aiterm_inline_bootstrap_cmd 2>/dev/null || true
 fi
 
 # Define aiterm_python function to inject OSC 133 markers into Python REPL
