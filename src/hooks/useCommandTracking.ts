@@ -16,7 +16,6 @@ export function useCommandTracking(
 ): UseCommandTrackingReturn {
   // Track running commands per tab: Map<ptyId, { startTime: number, elapsed: number }>
   const [runningCommands, setRunningCommands] = useState<Map<number, { startTime: number; elapsed: number }>>(new Map());
-  const elapsedTimerRef = useRef<number | null>(null);
   const tabsRef = useRef(tabs);
 
   useEffect(() => {
@@ -49,16 +48,13 @@ export function useCommandTracking(
   }, []);
 
   // Update elapsed time every second for running commands
+  const hasRunningCommands = runningCommands.size > 0;
   useEffect(() => {
-    if (runningCommands.size === 0) {
-      if (elapsedTimerRef.current) {
-        clearInterval(elapsedTimerRef.current);
-        elapsedTimerRef.current = null;
-      }
+    if (!hasRunningCommands) {
       return;
     }
 
-    elapsedTimerRef.current = setInterval(() => {
+    const intervalId = setInterval(() => {
       setRunningCommands(prev => {
         const newMap = new Map(prev);
         const now = Date.now();
@@ -70,12 +66,9 @@ export function useCommandTracking(
     }, 1000);
 
     return () => {
-      if (elapsedTimerRef.current) {
-        clearInterval(elapsedTimerRef.current);
-        elapsedTimerRef.current = null;
-      }
+      clearInterval(intervalId);
     };
-  }, [runningCommands.size]);
+  }, [hasRunningCommands]);
 
   return {
     runningCommands,

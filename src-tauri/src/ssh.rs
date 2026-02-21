@@ -243,7 +243,7 @@ pub async fn get_ssh_config_hosts() -> Result<Vec<SSHConfigHost>, String> {
 pub async fn save_ssh_profiles(profiles: Vec<SSHProfile>) -> Result<(), String> {
     let path = get_ssh_profiles_path()?;
 
-    println!("[SSH] Saving {} profiles to {:?}", profiles.len(), path);
+    eprintln!("[SSH] Saving {} profiles to {:?}", profiles.len(), path);
 
     // Ensure directory exists
     if let Some(parent) = path.parent() {
@@ -256,7 +256,7 @@ pub async fn save_ssh_profiles(profiles: Vec<SSHProfile>) -> Result<(), String> 
 
     fs::write(&path, json).map_err(|e| format!("Failed to write profiles: {}", e))?;
 
-    println!("[SSH] Successfully saved profiles");
+    eprintln!("[SSH] Successfully saved profiles");
     Ok(())
 }
 
@@ -265,10 +265,10 @@ pub async fn save_ssh_profiles(profiles: Vec<SSHProfile>) -> Result<(), String> 
 pub async fn load_ssh_profiles() -> Result<Vec<SSHProfile>, String> {
     let path = get_ssh_profiles_path()?;
 
-    println!("[SSH] Loading profiles from {:?}", path);
+    eprintln!("[SSH] Loading profiles from {:?}", path);
 
     if !path.exists() {
-        println!("[SSH] Profiles file doesn't exist, returning empty list");
+        eprintln!("[SSH] Profiles file doesn't exist, returning empty list");
         return Ok(Vec::new());
     }
 
@@ -278,7 +278,7 @@ pub async fn load_ssh_profiles() -> Result<Vec<SSHProfile>, String> {
     let profiles: Vec<SSHProfile> =
         serde_json::from_str(&content).map_err(|e| format!("Failed to parse profiles: {}", e))?;
 
-    println!("[SSH] Loaded {} profiles", profiles.len());
+    eprintln!("[SSH] Loaded {} profiles", profiles.len());
     Ok(profiles)
 }
 

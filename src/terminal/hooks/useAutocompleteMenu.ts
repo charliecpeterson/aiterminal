@@ -252,10 +252,6 @@ export function useAutocompleteMenu(
       const key = event.domEvent.key;
       const ctrl = event.domEvent.ctrlKey;
       
-      // Debug log every key with Ctrl
-      if (ctrl) {
-      }
-      
       if (key === ' ' && ctrl) {
         event.domEvent.preventDefault();
         showMenu();

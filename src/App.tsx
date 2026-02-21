@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import SettingsModal from "./components/SettingsModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { WindowRouter } from "./components/WindowRouter";
@@ -147,8 +147,7 @@ function AppContent() {
   });
 
   // Initialize command palette actions when dependencies change
-  // Also run synchronously on first render to ensure actions are available immediately
-  const actionDeps = useMemo(() => ({
+  initializeActions({
     tabs,
     activeTabId,
     createTab,
@@ -160,10 +159,7 @@ function AppContent() {
     setFocusedPane,
     setIsSettingsOpen,
     setIsCommandPaletteOpen,
-  }), [tabs, activeTabId, createTab, closeTab, renameTab, setActiveTabId, splitPane, closePane, setFocusedPane, setIsSettingsOpen, setIsCommandPaletteOpen]);
-
-  // Initialize actions synchronously when deps change
-  initializeActions(actionDeps);
+  });
 
   return (
     <WindowRouter

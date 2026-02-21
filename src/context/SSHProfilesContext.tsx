@@ -115,9 +115,8 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         log.error('Failed to add SSH profile', err);
-        throw err;
       });
-    
+
     return operationQueueRef.current;
   }, []);
 
@@ -126,22 +125,21 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
     const operation = async () => {
       setError(null);
       const currentProfiles = await invoke<SSHProfile[]>('load_ssh_profiles');
-      const newProfiles = currentProfiles.map(p => 
+      const newProfiles = currentProfiles.map(p =>
         p.id === id ? { ...p, ...updates } : p
       );
       await invoke('save_ssh_profiles', { profiles: newProfiles });
       setProfiles(newProfiles);
     };
-    
+
     operationQueueRef.current = operationQueueRef.current
       .then(operation)
       .catch(err => {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         log.error('Failed to update SSH profile', err);
-        throw err;
       });
-    
+
     return operationQueueRef.current;
   }, []);
 
@@ -154,16 +152,15 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
       await invoke('save_ssh_profiles', { profiles: newProfiles });
       setProfiles(newProfiles);
     };
-    
+
     operationQueueRef.current = operationQueueRef.current
       .then(operation)
       .catch(err => {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         log.error('Failed to delete SSH profile', err);
-        throw err;
       });
-    
+
     return operationQueueRef.current;
   }, []);
 
@@ -244,7 +241,6 @@ const SSHProfilesProviderInner: React.FC<SSHProfilesProviderProps> = ({ children
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         log.error('Failed to reorder SSH profile', err);
-        throw err;
       });
     
     return operationQueueRef.current;

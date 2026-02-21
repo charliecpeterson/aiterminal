@@ -148,11 +148,19 @@ export function useCrossWindowEvents(options: UseCrossWindowEventsOptions) {
     if (isAiWindow || isSSHWindow || isOutputViewer || isQuickActionsWindow) return;
 
     const unlistenConnect = listen<{ profile: SSHProfile }>("ssh:connect", async (event) => {
-      await onConnectSSHProfile?.(event.payload.profile);
+      try {
+        await onConnectSSHProfile?.(event.payload.profile);
+      } catch (err) {
+        log.error('SSH connection failed', err);
+      }
     });
 
     const unlistenNewTab = listen<{ profile: SSHProfile }>("ssh:connect-new-tab", async (event) => {
-      await onConnectSSHProfile?.(event.payload.profile);
+      try {
+        await onConnectSSHProfile?.(event.payload.profile);
+      } catch (err) {
+        log.error('SSH new tab connection failed', err);
+      }
     });
 
     const unlistenGoToTab = listen<{ ptyId: string }>("ssh:goto-tab", (event) => {

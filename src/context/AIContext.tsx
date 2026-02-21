@@ -363,31 +363,35 @@ const AIProviderInner = ({ children }: { children: React.ReactNode }) => {
 
   // Set up cross-window event synchronization
   useEffect(() => {
-    const unlistenPromises = [
-      listen<ContextItem>("ai-context:sync-add", (event) => {
-        dispatch({ type: "context:add", item: event.payload });
-      }),
-      listen<{ id: string }>("ai-context:sync-remove", (event) => {
-        dispatch({ type: "context:remove", id: event.payload.id });
-      }),
-      listen("ai-context:sync-clear", () => {
-        dispatch({ type: "context:clear" });
-      }),
-      // Handle requests for full context state (e.g., when AI Panel opens)
-      listen("ai-context:request-sync", () => {
-        log.debug('Received context sync request, broadcasting all items');
-        // Use ref to get current context items without re-creating listeners
-        contextItemsRef.current.forEach((item) => {
-          invoke("emit_event", {
-            event: "ai-context:sync-add",
-            payload: item,
-          }).catch((err) => log.error("Failed to broadcast context item", err));
-        });
-      }),
-    ];
+    const unlisteners: Array<() => void> = [];
+
+    (async () => {
+      try {
+        unlisteners.push(await listen<ContextItem>("ai-context:sync-add", (event) => {
+          dispatch({ type: "context:add", item: event.payload });
+        }));
+        unlisteners.push(await listen<{ id: string }>("ai-context:sync-remove", (event) => {
+          dispatch({ type: "context:remove", id: event.payload.id });
+        }));
+        unlisteners.push(await listen("ai-context:sync-clear", () => {
+          dispatch({ type: "context:clear" });
+        }));
+        unlisteners.push(await listen("ai-context:request-sync", () => {
+          log.debug('Received context sync request, broadcasting all items');
+          contextItemsRef.current.forEach((item) => {
+            invoke("emit_event", {
+              event: "ai-context:sync-add",
+              payload: item,
+            }).catch((err) => log.error("Failed to broadcast context item", err));
+          });
+        }));
+      } catch (err) {
+        log.error('Failed to set up AI context event listeners', err);
+      }
+    })();
 
     return () => {
-      unlistenPromises.forEach((p) => p.then((unlisten) => unlisten()));
+      unlisteners.forEach((unlisten) => unlisten());
     };
   }, []); // No dependencies - listeners set up once
 

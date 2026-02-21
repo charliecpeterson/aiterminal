@@ -331,7 +331,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       contextTokenBudget = routingDecision.contextBudget;
       temperature = routingDecision.temperature;
       
-      log.info('Auto-routing decision', {
+      log.debug('Auto-routing decision', {
         tier: routingDecision.tier,
         model,
         complexity: routingDecision.complexity,
@@ -365,7 +365,7 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     
     // Add the current user message
     messagesToSend.push({
-      id: crypto.randomUUID(),
+      id: userMsgId,
       role: 'user',
       content: enhancedUserPrompt,
       timestamp: Date.now(),

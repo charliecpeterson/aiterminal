@@ -232,7 +232,7 @@ pub fn get_pty_cwd(id: u32, state: State<AppState>) -> Result<String, String> {
 pub fn check_pty_health(id: u32, state: State<AppState>) -> Result<TerminalHealth, String> {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis() as u64;
 
     // Check if PTY exists and process is alive
@@ -304,7 +304,7 @@ pub fn check_pty_health(id: u32, state: State<AppState>) -> Result<TerminalHealt
 pub fn focus_terminal(id: u32, state: State<AppState>) {
     let old_id = state.active_terminal.swap(id, Ordering::Release);
     if old_id != id {
-        println!("[PTY] Active terminal changed: {} -> {}", old_id, id);
+        eprintln!("[PTY] Active terminal changed: {} -> {}", old_id, id);
     }
 }
 

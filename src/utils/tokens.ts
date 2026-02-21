@@ -10,7 +10,8 @@
 // CONSTANTS
 // ============================================================================
 
-/** Average characters per token for English text */
+/** Average characters per token for English text.
+ *  This is a rough estimate (~20-50% variance). Use for budgeting, not precise limits. */
 export const CHARS_PER_TOKEN = 4;
 
 /** Token budget defaults by complexity tier */

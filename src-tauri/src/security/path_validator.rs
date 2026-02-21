@@ -149,15 +149,19 @@ const SENSITIVE_PATHS: &[&str] = &[
     ".zlogin",
     ".config/fish/config.fish",
     ".npmrc",
+    ".yarnrc",
     ".netrc",
     ".gitconfig",
+    ".git/config",
     ".gnupg/gpg.conf",
     ".gnupg/gpg-agent.conf",
     ".aws/credentials",
     ".aws/config",
     ".kube/config",
     ".docker/config.json",
+    ".config/gh/hosts.yml",
     ".env",
+    ".env.local",
 ];
 
 /// Sensitive directory prefixes that should be denied for write operations.

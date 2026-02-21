@@ -7,12 +7,13 @@ use walkdir::WalkDir;
 
 const GIT_NOT_FOUND_ERR: &str = "Not a git repository or git not installed";
 
-/// Resolve working_directory to a PathBuf, with tilde expansion.
+/// Resolve working_directory to a PathBuf, with tilde expansion and validation.
 /// Falls back to the current directory if not provided.
 fn resolve_base_dir(working_directory: &Option<String>) -> PathBuf {
     working_directory
         .as_deref()
         .and_then(|wd| shellexpand::tilde(wd).parse::<PathBuf>().ok())
+        .and_then(|p| validate_path(&p).ok())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
 }
 
@@ -1099,8 +1100,11 @@ pub async fn analyze_error_tool(
     let mut analysis = Vec::new();
     
     // Extract file paths with line numbers (common formats: file.rs:10, file.js:10:5, etc.)
-    let file_line_regex = regex::Regex::new(r"([/\w\-_.]+\.\w+):(\d+)(?::(\d+))?")
-        .map_err(|e| format!("Regex error: {}", e))?;
+    use std::sync::LazyLock;
+    static FILE_LINE_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"([/\w\-_.]+\.\w+):(\d+)(?::(\d+))?").unwrap()
+    });
+    let file_line_regex = &*FILE_LINE_REGEX;
     
     let mut mentioned_files = std::collections::HashSet::new();
     let mut line_references = Vec::new();
@@ -1719,7 +1723,7 @@ pub fn create_file_backup(
     let path_str = path.to_string_lossy().to_string();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs();
     
     let backup = FileBackup {
@@ -1733,10 +1737,15 @@ pub fn create_file_backup(
     
     // Count existing backups for this file
     let file_backup_count = backups.iter().filter(|b| b.path == path_str).count();
-    
-    // If too many backups for this file, remove oldest
+
+    // If too many backups for this file, remove the oldest one
     if file_backup_count >= MAX_BACKUPS_PER_FILE {
-        if let Some(idx) = backups.iter().position(|b| b.path == path_str) {
+        if let Some(idx) = backups.iter()
+            .enumerate()
+            .filter(|(_, b)| b.path == path_str)
+            .min_by_key(|(_, b)| b.timestamp)
+            .map(|(i, _)| i)
+        {
             backups.remove(idx);
         }
     }

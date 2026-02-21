@@ -130,15 +130,17 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
               .replace(/\r/g, '\n') // Convert CR to LF
               .trim();
             
-            // Strip any marker lines that may have leaked into output
+            // Strip exact marker lines that may have leaked into output
             finalOutput = finalOutput
               .split('\n')
-              .filter((line) => !line.includes(startMarker) && !line.includes(endMarker))
+              .filter((line) => {
+                const trimmedLine = line.trim();
+                return trimmedLine !== startMarker && !trimmedLine.startsWith(endMarker);
+              })
               .join('\n')
               .trim();
-            
-            // Defer cleanup to avoid calling unlisten while in its own callback
-            setTimeout(() => cleanup(), 0);
+
+            cleanup();
             
             resolve({
               output: finalOutput,

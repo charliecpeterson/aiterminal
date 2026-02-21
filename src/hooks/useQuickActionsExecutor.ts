@@ -31,40 +31,31 @@ export function useQuickActionsExecutor(options: UseQuickActionsExecutorOptions)
 
   const waitForCommandComplete = useCallback((ptyId: number, signal?: AbortSignal): Promise<void> => {
     return new Promise((resolve) => {
-      // Check if already aborted
       if (signal?.aborted) {
         resolve();
         return;
       }
-      
-      const checkInterval = setInterval(() => {
-        // Check if command is still running
-        if (!runningCommandsRef.current.has(ptyId)) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
-      
-      // Handle abort signal for cleanup on component unmount
-      const abortHandler = () => {
+
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
         clearInterval(checkInterval);
+        clearTimeout(safetyTimeout);
+        signal?.removeEventListener('abort', onAbort);
         resolve();
       };
-      signal?.addEventListener('abort', abortHandler);
-      
-      // Safety timeout (10 minutes max per command)
-      const safetyTimeout = setTimeout(() => {
-        clearInterval(checkInterval);
-        signal?.removeEventListener('abort', abortHandler);
-        resolve();
-      }, 10 * 60 * 1000);
-      
-      // Cleanup on abort
-      if (signal) {
-        signal.addEventListener('abort', () => {
-          clearTimeout(safetyTimeout);
-        }, { once: true });
-      }
+
+      const checkInterval = setInterval(() => {
+        if (!runningCommandsRef.current.has(ptyId)) {
+          settle();
+        }
+      }, 100);
+
+      const safetyTimeout = setTimeout(settle, 10 * 60 * 1000);
+
+      const onAbort = () => settle();
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
   }, []);
 

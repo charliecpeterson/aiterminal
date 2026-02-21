@@ -24,12 +24,11 @@ function shellEscape(str: string): string {
   return `'${str.replace(/'/g, "'\\''")}'`;
 }
 
-// Tool timeout and size limit constants
-const COMMAND_TIMEOUT_QUICK_MS = 10000;   // 10s for quick commands (ls, cat, pwd)
-const COMMAND_TIMEOUT_DEFAULT_MS = 30000; // 30s for most commands
-const COMMAND_TIMEOUT_LONG_MS = 120000;   // 2min for builds, installs, tests
-const FILE_SIZE_WARNING_THRESHOLD_BYTES = 100 * 1024; // 100 KB
-const FILE_SIZE_LARGE_THRESHOLD_BYTES = 1024 * 1024; // 1 MB
+const COMMAND_TIMEOUT_QUICK_MS = 10_000;
+const COMMAND_TIMEOUT_DEFAULT_MS = 30_000;
+const COMMAND_TIMEOUT_LONG_MS = 120_000;
+const FILE_SIZE_WARNING_THRESHOLD_BYTES = 100 * 1024;
+const FILE_SIZE_LARGE_THRESHOLD_BYTES = 1024 * 1024;
 
 // Tool result size limits (to prevent context bloat)
 const TOOL_RESULT_MAX_CHARS = 8000;      // ~2000 tokens max per tool result
@@ -935,9 +934,10 @@ Examples:
           const escapedPath = shellEscape(path);
           
           // Escape special sed characters in search and replace strings
-          // For sed, we need to escape: / \ & 
-          const sedEscapedSearch = search.replace(/[/\\&]/g, '\\$&').replace(/\n/g, '\\n');
-          const sedEscapedReplace = replace.replace(/[/\\&]/g, '\\$&').replace(/\n/g, '\\n');
+          // For sed with | delimiter, escape: | \ &
+          // Also escape newlines for sed compatibility
+          const sedEscapedSearch = search.replace(/[|\\&]/g, '\\$&').replace(/\n/g, '\\n');
+          const sedEscapedReplace = replace.replace(/[|\\&]/g, '\\$&').replace(/\n/g, '\\n');
           
           // Use | as delimiter to avoid issues with / in strings
           const sedCommand = all 
@@ -1143,7 +1143,7 @@ Examples:
 - Check web port: port=8080
 - Check database: port=5432`,
       inputSchema: z.object({
-        port: z.number().describe('Port number to check (e.g., 8080, 3000)'),
+        port: z.number().int().min(1).max(65535).describe('Port number to check (e.g., 8080, 3000)'),
       }),
       execute: async ({ port }) => {
         const terminalId = await getActiveTerminalId();
@@ -1412,7 +1412,8 @@ Examples:
           
           // Use grep with extended regex and context
           const pattern = errorPatterns.join('|');
-          const command = `grep -E -n -${context === 0 ? '' : `${context}`} '${pattern}' ${escapedPath} 2>/dev/null | head -n ${maxHits * (context * 2 + 1)}`;
+          const contextFlag = context > 0 ? `-C ${context}` : '';
+          const command = `grep -E -n ${contextFlag} '${pattern}' ${escapedPath} 2>/dev/null | head -n ${maxHits * (context * 2 + 1)}`;
           
           const output = await executeCommand(command, terminalId);
           

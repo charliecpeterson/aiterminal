@@ -196,21 +196,11 @@ export function useTabManagement(
   }, []);
 
   const closePane = useCallback((tabId: number, paneId: number) => {
-    // Check if this is the last pane using functional update
-    let shouldCloseTab = false;
-    setTabs((prevTabs) => {
-      const tab = prevTabs.find(t => t.id === tabId);
-      if (!tab) return prevTabs;
+    // Check synchronously from current tabs state
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
 
-      if (tab.panes.length === 1) {
-        shouldCloseTab = true;
-        return prevTabs; // Will close the entire tab below
-      }
-
-      return prevTabs;
-    });
-
-    if (shouldCloseTab) {
+    if (tab.panes.length <= 1) {
       closeTab(tabId);
       return;
     }
@@ -253,7 +243,7 @@ export function useTabManagement(
         };
       })
     );
-  }, [ptyToProfileMap, updateConnection, closeTab]);
+  }, [tabs, ptyToProfileMap, updateConnection, closeTab]);
 
   const setFocusedPane = useCallback((tabId: number, paneId: number) => {
     setTabs((prev) =>

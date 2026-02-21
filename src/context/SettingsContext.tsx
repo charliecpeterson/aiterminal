@@ -120,8 +120,7 @@ const SettingsProviderInner: React.FC<{ children: React.ReactNode }> = ({ childr
             
             setSettings(loadedSettings);
         } catch (error) {
-            log.error('Failed to load settings', error);
-            // Load defaults if settings file is corrupted
+            log.error('Failed to load settings, falling back to defaults', error);
             const defaultSettings = {
                 appearance: { theme: 'dark', font_size: 14, font_family: 'Monaco, monospace' },
                 ai: {

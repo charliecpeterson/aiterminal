@@ -114,9 +114,12 @@ SUMMARY:`;
       baseURL: settings.url || 'https://api.openai.com/v1',
     });
     
-    // Use configured simple_model from auto-routing settings, or fall back to gpt-4o-mini for gpt-4 users
-    const summaryModel = settings.auto_routing?.simple_model 
-      || (settings.model.includes('gpt-4') ? 'gpt-4o-mini' : settings.model);
+    // Use configured simple_model, or pick a cheaper model for summarization
+    const summaryModel = settings.auto_routing?.simple_model
+      || (settings.model.includes('gpt-4') ? 'gpt-4o-mini'
+        : settings.model.includes('claude-3-opus') ? 'claude-3-haiku-20240307'
+        : settings.model.includes('claude-3-5-sonnet') ? 'claude-3-haiku-20240307'
+        : settings.model);
     
     const result = await generateText({
       model: openai(summaryModel),

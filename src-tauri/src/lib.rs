@@ -41,6 +41,8 @@ use autocomplete::{
 };
 use chat::{ai_chat, ai_chat_stream, test_ai_connection};
 use context_index::{ContextChunkInput, ContextIndexSyncStats, RetrievedChunk};
+// NOTE: history::get_shell_history is superseded by tools::get_shell_history_tool (PTY-based)
+#[allow(unused_imports)]
 use history::get_shell_history;
 use keychain::{
     check_keychain_available, delete_api_key_from_keychain, get_api_key_from_keychain,

@@ -11,9 +11,9 @@ const log = createLogger('StreamingBuffer');
 
 // Configuration
 const CONFIG = {
-  FLUSH_INTERVAL_MS: 50, // Flush buffer every 50ms
-  MAX_BUFFER_SIZE: 500, // Flush if buffer exceeds 500 chars
-  IDLE_FLUSH_MS: 150, // If no new data for 150ms, flush immediately
+  FLUSH_INTERVAL_MS: 50,
+  MAX_BUFFER_SIZE: 500,
+  IDLE_FLUSH_MS: 150,
 };
 
 export class StreamingBuffer {
