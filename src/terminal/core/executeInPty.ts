@@ -122,7 +122,16 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
           resolveTimer = setTimeout(() => {
             // Join captured output and clean it up
             let finalOutput = capturedOutput.join('');
-            
+
+            // Debug: log if we captured multiple chunks (might indicate duplication)
+            if (capturedOutput.length > 1) {
+              console.warn('[executeInPty] Captured multiple chunks:', {
+                chunks: capturedOutput.length,
+                capturedOutput,
+                command: options.command,
+              });
+            }
+
             // Remove ANSI escape sequences for cleaner output
             finalOutput = finalOutput
               .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Remove ANSI codes
