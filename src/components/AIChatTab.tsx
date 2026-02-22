@@ -106,10 +106,10 @@ export function AIChatTab(props: {
   ), [handleRunCommand]);
 
   // Convert pending approvals to tool executions (memoized to prevent unnecessary re-renders)
-  const toolExecutions = useMemo<ToolExecution[]>(() => 
+  const toolExecutions = useMemo<ToolExecution[]>(() =>
     pendingApprovals.map(approval => ({
       id: approval.id,
-      toolName: 'execute_command',
+      toolName: approval.description || 'execute_command',
       status: 'pending' as const,
       command: approval.command,
       workingDirectory: approval.cwd,

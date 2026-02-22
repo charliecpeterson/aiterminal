@@ -115,6 +115,7 @@ export interface ChatMessage {
 export interface PendingApproval {
   id: string;
   command: string;
+  description?: string; // Human-friendly summary (e.g., "Write to nwchem.inp")
   reason: string;
   category: string;
   terminalId: number;

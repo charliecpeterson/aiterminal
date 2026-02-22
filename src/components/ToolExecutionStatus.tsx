@@ -66,10 +66,12 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
             </div>
 
             {execution.command && (
-              <div style={toolExecutionStyles.command}>
-                <span style={toolExecutionStyles.label}>Command:</span>
+              <details style={toolExecutionStyles.commandDetails}>
+                <summary style={toolExecutionStyles.commandSummary}>
+                  View command
+                </summary>
                 <code style={toolExecutionStyles.code}>{execution.command}</code>
-              </div>
+              </details>
             )}
 
             {execution.workingDirectory && (

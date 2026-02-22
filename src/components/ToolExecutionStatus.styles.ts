@@ -74,6 +74,19 @@ export const toolExecutionStyles = {
     gap: tokens.spacing[4],
   } as CSSProperties,
 
+  commandDetails: {
+    margin: `${tokens.spacing[3]} 0`,
+    cursor: 'pointer',
+  } as CSSProperties,
+
+  commandSummary: {
+    fontSize: tokens.fontSize.sm,
+    color: tokens.colors.text.disabled,
+    marginBottom: tokens.spacing[2],
+    userSelect: 'none',
+    cursor: 'pointer',
+  } as CSSProperties,
+
   directory: {
     margin: `${tokens.spacing[3]} 0`,
     display: 'flex',

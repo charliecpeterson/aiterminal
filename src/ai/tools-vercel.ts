@@ -24,6 +24,41 @@ function shellEscape(str: string): string {
   return `'${str.replace(/'/g, "'\\''")}'`;
 }
 
+/**
+ * Create a shell command to write content to a file using heredoc or base64.
+ * Uses heredoc for text content (more readable in approval UI).
+ * Falls back to base64 for content with special characters that break heredoc.
+ *
+ * @param path - File path (will be shell-escaped)
+ * @param content - Content to write
+ * @param append - If true, append instead of overwrite (>> vs >)
+ * @returns Shell command string
+ */
+function createFileWriteCommand(path: string, content: string, append: boolean = false): string {
+  const escapedPath = shellEscape(path);
+  const redirect = append ? '>>' : '>';
+
+  // Check if content contains the EOF marker or other heredoc-breaking patterns
+  // If it does, fall back to base64 for safety
+  const hasEOF = content.includes('EOF_MARKER_');
+  const hasBackticks = content.includes('`');
+  const hasComplexEscapes = /\$\{|\$\(/.test(content);
+
+  if (hasEOF || (hasBackticks && hasComplexEscapes)) {
+    // Fall back to base64 for content that would break heredoc
+    const base64Content = btoa(unescape(encodeURIComponent(content)));
+    return `echo '${base64Content}' | base64 -d ${redirect} ${escapedPath}`;
+  }
+
+  // Use heredoc for clean, reviewable text content
+  // The EOF_MARKER_END ensures uniqueness
+  const marker = 'EOF_MARKER_END';
+  // Use actual newlines (template literal with line breaks), not \n escapes
+  return `cat ${redirect} ${escapedPath} << '${marker}'
+${content}
+${marker}`;
+}
+
 const COMMAND_TIMEOUT_QUICK_MS = 10_000;
 const COMMAND_TIMEOUT_DEFAULT_MS = 30_000;
 const COMMAND_TIMEOUT_LONG_MS = 120_000;
@@ -109,13 +144,14 @@ const pendingApprovalPromises = new Map<string, {
 
 async function requestApproval(params: {
   command: string;
+  description?: string; // Human-friendly summary
   terminalId: number;
   cwd?: string;
   reason: string;
   category: string;
   onPendingApproval?: (approval: PendingApproval) => void;
 }): Promise<string> {
-  const { command, terminalId, cwd, reason, category, onPendingApproval } = params;
+  const { command, description, terminalId, cwd, reason, category, onPendingApproval } = params;
 
   if (!onPendingApproval) {
     throw new Error('Approval required but handler is not available');
@@ -124,6 +160,7 @@ async function requestApproval(params: {
   const approval: PendingApproval = {
     id: `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     command,
+    description,
     reason,
     category,
     terminalId,
@@ -948,8 +985,11 @@ Examples:
           const command = `sed -i.bak '${sedCommand}' ${escapedPath} && rm ${escapedPath}.bak`;
           
           try {
+            // Extract filename from path for clean description
+            const filename = path.split('/').pop() || path;
             const approvalResult = await requestApproval({
               command,
+              description: `Replace text in ${filename}`,
               terminalId,
               cwd,
               reason: 'Replace text in file',
@@ -990,18 +1030,15 @@ Examples:
         const terminalId = await getActiveTerminalId();
         const cwd = await getTerminalCwd(terminalId);
         try {
-          // Use base64 encoding to avoid heredoc issues with special characters
-          const escapedPath = shellEscape(path);
-          
-          // Encode content as base64 (btoa works in browser)
-          const base64Content = btoa(unescape(encodeURIComponent(content)));
-          
-          // Write using base64 decode (works on both macOS and Linux)
-          const command = `echo '${base64Content}' | base64 -d > ${escapedPath}`;
-          
+          // Create heredoc command (falls back to base64 if needed)
+          const command = createFileWriteCommand(path, content, false);
+
           try {
+            // Extract filename from path for clean description
+            const filename = path.split('/').pop() || path;
             const approvalResult = await requestApproval({
               command,
+              description: `Write to ${filename}`,
               terminalId,
               cwd,
               reason: 'Write file content',
@@ -1041,18 +1078,15 @@ Examples:
         const terminalId = await getActiveTerminalId();
         const cwd = await getTerminalCwd(terminalId);
         try {
-          // Use base64 encoding to avoid heredoc issues
-          const escapedPath = shellEscape(path);
-          
-          // Encode content as base64 (btoa works in browser)
-          const base64Content = btoa(unescape(encodeURIComponent(content)));
-          
-          // Append using base64 decode
-          const command = `echo '${base64Content}' | base64 -d >> ${escapedPath}`;
-          
+          // Create heredoc command for appending (falls back to base64 if needed)
+          const command = createFileWriteCommand(path, content, true);
+
           try {
+            // Extract filename from path for clean description
+            const filename = path.split('/').pop() || path;
             const approvalResult = await requestApproval({
               command,
+              description: `Append to ${filename}`,
               terminalId,
               cwd,
               reason: 'Append content to file',
