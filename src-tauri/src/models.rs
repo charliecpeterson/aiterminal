@@ -232,7 +232,7 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             ptys: Mutex::new(HashMap::new()),
-            next_id: Mutex::new(0),
+            next_id: Mutex::new(1), // Start at 1 so 0 can mean "no active terminal"
             api_key_cache: Mutex::new(HashMap::new()),
             keychain_lock: Mutex::new(()),
             ssh_sessions: Arc::new(Mutex::new(HashMap::new())),

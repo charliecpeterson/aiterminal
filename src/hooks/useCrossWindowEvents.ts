@@ -62,23 +62,42 @@ export function useCrossWindowEvents(options: UseCrossWindowEventsOptions) {
   // Listen for active terminal updates in AI window
   useEffect(() => {
     if (!isAiWindow) return;
-    
+
+    log.info('[AI Panel] Setting up terminal ID listener');
+
     const unlistenPromise = listen<{ id: number | null }>("ai-panel:active-terminal", (event) => {
       const terminalId = event.payload?.id ?? null;
-      log.debug('AI Panel received terminal ID:', event.payload);
-      
-      // Ignore terminal ID 0 unless it's explicitly the only terminal
-      // (0 might be a valid terminal, but often it's a default/uninitialized value)
+      log.info('[AI Panel] Received terminal ID event:', { terminalId, payload: event.payload });
+
+      // Terminal ID 0 is valid (it's the first terminal)
+      // Only reject null/undefined
       if (terminalId !== null && terminalId !== undefined) {
+        log.info('[AI Panel] Updating terminal ID to:', terminalId);
         onMainActiveTabIdChange?.(terminalId);
+
+        // Update Rust backend's active terminal so AI tools can query it
+        invoke('focus_terminal', { id: terminalId })
+          .then(() => {
+            log.info('[AI Panel] Successfully set active terminal in Rust backend:', terminalId);
+          })
+          .catch((err) => {
+            log.error('[AI Panel] Failed to set active terminal in Rust backend:', err);
+          });
+      } else {
+        log.warn('[AI Panel] Ignoring invalid terminal ID:', terminalId);
       }
     });
-    
+
     // Request initial state from main window
-    emitTo("main", "ai-panel:request-active-terminal", {}).catch((err) => {
-      log.debug('Failed to request initial terminal ID', err);
-    });
-    
+    log.info('[AI Panel] Requesting initial terminal ID from main window');
+    emitTo("main", "ai-panel:request-active-terminal", {})
+      .then(() => {
+        log.info('[AI Panel] Successfully sent terminal ID request to main window');
+      })
+      .catch((err) => {
+        log.error('[AI Panel] Failed to request initial terminal ID:', err);
+      });
+
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
@@ -87,11 +106,19 @@ export function useCrossWindowEvents(options: UseCrossWindowEventsOptions) {
   // Listen for active terminal updates in Quick Actions window
   useEffect(() => {
     if (!isQuickActionsWindow) return;
-    
+
     const unlistenPromise = listen<{ id: number | null }>("quick-actions:active-terminal", (event) => {
-      onMainActiveTabIdChange?.(event.payload?.id ?? null);
+      const terminalId = event.payload?.id ?? null;
+      onMainActiveTabIdChange?.(terminalId);
+
+      // Update Rust backend's active terminal so AI tools can query it
+      if (terminalId !== null && terminalId !== undefined) {
+        invoke('focus_terminal', { id: terminalId }).catch((err) => {
+          log.warn('Quick Actions failed to set active terminal in Rust backend:', err);
+        });
+      }
     });
-    
+
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
@@ -100,20 +127,24 @@ export function useCrossWindowEvents(options: UseCrossWindowEventsOptions) {
   // Broadcast active terminal changes from main window
   useEffect(() => {
     if (isAiWindow || isQuickActionsWindow) return;
-    
+
     const activeTab = tabs.find(t => t.id === activeTabId);
     const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || activeTabId;
-    
-    log.debug('Broadcasting terminal ID:', {
+
+    log.info('[Main Window] Broadcasting terminal ID:', {
       activeTabId,
       focusedPaneId,
-      activeTab: activeTab ? { id: activeTab.id, focusedPaneId: activeTab.focusedPaneId } : null
+      activeTab: activeTab ? { id: activeTab.id, focusedPaneId: activeTab.focusedPaneId, panes: activeTab.panes } : null
     });
-    
-    emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId }).catch((err) => {
-      log.debug('Failed to notify AI panel of active terminal', err);
-    });
-    
+
+    emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId })
+      .then(() => {
+        log.info('[Main Window] Successfully sent terminal ID to AI panel:', focusedPaneId);
+      })
+      .catch((err) => {
+        log.warn('[Main Window] Failed to notify AI panel of active terminal:', err);
+      });
+
     emitTo("quick-actions", "quick-actions:active-terminal", { id: focusedPaneId }).catch((err) => {
       log.debug('Failed to notify quick actions of active terminal', err);
     });
@@ -122,20 +153,28 @@ export function useCrossWindowEvents(options: UseCrossWindowEventsOptions) {
   // Listen for requests for current active terminal (when AI panel opens)
   useEffect(() => {
     if (isAiWindow || isQuickActionsWindow) return;
-    
+
     const unlistenPromise = listen<object>("ai-panel:request-active-terminal", () => {
       // Read current values from refs to avoid stale closures
       const currentActiveTabId = activeTabIdRef.current;
       const currentTabs = tabsRef.current;
-      
+
       const activeTab = currentTabs.find(t => t.id === currentActiveTabId);
       const focusedPaneId = activeTab?.focusedPaneId || activeTab?.panes[0]?.id || currentActiveTabId;
-      
-      log.debug('AI Panel requested current terminal, sending:', focusedPaneId);
-      
-      emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId }).catch((err) => {
-        log.debug('Failed to send requested terminal ID', err);
+
+      log.info('[Main Window] AI Panel requested current terminal, responding with:', {
+        currentActiveTabId,
+        focusedPaneId,
+        activeTab: activeTab ? { id: activeTab.id, focusedPaneId: activeTab.focusedPaneId, panes: activeTab.panes } : null
       });
+
+      emitTo("ai-panel", "ai-panel:active-terminal", { id: focusedPaneId })
+        .then(() => {
+          log.info('[Main Window] Successfully sent requested terminal ID to AI panel:', focusedPaneId);
+        })
+        .catch((err) => {
+          log.error('[Main Window] Failed to send requested terminal ID:', err);
+        });
     });
     
     return () => {

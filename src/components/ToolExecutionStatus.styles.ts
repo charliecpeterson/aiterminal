@@ -17,6 +17,10 @@ export const toolExecutionStyles = {
     marginBottom: tokens.spacing[4],
     fontSize: tokens.fontSize.md,
     animation: 'slideIn 0.15s ease-out',
+    maxHeight: '400px', // Prevent approval items from being too tall
+    overflowY: 'auto',  // Allow scrolling if content is long
+    display: 'flex',
+    flexDirection: 'column',
   } as CSSProperties,
 
   itemPending: {
@@ -91,16 +95,30 @@ export const toolExecutionStyles = {
     fontFamily: tokens.fontFamily.mono,
     fontSize: tokens.fontSize.sm,
     flex: 1,
-    wordBreak: 'break-all',
+    overflowWrap: 'break-word', // Break at word boundaries, not in middle of words
+    wordBreak: 'break-word',    // Fallback for long unbreakable strings
+    overflowX: 'auto',          // Allow horizontal scrolling if needed
+    maxWidth: '100%',           // Prevent overflow beyond container
   } as CSSProperties,
 
   // Actions
   actions: {
     display: 'flex',
     gap: tokens.spacing[4],
-    marginTop: tokens.spacing[6],
-    paddingTop: tokens.spacing[4],
+    marginTop: 'auto',  // Push to bottom of flex container
+    paddingTop: tokens.spacing[6],
     borderTop: `${tokens.borderWidth.thin} solid ${tokens.colors.overlay.stronger}`,
+    flexShrink: 0,      // Prevent buttons from shrinking
+    background: tokens.colors.accentOverlay.light, // Match item background
+    position: 'sticky', // Make buttons sticky when scrolling long content
+    bottom: 0,
+    marginLeft: `calc(-1 * ${tokens.spacing[7]})`,  // Counteract item padding
+    marginRight: `calc(-1 * ${tokens.spacing[7]})`,
+    marginBottom: `calc(-1 * ${tokens.spacing[6]})`,
+    paddingLeft: tokens.spacing[7],
+    paddingRight: tokens.spacing[7],
+    paddingBottom: tokens.spacing[6],
+    borderRadius: `0 0 ${tokens.borderRadius.xl} ${tokens.borderRadius.xl}`, // Match item border radius
   } as CSSProperties,
 
   actionButton: {
