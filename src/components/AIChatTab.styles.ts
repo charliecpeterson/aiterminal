@@ -290,4 +290,29 @@ export const chatStyles = {
     lineHeight: '1.4',
     wordBreak: 'break-word',
   } as CSSProperties,
+
+  // Thinking indicator
+  thinkingContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[8],
+    padding: `${tokens.spacing[8]} ${tokens.spacing[12]}`,
+    marginRight: '24px',
+    paddingLeft: tokens.spacing[4],
+    color: chatColors.textMuted,
+    fontSize: tokens.fontSize.sm,
+  } as CSSProperties,
+
+  thinkingDots: {
+    display: 'flex',
+    gap: tokens.spacing[2],
+  } as CSSProperties,
+
+  thinkingDot: {
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    background: chatColors.textMuted,
+    opacity: 0.4,
+  } as CSSProperties,
 };

@@ -158,43 +158,57 @@ export function AIChatTab(props: {
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <div 
-              key={message.id} 
-              style={
-                message.role === 'user'
-                  ? { ...chatStyles.message, ...chatStyles.messageUser }
-                  : { ...chatStyles.message, ...chatStyles.messageAssistant }
-              }
-            >
-              <div style={chatStyles.messageMeta}>
-                <span style={chatStyles.messageRole}>{roleLabel(message.role)}</span>
-                <span style={chatStyles.messageTime}>{formatChatTime(message.timestamp)}</span>
+          <>
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                style={
+                  message.role === 'user'
+                    ? { ...chatStyles.message, ...chatStyles.messageUser }
+                    : { ...chatStyles.message, ...chatStyles.messageAssistant }
+                }
+              >
+                <div style={chatStyles.messageMeta}>
+                  <span style={chatStyles.messageRole}>{roleLabel(message.role)}</span>
+                  <span style={chatStyles.messageTime}>{formatChatTime(message.timestamp)}</span>
+                </div>
+                <div style={chatStyles.messageBody}>{renderMarkdown(message.content)}</div>
+
+                {message.role === 'assistant' && message.toolProgress && message.toolProgress.length > 0 && (
+                  <ToolProgressDisplay toolProgress={message.toolProgress} />
+                )}
+
+                {message.role === 'assistant' && message.metrics && (
+                  <MessageMetrics
+                    metrics={message.metrics}
+                    usedContext={message.usedContext}
+                    routingDecision={message.routingDecision}
+                    promptEnhancement={message.promptEnhancement}
+                  />
+                )}
+
+                {/* Show routing info for user messages if available */}
+                {message.role === 'user' && (message.routingDecision || message.promptEnhancement) && (
+                  <MessageMetrics
+                    routingDecision={message.routingDecision}
+                    promptEnhancement={message.promptEnhancement}
+                  />
+                )}
               </div>
-              <div style={chatStyles.messageBody}>{renderMarkdown(message.content)}</div>
-              
-              {message.role === 'assistant' && message.toolProgress && message.toolProgress.length > 0 && (
-                <ToolProgressDisplay toolProgress={message.toolProgress} />
-              )}
-              
-              {message.role === 'assistant' && message.metrics && (
-                <MessageMetrics 
-                  metrics={message.metrics}
-                  usedContext={message.usedContext}
-                  routingDecision={message.routingDecision}
-                  promptEnhancement={message.promptEnhancement}
-                />
-              )}
-              
-              {/* Show routing info for user messages if available */}
-              {message.role === 'user' && (message.routingDecision || message.promptEnhancement) && (
-                <MessageMetrics 
-                  routingDecision={message.routingDecision}
-                  promptEnhancement={message.promptEnhancement}
-                />
-              )}
-            </div>
-          ))
+            ))}
+
+            {/* Show thinking indicator when sending */}
+            {isSending && (
+              <div style={chatStyles.thinkingContainer}>
+                <div style={chatStyles.thinkingDots}>
+                  <div style={chatStyles.thinkingDot} className="animate-thinking-dot-1" />
+                  <div style={chatStyles.thinkingDot} className="animate-thinking-dot-2" />
+                  <div style={chatStyles.thinkingDot} className="animate-thinking-dot-3" />
+                </div>
+                <span>Thinking...</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 

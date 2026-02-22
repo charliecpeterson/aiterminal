@@ -1007,6 +1007,23 @@ textarea:focus-visible {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.animate-thinking-dot-1 {
+  animation: thinking-pulse 1.4s ease-in-out infinite;
+}
+
+.animate-thinking-dot-2 {
+  animation: thinking-pulse 1.4s ease-in-out infinite 0.2s;
+}
+
+.animate-thinking-dot-3 {
+  animation: thinking-pulse 1.4s ease-in-out infinite 0.4s;
+}
+
 /* Component hover classes — replaces JS hoverStates */
 
 /* AutocompleteMenu */

@@ -104,12 +104,12 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
             clearTimeout(resolveTimer);
             resolveTimer = null;
           }
-          
+
           // Extract output between markers
           const endIndex = outputBuffer.indexOf(endMarker);
           const output = outputBuffer.substring(0, endIndex);
           capturedOutput.push(output);
-          
+
           const afterMarker = outputBuffer.substring(endIndex + endMarker.length);
           if (afterMarker.startsWith(':')) {
             const match = afterMarker.slice(1).match(/^\d+/);
@@ -117,6 +117,9 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
               capturedExitCode = parseInt(match[0], 10);
             }
           }
+
+          // Stop capturing to prevent duplicate processing
+          capturing = false;
           
           // Wait a tiny bit to ensure we got all the data
           resolveTimer = setTimeout(() => {
