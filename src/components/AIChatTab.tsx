@@ -112,6 +112,7 @@ export function AIChatTab(props: {
       toolName: approval.description || 'execute_command',
       status: 'pending' as const,
       command: approval.command,
+      contentPreview: approval.contentPreview,
       workingDirectory: approval.cwd,
       startTime: approval.timestamp,
     }))

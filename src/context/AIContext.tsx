@@ -116,6 +116,7 @@ export interface PendingApproval {
   id: string;
   command: string;
   description?: string; // Human-friendly summary (e.g., "Write to nwchem.inp")
+  contentPreview?: string; // For file operations, preview of the content being written
   reason: string;
   category: string;
   terminalId: number;

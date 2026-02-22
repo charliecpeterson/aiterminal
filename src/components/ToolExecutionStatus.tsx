@@ -14,6 +14,7 @@ export interface ToolExecution {
   toolName: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   command?: string;
+  contentPreview?: string; // For file writes, preview of content
   workingDirectory?: string;
   result?: string;
   error?: string;
@@ -64,6 +65,13 @@ export function ToolExecutionStatus({ executions, onApprove, onDeny }: ToolExecu
                 <span style={toolExecutionStyles.statusText}>Awaiting approval</span>
               )}
             </div>
+
+            {execution.contentPreview && (
+              <div style={toolExecutionStyles.contentPreview}>
+                <span style={toolExecutionStyles.label}>Content:</span>
+                <pre style={toolExecutionStyles.previewCode}>{execution.contentPreview}</pre>
+              </div>
+            )}
 
             {execution.command && (
               <details style={toolExecutionStyles.commandDetails}>

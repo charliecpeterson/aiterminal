@@ -87,6 +87,27 @@ export const toolExecutionStyles = {
     cursor: 'pointer',
   } as CSSProperties,
 
+  contentPreview: {
+    margin: `${tokens.spacing[4]} 0`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[2],
+  } as CSSProperties,
+
+  previewCode: {
+    background: tokens.colors.overlay.dark,
+    padding: `${tokens.spacing[4]} ${tokens.spacing[5]}`,
+    borderRadius: tokens.borderRadius.md,
+    fontFamily: tokens.fontFamily.mono,
+    fontSize: tokens.fontSize.sm,
+    overflowX: 'auto',
+    maxHeight: '200px',
+    overflowY: 'auto',
+    whiteSpace: 'pre',
+    margin: 0,
+    border: `1px solid ${tokens.colors.overlay.stronger}`,
+  } as CSSProperties,
+
   directory: {
     margin: `${tokens.spacing[3]} 0`,
     display: 'flex',

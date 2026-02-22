@@ -129,13 +129,14 @@ const pendingApprovalPromises = new Map<string, {
 async function requestApproval(params: {
   command: string;
   description?: string; // Human-friendly summary
+  contentPreview?: string; // For file operations, preview of content
   terminalId: number;
   cwd?: string;
   reason: string;
   category: string;
   onPendingApproval?: (approval: PendingApproval) => void;
 }): Promise<string> {
-  const { command, description, terminalId, cwd, reason, category, onPendingApproval } = params;
+  const { command, description, contentPreview, terminalId, cwd, reason, category, onPendingApproval } = params;
 
   if (!onPendingApproval) {
     throw new Error('Approval required but handler is not available');
@@ -145,6 +146,7 @@ async function requestApproval(params: {
     id: `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     command,
     description,
+    contentPreview,
     reason,
     category,
     terminalId,
@@ -1030,9 +1032,19 @@ Examples:
           try {
             // Extract filename from path for clean description
             const filename = path.split('/').pop() || path;
+
+            // Create content preview (first 500 chars or 10 lines, whichever is smaller)
+            const lines = content.split('\n');
+            const preview = lines.length > 10
+              ? lines.slice(0, 10).join('\n') + '\n...(truncated)'
+              : content.length > 500
+                ? content.slice(0, 500) + '\n...(truncated)'
+                : content;
+
             const approvalResult = await requestApproval({
               command,
               description: `Write to ${filename}`,
+              contentPreview: preview,
               terminalId,
               cwd,
               reason: 'Write file content',
@@ -1078,9 +1090,19 @@ Examples:
           try {
             // Extract filename from path for clean description
             const filename = path.split('/').pop() || path;
+
+            // Create content preview
+            const lines = content.split('\n');
+            const preview = lines.length > 10
+              ? lines.slice(0, 10).join('\n') + '\n...(truncated)'
+              : content.length > 500
+                ? content.slice(0, 500) + '\n...(truncated)'
+                : content;
+
             const approvalResult = await requestApproval({
               command,
               description: `Append to ${filename}`,
+              contentPreview: preview,
               terminalId,
               cwd,
               reason: 'Append content to file',
