@@ -494,10 +494,20 @@ body, html, #root {
   z-index: 10;
 }
 
-/* Ensure terminal itself has text cursor, not pointer */
+/* Ensure terminal itself has text cursor, not pointer.
+   WebGL addon creates overlay canvases that intercept cursor styling;
+   pointer-events:none lets mouse events fall through to .xterm-screen. */
 .xterm,
 .xterm-screen,
 .xterm-viewport {
+  cursor: text !important;
+}
+.xterm .xterm-screen canvas {
+  pointer-events: none !important;
+  cursor: text !important;
+}
+.xterm.xterm-cursor-pointer,
+.xterm .xterm-cursor-pointer {
   cursor: text !important;
 }
 
@@ -837,17 +847,7 @@ body, html, #root {
   content: '';
 }
 
-/* Style for links in terminal - xterm applies underline decoration inline */
-.xterm-screen .xterm-link-layer a,
-.xterm-screen .xterm-link-layer {
-  cursor: pointer; /* Pointer only for clickable links */
-}
-
-/* Ensure normal text cursor for terminal viewport */
-.xterm-viewport,
-.xterm-screen {
-  cursor: text;
-}
+/* Duplicate cursor rules removed — handled above with !important */
 
 /* ============================================================================
    UTILITY CLASSES — Buttons, focus, hover, animations
