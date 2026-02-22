@@ -25,9 +25,9 @@ function shellEscape(str: string): string {
 }
 
 /**
- * Create a shell command to write content to a file using heredoc or base64.
- * Uses heredoc for text content (more readable in approval UI).
- * Falls back to base64 for content with special characters that break heredoc.
+ * Create a shell command to write content to a file using base64 encoding.
+ * Base64 is used because heredocs don't work reliably with PTY execution
+ * (multi-line commands get interpreted interactively line-by-line).
  *
  * @param path - File path (will be shell-escaped)
  * @param content - Content to write
@@ -38,25 +38,9 @@ function createFileWriteCommand(path: string, content: string, append: boolean =
   const escapedPath = shellEscape(path);
   const redirect = append ? '>>' : '>';
 
-  // Check if content contains the EOF marker or other heredoc-breaking patterns
-  // If it does, fall back to base64 for safety
-  const hasEOF = content.includes('EOF_MARKER_');
-  const hasBackticks = content.includes('`');
-  const hasComplexEscapes = /\$\{|\$\(/.test(content);
-
-  if (hasEOF || (hasBackticks && hasComplexEscapes)) {
-    // Fall back to base64 for content that would break heredoc
-    const base64Content = btoa(unescape(encodeURIComponent(content)));
-    return `echo '${base64Content}' | base64 -d ${redirect} ${escapedPath}`;
-  }
-
-  // Use heredoc for clean, reviewable text content
-  // The EOF_MARKER_END ensures uniqueness
-  const marker = 'EOF_MARKER_END';
-  // Use actual newlines (template literal with line breaks), not \n escapes
-  return `cat ${redirect} ${escapedPath} << '${marker}'
-${content}
-${marker}`;
+  // Use base64 encoding - works reliably with PTY since it's a single-line command
+  const base64Content = btoa(unescape(encodeURIComponent(content)));
+  return `echo '${base64Content}' | base64 -d ${redirect} ${escapedPath}`;
 }
 
 const COMMAND_TIMEOUT_QUICK_MS = 10_000;
@@ -218,7 +202,17 @@ async function getTerminalCwd(terminalId: number): Promise<string> {
       command: 'pwd',
       timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
     });
-    return result.output.trim();
+    const cwd = result.output.trim();
+    log.debug('[getTerminalCwd] Got CWD:', { terminalId, cwd, rawOutput: result.output });
+
+    // Defensive: detect if cwd looks duplicated (contains multiple spaces with same path)
+    if (cwd.includes(' ') && cwd.split(' ').length > 1) {
+      log.warn('[getTerminalCwd] CWD appears duplicated:', cwd);
+      // Return just the first path
+      return cwd.split(' ')[0];
+    }
+
+    return cwd;
   } catch (error) {
     log.error('Failed to get terminal CWD', error);
     // Fallback to home directory
