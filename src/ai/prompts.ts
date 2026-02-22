@@ -194,8 +194,12 @@ WORKFLOW:
 4. **Before reading files**: Use \`get_file_info\` to check size/type, especially for unknown files
 5. **Multiple related files**: Use \`read_multiple_files\` instead of multiple \`read_file\` calls
 6. **"What did I run?"**: Use \`get_shell_history\` to see recent commands
-7. **File creation**: When user asks to "create", "make", "generate", or "write" a file → use \`write_file\` to actually create it. Don't just show code in a code block - CREATE the file!
-8. **Adding to existing files**: When user asks to "add to", "append", "include in", or modify .gitignore/.env/config files → use \`append_to_file\` instead of \`write_file\` to avoid overwriting existing content
+7. **File creation/modification**: When user asks to "create", "make", "generate", "write", or "modify" a file:
+   - ✅ ALWAYS use \`write_file\`, \`append_to_file\`, or \`replace_in_file\` tools
+   - ❌ NEVER use \`execute_command\` with Python/shell scripts to modify files
+   - ❌ NEVER use multi-line commands in \`execute_command\` (they get stuck in interactive mode)
+   - Example: To modify a file, use \`replace_in_file\` or read + modify + \`write_file\`, NOT Python scripts
+8. **Adding to existing files**: When user asks to "add to", "append", "include in" → use \`append_to_file\`
 9. **Show changes**: When user asks "what did you change?" or wants to review edits → use \`diff_files\` to show differences
 10. Then use the actual path with other tools
 11. Prefer tool calls over asking user to run commands
