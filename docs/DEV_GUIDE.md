@@ -385,7 +385,14 @@ import { YourComponent } from './components/YourComponent';
 
 ### Adding an AI Tool
 
-See [CLAUDE.md](../CLAUDE.md) for comprehensive AI tool implementation guide.
+AI Terminal has two types of tools:
+
+**1. PTY Tools (29 built-in)** - Run in terminal session, work over SSH
+**2. MCP Tools** - External APIs (GitHub, Slack, web search, etc.)
+
+#### Adding a PTY Tool
+
+See [CLAUDE.md](../CLAUDE.md) for comprehensive implementation guide.
 
 **Quick overview:**
 
@@ -417,6 +424,62 @@ See [CLAUDE.md](../CLAUDE.md) for comprehensive AI tool implementation guide.
 4. **Update prompts** (`src/ai/prompts.ts`):
    - Add tool to capabilities list
    - Update workflow if needed
+
+#### MCP Integration Architecture
+
+**MCP servers run as separate Node.js processes** spawned by the Rust backend:
+
+1. **User adds MCP** via Settings UI → stored in `~/.config/aiterminal/settings.json`
+2. **API keys injected** at runtime (`src/ai/tools-vercel.ts`):
+   ```typescript
+   const configsWithEnv = configs.map(config => {
+     if (config.api_key_env_var && config.api_key) {
+       return {
+         ...config,
+         env: { ...config.env, [config.api_key_env_var]: config.api_key },
+       };
+     }
+     return config;
+   });
+   ```
+3. **Rust spawns MCP servers** (`src-tauri/src/mcp/`) using `npx` commands
+4. **TypeScript wraps MCP tools** with approval system and error handling
+5. **AI can use both** PTY + MCP tools in same conversation
+
+**Key Difference:**
+- PTY tools: Run via `executeInPty()` → works in SSH/containers
+- MCP tools: Run locally → only for external APIs (GitHub, Slack, etc.)
+
+**Default MCPs:**
+- Brave Search (disabled until user adds API key)
+- Users can add 700+ community MCPs via "+ Add Custom MCP" form
+
+#### AI Quality Improvements (2026)
+
+**Head+Tail Truncation:**
+- Old: Kept first 3000 chars of tool output
+- New: Keeps first 4000 + last 4000 chars
+- Why: Errors appear at end of logs (build failures, test results)
+- Location: `truncateToolResult()` in `src/ai/tools-vercel.ts`
+
+**Dynamic Step Limits:**
+- Simple queries: 5 steps (e.g., "read package.json")
+- Moderate: 15 steps (e.g., "fix this error")
+- Complex: 25 steps (e.g., "debug why build fails")
+- Based on `queryRouter` scoring (0-100)
+- Location: `src/ai/chatSend-vercel.ts`
+
+**Chain-of-Thought Planning:**
+- Only activates for tier 3 (complex, score ≥70)
+- Moved to system prompt (saves output tokens)
+- Provides structured planning for multi-step debugging
+- Location: `src/ai/prompts.ts`
+
+**Project Structure Tool:**
+- New tool for faster codebase exploration
+- Shows directory tree + file types
+- Reduces 2-3 tool calls on new projects
+- Location: `project_structure` in `src/ai/tools-vercel.ts`
 
 ---
 

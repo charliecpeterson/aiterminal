@@ -314,6 +314,38 @@ The AI can perform up to 15 sequential tool calls per request, allowing it to so
 - **Selection Capture**: Select text in the terminal and use "Add Selection to Context"
 - **Marker Context**: Shift+Click any command marker and choose "Add to AI Context"
 
+#### MCP Servers (Model Context Protocol)
+
+In addition to the 29 built-in PTY tools, AI Terminal supports **MCP servers** for external API integrations. MCPs extend the AI with tools for services like GitHub, Slack, web search, databases, and more.
+
+**Key Difference:**
+- **PTY Tools** (29 tools) - Run in your terminal session, work over SSH/containers
+- **MCP Tools** - External API integrations, run locally as separate processes
+
+**Managing MCP Servers:**
+1. Open Settings (⚙️) → MCP Servers tab
+2. Add pre-configured servers:
+   - **Brave Search** - Web search for docs, errors, solutions
+     - Get free API key: https://brave.com/search/api/
+     - Provides `brave_search_web` and `brave_search_local` tools
+3. Add custom servers with "+ Add Custom MCP" button:
+   - GitHub - `@modelcontextprotocol/server-github` (needs `GITHUB_TOKEN`)
+   - Slack - `@modelcontextprotocol/server-slack` (needs `SLACK_TOKEN`)
+   - 700+ more at https://www.mcplist.ai/
+
+**Adding a Custom MCP:**
+1. Click "+ Add Custom MCP"
+2. Fill in:
+   - Server Name: `github`
+   - NPM Package: `@modelcontextprotocol/server-github`
+   - ☑ Requires API Key (if needed)
+   - Env Variable: `GITHUB_TOKEN`
+   - API Key: `ghp_xxxxx`
+3. Enable the server checkbox
+4. Save settings
+
+**Security Note:** API keys are stored in `~/.config/aiterminal/settings.json` (plaintext, like your AI API key). Future versions will support keychain storage.
+
 #### Example Prompts
 Try these to see the AI's capabilities:
 
@@ -363,6 +395,18 @@ Try these to see the AI's capabilities:
 - "How many kilobytes is 1048576 bytes?"
 - "Calculate 15% of 250"
 - "What's the square root of 144?"
+
+**Web Search** (with Brave Search MCP enabled)
+- "Search the web for latest React 19 features"
+- "Find documentation for FastAPI deployment"
+- "What's the latest stable version of PostgreSQL?"
+- "Search for solutions to 'EADDRINUSE' error"
+
+**GitHub Integration** (with GitHub MCP enabled)
+- "Create a pull request for my current branch"
+- "Search GitHub for examples of async Rust code"
+- "List open issues in this repository"
+- "Show recent commits in this repo"
 
 ### 4. Font Zooming
 Adjust the text size to your preference. The terminal window automatically reflows text when zooming.
