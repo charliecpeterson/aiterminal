@@ -19,6 +19,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [aiEmbeddingOptions, setAiEmbeddingOptions] = useState<string[]>([]);
     const [keychainStatus, setKeychainStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [keychainMessage, setKeychainMessage] = useState<string | null>(null);
+    const [showCustomMcpForm, setShowCustomMcpForm] = useState(false);
+    const [customMcpForm, setCustomMcpForm] = useState({
+        name: '',
+        npmPackage: '',
+        requiresApiKey: false,
+        apiKeyEnvVar: '',
+        apiKey: '',
+    });
 
 
     // Load settings when modal opens
@@ -1177,7 +1185,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     </div>
                                 ))}
 
-                                <div style={{ ...settingsModalStyles.formGroup, marginTop: '16px' }}>
+                                <div style={{ ...settingsModalStyles.formGroup, marginTop: '16px', display: 'flex', gap: '8px' }}>
                                     <button
                                         className="btn-secondary"
                                         onClick={() => {
@@ -1196,16 +1204,180 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     >
                                         + Add Brave Search
                                     </button>
+                                    <button
+                                        className="btn-secondary"
+                                        onClick={() => setShowCustomMcpForm(!showCustomMcpForm)}
+                                    >
+                                        {showCustomMcpForm ? 'Cancel' : '+ Add Custom MCP'}
+                                    </button>
                                 </div>
+
+                                {/* Custom MCP Form */}
+                                {showCustomMcpForm && (
+                                    <div style={{
+                                        ...settingsModalStyles.formGroup,
+                                        marginTop: '12px',
+                                        padding: '16px',
+                                        background: 'rgba(74, 158, 255, 0.05)',
+                                        border: '1px solid rgba(74, 158, 255, 0.2)',
+                                        borderRadius: '4px',
+                                    }}>
+                                        <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600 }}>Add Custom MCP Server</h4>
+                                        
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <label style={{ fontSize: '13px', display: 'block', marginBottom: '4px' }}>
+                                                Server Name <span style={{ color: '#ff6b6b' }}>*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={customMcpForm.name}
+                                                onChange={(e) => setCustomMcpForm({ ...customMcpForm, name: e.target.value })}
+                                                placeholder="e.g., github, slack, linear"
+                                                style={{ width: '100%', fontSize: '13px' }}
+                                            />
+                                        </div>
+
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <label style={{ fontSize: '13px', display: 'block', marginBottom: '4px' }}>
+                                                NPM Package <span style={{ color: '#ff6b6b' }}>*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={customMcpForm.npmPackage}
+                                                onChange={(e) => setCustomMcpForm({ ...customMcpForm, npmPackage: e.target.value })}
+                                                placeholder="@modelcontextprotocol/server-github"
+                                                style={{ width: '100%', fontSize: '13px', fontFamily: 'monospace' }}
+                                            />
+                                            <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '4px' }}>
+                                                Find servers at <a href="https://www.mcplist.ai/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff' }}>mcplist.ai</a>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <label style={settingsModalStyles.checkboxLabel}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={customMcpForm.requiresApiKey}
+                                                    onChange={(e) => setCustomMcpForm({ ...customMcpForm, requiresApiKey: e.target.checked })}
+                                                />
+                                                <span>Requires API Key</span>
+                                            </label>
+                                        </div>
+
+                                        {customMcpForm.requiresApiKey && (
+                                            <>
+                                                <div style={{ marginBottom: '12px' }}>
+                                                    <label style={{ fontSize: '13px', display: 'block', marginBottom: '4px' }}>
+                                                        Environment Variable Name
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={customMcpForm.apiKeyEnvVar}
+                                                        onChange={(e) => setCustomMcpForm({ ...customMcpForm, apiKeyEnvVar: e.target.value })}
+                                                        placeholder="e.g., GITHUB_TOKEN, SLACK_TOKEN"
+                                                        style={{ width: '100%', fontSize: '13px', fontFamily: 'monospace' }}
+                                                    />
+                                                </div>
+
+                                                <div style={{ marginBottom: '12px' }}>
+                                                    <label style={{ fontSize: '13px', display: 'block', marginBottom: '4px' }}>
+                                                        API Key
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        value={customMcpForm.apiKey}
+                                                        onChange={(e) => setCustomMcpForm({ ...customMcpForm, apiKey: e.target.value })}
+                                                        placeholder="Enter API key"
+                                                        style={{ width: '100%', fontSize: '13px' }}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                                            <button
+                                                className="btn-primary"
+                                                onClick={() => {
+                                                    if (!customMcpForm.name || !customMcpForm.npmPackage) {
+                                                        alert('Please fill in Server Name and NPM Package');
+                                                        return;
+                                                    }
+
+                                                    const newServer = {
+                                                        name: customMcpForm.name,
+                                                        command: 'npx',
+                                                        args: ['-y', customMcpForm.npmPackage],
+                                                        enabled: !customMcpForm.requiresApiKey || !!customMcpForm.apiKey,
+                                                        ...(customMcpForm.requiresApiKey ? {
+                                                            api_key_env_var: customMcpForm.apiKeyEnvVar,
+                                                            api_key: customMcpForm.apiKey,
+                                                        } : {}),
+                                                        env: {}
+                                                    };
+                                                    
+                                                    const updatedServers = [...(localSettings.mcp_servers || []), newServer];
+                                                    setLocalSettings({ ...localSettings, mcp_servers: updatedServers });
+                                                    
+                                                    // Reset form
+                                                    setCustomMcpForm({
+                                                        name: '',
+                                                        npmPackage: '',
+                                                        requiresApiKey: false,
+                                                        apiKeyEnvVar: '',
+                                                        apiKey: '',
+                                                    });
+                                                    setShowCustomMcpForm(false);
+                                                }}
+                                                style={{ flex: 1 }}
+                                            >
+                                                Add Server
+                                            </button>
+                                            <button
+                                                className="btn-secondary"
+                                                onClick={() => {
+                                                    setCustomMcpForm({
+                                                        name: '',
+                                                        npmPackage: '',
+                                                        requiresApiKey: false,
+                                                        apiKeyEnvVar: '',
+                                                        apiKey: '',
+                                                    });
+                                                    setShowCustomMcpForm(false);
+                                                }}
+                                                style={{ flex: 1 }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div style={settingsModalStyles.formGroup}>
                                     <details>
                                         <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: '8px' }}>
-                                            Custom MCP Server Configuration
+                                            MCP Resources &amp; Advanced Configuration
                                         </summary>
                                         <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '4px' }}>
-                                            <p style={{ fontSize: '13px', marginBottom: '12px' }}>
-                                                To add a custom MCP server, you'll need to manually edit the settings file:
+                                            <p style={{ fontSize: '13px', marginBottom: '12px', fontWeight: 600 }}>
+                                                Find MCP Servers:
+                                            </p>
+                                            <ul style={{ fontSize: '13px', marginBottom: '12px', paddingLeft: '20px' }}>
+                                                <li style={{ marginBottom: '4px' }}>
+                                                    <a href="https://www.mcplist.ai/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff' }}>
+                                                        MCP Directory (mcplist.ai)
+                                                    </a> - 700+ community servers
+                                                </li>
+                                                <li>
+                                                    <a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff' }}>
+                                                        Official MCP Servers
+                                                    </a> - GitHub repository
+                                                </li>
+                                            </ul>
+                                            <p style={{ fontSize: '13px', margin: '12px 0', fontWeight: 600 }}>
+                                                Advanced: Manual JSON Configuration
+                                            </p>
+                                            <p style={{ fontSize: '13px', marginBottom: '8px', opacity: 0.8 }}>
+                                                For advanced setups (custom commands, environment variables), edit the settings file directly:
                                             </p>
                                             <code style={{
                                                 display: 'block',
@@ -1215,7 +1387,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 fontSize: '12px',
                                                 fontFamily: 'monospace',
                                                 whiteSpace: 'pre',
-                                                marginBottom: '12px'
                                             }}>
 {`~/.config/aiterminal/settings.json
 
@@ -1225,15 +1396,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     "command": "node",
     "args": ["path/to/server.js"],
     "enabled": true,
-    "env": {}
+    "env": { "CUSTOM_VAR": "value" }
   }
 ]`}
                                             </code>
-                                            <p style={{ fontSize: '13px', margin: 0 }}>
-                                                Visit <a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff' }}>
-                                                    MCP Servers Directory
-                                                </a> to find community servers.
-                                            </p>
                                         </div>
                                     </details>
                                 </div>

@@ -2,7 +2,12 @@
 
 ## Overview
 
-Added support for secure API key management for MCP (Model Context Protocol) servers that require authentication. MCP servers like Brave Search, GitHub, Slack, etc. now have a dedicated UI in Settings to configure API keys.
+Added comprehensive MCP (Model Context Protocol) server management with:
+1. **API key support** for servers requiring authentication
+2. **Pre-configured presets** (Brave Search)
+3. **Custom MCP form** to add any MCP server from the 700+ community ecosystem
+
+Users can now add any MCP server without editing JSON files manually.
 
 ## Changes Made
 
@@ -50,7 +55,31 @@ const configsWithEnv = configs.map(config => {
 
 ### 3. Settings UI (`SettingsModal.tsx`)
 
-**MCP Servers Tab Improvements**:
+**MCP Servers Tab Features**:
+
+**Pre-configured Servers**:
+- "+ Add Brave Search" button for quick web search integration
+- More presets can be added easily (GitHub, Slack, etc.)
+
+**Custom MCP Form**:
+- "+ Add Custom MCP" button opens a form
+- Fields:
+  - **Server Name** (required) - Display name for the MCP
+  - **NPM Package** (required) - Package name (e.g., `@modelcontextprotocol/server-github`)
+  - **Requires API Key** (checkbox) - Toggle API key fields
+  - **Environment Variable Name** - Name of env var (e.g., `GITHUB_TOKEN`)
+  - **API Key** - The actual API key value
+- Links to MCP directories:
+  - https://www.mcplist.ai/ (700+ community servers)
+  - https://github.com/modelcontextprotocol/servers (official)
+
+**Server Management**:
+- Toggle servers on/off
+- Edit API keys inline
+- Remove servers
+- See command/args for each server
+
+**UI Features**:
 - Shows API key input field for servers that require one (`api_key_env_var` is set)
 - Password-masked input for security
 - Required indicator when API key is missing
@@ -72,20 +101,43 @@ Updated in 3 places for consistency:
 
 ## Usage
 
-### Adding Brave Search
+### Quick Start: Add Brave Search
 
-1. Open Settings (Cmd+, or gear icon)
-2. Go to "MCP Servers" tab
-3. Click "+ Add Brave Search"
-4. Get API key from https://brave.com/search/api/
-5. Paste API key into the input field
-6. Check the "brave-search" checkbox to enable
-7. Save settings
+1. Open Settings → MCP Servers tab
+2. Click "+ Add Brave Search"
+3. Get free API key from https://brave.com/search/api/
+4. Paste API key into the input field
+5. Check the "brave-search" checkbox to enable
+6. Save settings
 
-The AI can now use `brave_search_web` and `brave_search_local` tools!
+### Add Any Custom MCP Server
+
+1. Open Settings → MCP Servers tab
+2. Click "+ Add Custom MCP"
+3. Fill in the form:
+   - **Server Name**: `github` (or any name)
+   - **NPM Package**: `@modelcontextprotocol/server-github`
+   - **Requires API Key**: ✓ (if needed)
+   - **Env Variable**: `GITHUB_TOKEN`
+   - **API Key**: `ghp_your_token_here`
+4. Click "Add Server"
+5. Enable the checkbox to activate
+6. Save settings
+
+**Popular MCPs to Try**:
+- `@modelcontextprotocol/server-github` - GitHub API integration (needs `GITHUB_TOKEN`)
+- `@modelcontextprotocol/server-slack` - Slack messaging (needs `SLACK_TOKEN`)
+- `@modelcontextprotocol/server-postgres` - PostgreSQL queries (needs `DATABASE_URL`)
+- `@modelcontextprotocol/server-google-drive` - Google Drive access (needs OAuth)
+
+**Find More**: Browse https://www.mcplist.ai/ for 700+ community servers!
 
 ### Adding Custom MCP Servers with API Keys
 
+**Via UI** (Recommended):
+Use the "+ Add Custom MCP" form in Settings → MCP Servers tab.
+
+**Via JSON** (Advanced):
 Manually edit `~/.config/aiterminal/settings.json`:
 
 ```json
@@ -168,25 +220,28 @@ Look at Rust logs when MCP servers initialize - should see environment variables
 1. **No Keychain Integration Yet**: API keys stored in plaintext (same as AI API key)
 2. **No Input Validation**: Doesn't check if API key format is valid
 3. **No Test Connection**: Can't verify API key works before saving (unlike AI API key test)
-4. **Manual JSON Editing**: Custom MCP servers still require editing settings.json
-5. **Type Duplication**: `MCPServerConfig` defined in 3 places (should consolidate)
+4. **Type Duplication**: `MCPServerConfig` defined in 3 places (should consolidate)
+5. **NPM-only**: Custom form assumes `npx` command (can edit JSON for custom commands)
 
 ## Next Steps
 
 ### High Priority
 - [ ] Add keychain support for MCP API keys
-- [ ] Add GitHub MCP server preset (with `GITHUB_TOKEN`)
+- [ ] Add more presets (GitHub, Slack with one-click setup)
 - [ ] Add test/validate button for API keys
+- [ ] Show tool count for each MCP server
 
 ### Medium Priority  
-- [ ] UI for adding custom MCP servers (no JSON editing)
-- [ ] MCP server marketplace/browser
+- [ ] MCP server health status (connected/disconnected)
+- [ ] Browse MCP marketplace in-app (fetch from mcplist.ai API)
 - [ ] Environment variable fallback (respect `$BRAVE_API_KEY` if set)
+- [ ] Custom command support in UI (not just npx)
 
 ### Low Priority
 - [ ] Consolidate `MCPServerConfig` type definition to one place
-- [ ] Add more default MCP servers (Slack, Linear, Notion)
 - [ ] Per-server logging/debugging in UI
+- [ ] MCP server presets with descriptions/screenshots
+- [ ] Import/export MCP configurations
 
 ## References
 
