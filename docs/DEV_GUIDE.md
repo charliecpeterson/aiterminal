@@ -61,7 +61,7 @@ AIterminal is built with a **modular, hook-based architecture** that separates c
 
 - **Frontend**: React + TypeScript + xterm.js
 - **Backend**: Rust + Tauri + portable-pty
-- **AI System**: Vercel AI SDK with 26 automated tools
+- **AI System**: Vercel AI SDK with 28 automated tools + MCP extensibility
 - **State Management**: React hooks + Context API
 
 ### Recent Refactoring (2026)
@@ -167,17 +167,19 @@ See [Pull Request Process](#pull-request-process) below.
 AIterminal/
 ├── src/                        # React + TypeScript frontend
 │   ├── ai/                     # AI assistant implementation
-│   │   ├── tools-vercel.ts     # 26 tool definitions (Vercel AI SDK + Zod)
-│   │   ├── chatSend-vercel.ts  # Streaming chat with tool execution (max 15 steps)
-│   │   ├── prompts.ts          # System prompts
+│   │   ├── tools-vercel.ts     # 28 tool definitions (Vercel AI SDK + Zod)
+│   │   ├── chatSend-vercel.ts  # Streaming chat with tool execution (dynamic 5/15/25 steps)
+│   │   ├── prompts.ts          # System prompts with few-shot examples
+│   │   ├── queryRouter.ts      # Query complexity scoring + tier routing
 │   │   ├── commandSafety.ts    # Command safety classification
 │   │   ├── conversationHistory.ts # Sliding window + auto-summarization
 │   │   ├── streamingBuffer.ts  # Batch text updates (70-90% fewer re-renders)
 │   │   ├── contextRanker.ts    # Keyword-based context relevance scoring
-│   │   └── smartContext.ts     # Embedding-based context retrieval
+│   │   ├── smartContext.ts     # Embedding-based context retrieval
+│   │   └── promptEnhancer.ts   # Query enhancement for better results
 │   ├── actions/                # Action registry (command palette actions)
 │   ├── app/                    # Application wiring (SSH integration)
-│   ├── components/             # React components (~40+ files)
+│   ├── components/             # React components (~30 files)
 │   │   ├── TabBar.tsx          # Tab bar
 │   │   ├── AppToolbar.tsx      # Top toolbar buttons
 │   │   ├── TerminalGrid.tsx    # Terminal pane grid
@@ -387,7 +389,7 @@ import { YourComponent } from './components/YourComponent';
 
 AI Terminal has two types of tools:
 
-**1. PTY Tools (29 built-in)** - Run in terminal session, work over SSH
+**1. PTY Tools (28 built-in)** - Run in terminal session, work over SSH
 **2. MCP Tools** - External APIs (GitHub, Slack, web search, etc.)
 
 #### Adding a PTY Tool

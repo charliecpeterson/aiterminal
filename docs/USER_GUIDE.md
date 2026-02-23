@@ -146,7 +146,7 @@ To make it clear what the model actually saw, assistant messages include an expa
 - Lists retrieved snippets (with source type/path when available).
 
 #### AI Capabilities & Tools
-The AI assistant has access to 26 tools that execute automatically to help you:
+The AI assistant has access to 28 tools that execute automatically to help you:
 
 **File Operations**
 1. **get_current_directory** - Get the active terminal's current working directory
@@ -159,12 +159,12 @@ The AI assistant has access to 26 tools that execute automatically to help you:
    - Examples: Check package.json, read configuration files, examine logs
    - Supports text files up to 50KB by default
 
-4. **get_file_info** - **NEW!** Get file metadata before reading
+4. **get_file_info** - Get file metadata before reading
    - Check file size, type, line count, text vs binary
    - Prevents reading huge or binary files
    - Example: "How big is package-lock.json?" → "1.2 MB, 45,678 lines - too large to read fully"
 
-5. **read_multiple_files** - **NEW!** Read up to 20 files at once
+5. **read_multiple_files** - Read up to 20 files at once
    - More efficient than multiple read_file calls
    - Perfect for errors spanning multiple files
    - Example: Read src/main.rs, src/lib.rs, and Cargo.toml together
@@ -258,15 +258,26 @@ The AI assistant has access to 26 tools that execute automatically to help you:
     - Examples: Unit conversions, sizing calculations
     - Supports arithmetic and math functions
 
-25. **web_search** - Generate search URLs for documentation
-    - Suggests Google searches when external info is needed
-    - Cannot actually browse but provides helpful links
+25. **web_search** - Search the web for documentation, errors, and solutions
+    - Generates targeted search queries
+    - With Brave Search MCP enabled, provides real web results
 
 **File Comparison**
 26. **diff_files** - Compare files or show changes
     - Compare two files: "diff config.json config.json.bak"
     - Show recent changes: "what did you change in config.json?"
     - Shows added (+) and removed (-) lines with context
+
+**Project Exploration**
+27. **rg_search** - Fast text search using ripgrep (rg)
+    - Falls back to grep if rg is not available
+    - Faster and more powerful than grep_in_files for large codebases
+    - Example: "Search for 'TODO' across the entire project"
+
+28. **project_structure** - Get an overview of the project directory tree
+    - Shows files and folder hierarchy
+    - Useful for understanding unfamiliar codebases
+    - Example: "What does this project look like?"
 
 #### Command Approval System
 Dangerous commands are protected by an interactive approval system:
@@ -294,7 +305,10 @@ The AI can automatically chain multiple tools together to accomplish complex tas
   2. AI identifies the main file
   3. AI reads and displays the relevant portion
 
-The AI can perform up to 15 sequential tool calls per request, allowing it to solve complex tasks autonomously.
+The AI dynamically adjusts tool call limits based on query complexity:
+- **Simple queries** (e.g., "read a file"): Up to 5 tool calls
+- **Moderate queries** (e.g., "fix this error"): Up to 15 tool calls
+- **Complex queries** (e.g., "debug why the build fails"): Up to 25 tool calls
 
 #### Features
 - **Streaming Responses**: Text appears in real-time as the AI generates it
@@ -316,7 +330,7 @@ The AI can perform up to 15 sequential tool calls per request, allowing it to so
 
 #### MCP Servers (Model Context Protocol)
 
-In addition to the 29 built-in PTY tools, AI Terminal supports **MCP servers** for external API integrations. MCPs extend the AI with tools for services like GitHub, Slack, web search, databases, and more.
+In addition to the 28 built-in PTY tools, AI Terminal supports **MCP servers** for external API integrations. MCPs extend the AI with tools for services like GitHub, Slack, web search, databases, and more.
 
 **Key Difference:**
 - **PTY Tools** (29 tools) - Run in your terminal session, work over SSH/containers
@@ -349,7 +363,7 @@ In addition to the 29 built-in PTY tools, AI Terminal supports **MCP servers** f
 #### Example Prompts
 Try these to see the AI's capabilities:
 
-**Error Analysis & Debugging** 🆕
+**Error Analysis & Debugging**
 - "I'm getting this error: <paste full error output>"
 - "Analyze this crash: <paste stack trace>"
 - "Why did my build fail? <paste compiler output>"
@@ -477,7 +491,7 @@ AI Terminal provides intelligent command completion to speed up your workflow.
 - Matches are filtered as you type
 
 #### Completion Sources
-Configure in Settings → Terminal → Autocomplete:
+Configure in Settings → Autocomplete:
 
 - **History** (default): Suggestions based on your shell command history
   - Fast and doesn't require API calls
@@ -500,29 +514,7 @@ Configure in Settings → Terminal → Autocomplete:
 - **LLM Max Tokens**: Limit completion length (5-50)
 - **LLM Debounce**: Delay before requesting completion (0-1000ms)
 
-### 11. Output Folding
-Automatically fold large command outputs to keep your terminal readable.
-
-#### How It Works
-- When a command produces output exceeding the threshold (default: 30 lines), it's automatically collapsed
-- A fold indicator shows "▶ [N lines]" - click to expand
-- Very large outputs (500+ lines) show a "View in Window" button
-
-#### Settings
-Configure in Settings → Terminal → Output Folding:
-
-- **Enabled**: Toggle folding on/off
-- **Threshold**: Minimum lines before folding (default: 30)
-- **Preview Lines**: Lines to show before fold (default: 3)
-- **Auto Open Window**: Automatically open Output Viewer for very large outputs
-- **Large Threshold**: Lines considered "very large" (default: 500)
-
-#### Manual Controls
-- Click the fold indicator to expand/collapse
-- "View in Window" opens output in the dedicated Output Viewer
-- Output Viewer supports search, copy, and export
-
-### 12. Quick Actions
+### 11. Quick Actions
 Save and execute sequences of commands with a single click. Perfect for repetitive tasks, deployment workflows, or testing routines.
 
 #### Features
@@ -577,7 +569,7 @@ open http://localhost:3000
 - All output appears in the active terminal in real-time
 - Quick Actions window can remain open while commands execute
 
-### 13. Command History Navigator
+### 12. Command History Navigator
 Quickly jump to any previous command in your terminal history with a searchable, keyboard-driven overlay.
 
 #### Features
@@ -631,7 +623,7 @@ Quickly jump to any previous command in your terminal history with a searchable,
 - Exit codes and timestamps come from OSC 133 sequences
 - Overlay appears centered and dismisses on click outside
 
-### 14. File Preview
+### 13. File Preview
 View and monitor files directly from the terminal with live rendering in a separate window. Perfect for viewing documentation, logs, HTML previews, or any text-based files.
 
 #### Features
@@ -866,6 +858,7 @@ aiterm_render ~/sphinx-docs/index.rst
 | **Reset Zoom** | `Cmd` + `0` | `Ctrl` + `0` |
 | **Find** | `Cmd` + `F` | `Ctrl` + `F` |
 | **Toggle AI Panel** | `Cmd` + `B` | `Ctrl` + `B` |
+| **Command Palette** | `Cmd` + `K` | `Ctrl` + `K` |
 | **Command History** | `Cmd` + `R` | `Ctrl` + `R` |
 | **Open Settings** | `Cmd` + `,` | `Ctrl` + `,` |
 | **Copy** | `Cmd` + `C` | `Ctrl` + `C` |
@@ -876,8 +869,9 @@ The terminal creates a configuration directory at `~/.config/aiterminal/`.
 - **`bash_init.sh`**: Shell integration script automatically generated and loaded by the terminal. Provides command markers, OSC sequences, and SSH integration features.
 - **`ssh_helper.sh`**: Contains the `aiterm_ssh` function that handles remote shell integration bootstrap.
 - **`.zshrc`**: Zsh initialization script that sources bash_init.sh for local zsh sessions.
-- **`settings.json`**: Application settings including appearance, fonts, and AI configuration.
+- **`settings.json`**: Application settings including appearance, fonts, AI configuration, and MCP servers.
 - **`quick-actions.json`**: Saved Quick Actions with command sequences.
+- **`ssh_profiles.json`**: Saved SSH connection profiles.
 
 The integration files are embedded in the application binary and written to disk on first launch or when updated.
 
@@ -900,8 +894,8 @@ Open Settings → AI to configure providers and models.
 ### Technical Implementation
 The AI system is built on:
 - **Vercel AI SDK v5** for robust streaming and tool execution
-- **Automatic Tool Calling**: 26 tools execute seamlessly to accomplish tasks
-- **Multi-Step Execution**: Up to 15 sequential tool calls per request using `stopWhen`
+- **Automatic Tool Calling**: 28 tools execute seamlessly to accomplish tasks
+- **Multi-Step Execution**: Dynamic tool call limits (5/15/25) based on query complexity using `stopWhen`
 - **Approval System**: Promise-based blocking for dangerous command approval with auto-timeout
 - **Terminal Integration**: Commands execute in the user's active PTY session (works over SSH)
 - **Type-Safe**: Tool schemas validated with Zod for reliable execution
@@ -981,7 +975,7 @@ Recent improvements include:
 ### General
 - **Copy not working?** The app uses the system clipboard. Ensure you have granted permission if prompted.
 - **Scrollbar missing?** The app renders its own overlay. If you still don't see it, ensure you're in the terminal area and the buffer is longer than the viewport; try scrolling once to reveal it.
-- **Performance issues?** Try closing unused tabs or clearing the terminal buffer (`Cmd + K`).
+- **Performance issues?** Try closing unused tabs. Use `Cmd + K` to open Command Palette.
 
 ### Quick Actions
 - **Actions not executing?** Ensure you have an active terminal tab/pane focused.
