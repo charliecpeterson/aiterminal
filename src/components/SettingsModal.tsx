@@ -12,7 +12,7 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { settings, updateSettings } = useSettings();
     const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
-    const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai' | 'autocomplete'>('appearance');
+    const [activeTab, setActiveTab] = useState<'appearance' | 'terminal' | 'ai' | 'autocomplete' | 'mcp'>('appearance');
     const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [aiTestError, setAiTestError] = useState<string | null>(null);
     const [aiModelOptions, setAiModelOptions] = useState<string[]>([]);
@@ -242,6 +242,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                             onClick={() => setActiveTab('autocomplete')}
                         >
                             Autocomplete
+                        </div>
+                        <div
+                            className={`settings-tab ${activeTab === 'mcp' ? 'active' : ''}`}
+                            style={settingsModalStyles.tab}
+                            onClick={() => setActiveTab('mcp')}
+                        >
+                            MCP Servers
                         </div>
                     </div>
 
@@ -1070,6 +1077,139 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     <div style={settingsModalStyles.formHint}>
                                         Press Ctrl+Space to see all available commands, flags, and options in a dropdown menu.
                                     </div>
+                                </div>
+                            </>
+                        )}
+
+                        {activeTab === 'mcp' && (
+                            <>
+                                <div style={settingsModalStyles.formGroup}>
+                                    <h3 style={{ margin: '0 0 12px 0' }}>MCP Servers</h3>
+                                    <div style={settingsModalStyles.formHint}>
+                                        Model Context Protocol (MCP) servers provide tools for the AI assistant.
+                                        Configure community-maintained servers or add your own custom servers.
+                                    </div>
+                                </div>
+
+                                {(!localSettings.mcp_servers || localSettings.mcp_servers.length === 0) && (
+                                    <div style={settingsModalStyles.formGroup}>
+                                        <div style={{
+                                            padding: '16px',
+                                            background: 'rgba(255, 165, 0, 0.1)',
+                                            border: '1px solid rgba(255, 165, 0, 0.3)',
+                                            borderRadius: '4px',
+                                        }}>
+                                            <p style={{ margin: '0 0 8px 0' }}>
+                                                <strong>No MCP servers configured</strong>
+                                            </p>
+                                            <p style={{ margin: '0', fontSize: '13px', opacity: 0.8 }}>
+                                                Add the default filesystem server to enable file operations via MCP,
+                                                or add custom MCP servers from the community.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {localSettings.mcp_servers && localSettings.mcp_servers.map((server, index) => (
+                                    <div key={index} style={{
+                                        ...settingsModalStyles.formGroup,
+                                        padding: '12px',
+                                        background: 'rgba(255, 255, 255, 0.03)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        borderRadius: '4px',
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                            <label style={settingsModalStyles.checkboxLabel}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={server.enabled}
+                                                    onChange={(e) => {
+                                                        const updatedServers = [...(localSettings.mcp_servers || [])];
+                                                        updatedServers[index] = { ...server, enabled: e.target.checked };
+                                                        setLocalSettings({ ...localSettings, mcp_servers: updatedServers });
+                                                    }}
+                                                />
+                                                <span style={{ fontWeight: 600 }}>{server.name}</span>
+                                            </label>
+                                            <button
+                                                className="btn-secondary"
+                                                style={{ padding: '4px 8px', fontSize: '12px' }}
+                                                onClick={() => {
+                                                    const updatedServers = (localSettings.mcp_servers || []).filter((_, i) => i !== index);
+                                                    setLocalSettings({ ...localSettings, mcp_servers: updatedServers });
+                                                }}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '4px' }}>
+                                            <strong>Command:</strong> {server.command} {server.args.join(' ')}
+                                        </div>
+                                        {server.env && Object.keys(server.env).length > 0 && (
+                                            <div style={{ fontSize: '13px', opacity: 0.7 }}>
+                                                <strong>Env vars:</strong> {Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join(', ')}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+
+                                <div style={{ ...settingsModalStyles.formGroup, marginTop: '16px' }}>
+                                    <button
+                                        className="btn-secondary"
+                                        onClick={() => {
+                                            const newServer = {
+                                                name: 'filesystem',
+                                                command: 'npx',
+                                                args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
+                                                enabled: true,
+                                                env: {}
+                                            };
+                                            const updatedServers = [...(localSettings.mcp_servers || []), newServer];
+                                            setLocalSettings({ ...localSettings, mcp_servers: updatedServers });
+                                        }}
+                                    >
+                                        + Add Default Filesystem Server
+                                    </button>
+                                </div>
+
+                                <div style={settingsModalStyles.formGroup}>
+                                    <details>
+                                        <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: '8px' }}>
+                                            Custom MCP Server Configuration
+                                        </summary>
+                                        <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '4px' }}>
+                                            <p style={{ fontSize: '13px', marginBottom: '12px' }}>
+                                                To add a custom MCP server, you'll need to manually edit the settings file:
+                                            </p>
+                                            <code style={{
+                                                display: 'block',
+                                                padding: '8px',
+                                                background: 'rgba(0, 0, 0, 0.3)',
+                                                borderRadius: '4px',
+                                                fontSize: '12px',
+                                                fontFamily: 'monospace',
+                                                whiteSpace: 'pre',
+                                                marginBottom: '12px'
+                                            }}>
+{`~/.config/aiterminal/settings.json
+
+"mcp_servers": [
+  {
+    "name": "my-server",
+    "command": "node",
+    "args": ["path/to/server.js"],
+    "enabled": true,
+    "env": {}
+  }
+]`}
+                                            </code>
+                                            <p style={{ fontSize: '13px', margin: 0 }}>
+                                                Visit <a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff' }}>
+                                                    MCP Servers Directory
+                                                </a> to find community servers.
+                                            </p>
+                                        </div>
+                                    </details>
                                 </div>
                             </>
                         )}

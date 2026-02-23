@@ -73,12 +73,21 @@ export interface StreamingSettings {
     buffer_size_limit: number;
 }
 
+export interface MCPServerConfig {
+    name: string;
+    command: string;
+    args: string[];
+    enabled: boolean;
+    env?: Record<string, string>;
+}
+
 export interface AppSettings {
     appearance: AppearanceSettings;
     ai: AiSettings;
     terminal: TerminalSettings;
     autocomplete?: AutocompleteSettings; // Optional for backward compatibility
     streaming?: StreamingSettings; // Optional for backward compatibility
+    mcp_servers?: MCPServerConfig[]; // Optional for backward compatibility
 }
 
 interface SettingsContextType {
