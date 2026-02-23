@@ -1661,6 +1661,8 @@ interface MCPServerConfig {
   args: string[];
   enabled: boolean;
   env?: Record<string, string>;
+  api_key_env_var?: string; // Environment variable name for API key (e.g., "BRAVE_API_KEY")
+  api_key?: string; // The API key value (stored securely)
 }
 
 interface MCPToolInfo {
@@ -1705,8 +1707,23 @@ export async function createEnhancedTools(
 
     // 3. Initialize MCP servers in Rust backend
     const configs = mcpServerConfigs || getDefaultMCPServers();
+    
+    // Inject API keys into environment variables for each server
+    const configsWithEnv = configs.map(config => {
+      if (config.api_key_env_var && config.api_key) {
+        return {
+          ...config,
+          env: {
+            ...config.env,
+            [config.api_key_env_var]: config.api_key,
+          },
+        };
+      }
+      return config;
+    });
+    
     const initializedServers = await invoke<string[]>("init_mcp_servers", {
-      configs,
+      configs: configsWithEnv,
       workingDirectory: cwd,
     });
 
@@ -1818,9 +1835,9 @@ function getDefaultMCPServers(): MCPServerConfig[] {
       command: "npx",
       args: ["-y", "@modelcontextprotocol/server-brave-search"],
       enabled: false,  // User must add API key in settings first
-      env: {
-        BRAVE_API_KEY: process.env.BRAVE_API_KEY || "",
-      },
+      api_key_env_var: "BRAVE_API_KEY",  // Environment variable name
+      api_key: "",  // User sets this in Settings UI
+      env: {},  // Will be populated with API key at runtime
     },
     // Note: Filesystem operations use PTY tools (work over SSH/remote)
     // Only add MCPs for external APIs (GitHub, Slack, databases, etc.)

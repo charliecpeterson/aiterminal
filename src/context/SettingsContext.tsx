@@ -79,6 +79,8 @@ export interface MCPServerConfig {
     args: string[];
     enabled: boolean;
     env?: Record<string, string>;
+    api_key_env_var?: string; // Environment variable name for API key (e.g., "BRAVE_API_KEY")
+    api_key?: string; // The API key value (stored securely)
 }
 
 export interface AppSettings {

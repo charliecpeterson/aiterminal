@@ -1142,12 +1142,36 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                 Remove
                                             </button>
                                         </div>
+                                        
+                                        {/* API Key Input (if server requires one) */}
+                                        {server.api_key_env_var && (
+                                            <div style={{ marginBottom: '8px' }}>
+                                                <label style={{ fontSize: '13px', display: 'block', marginBottom: '4px', opacity: 0.9 }}>
+                                                    API Key {!server.api_key && <span style={{ color: '#ff6b6b' }}>(Required)</span>}
+                                                </label>
+                                                <input
+                                                    type="password"
+                                                    value={server.api_key || ''}
+                                                    onChange={(e) => {
+                                                        const updatedServers = [...(localSettings.mcp_servers || [])];
+                                                        updatedServers[index] = { ...server, api_key: e.target.value };
+                                                        setLocalSettings({ ...localSettings, mcp_servers: updatedServers });
+                                                    }}
+                                                    placeholder={`Enter ${server.api_key_env_var}`}
+                                                    style={{ width: '100%', fontSize: '13px' }}
+                                                />
+                                                <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '4px' }}>
+                                                    Get your API key from: {server.name === 'brave-search' ? 'https://brave.com/search/api/' : 'provider website'}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
                                         <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '4px' }}>
                                             <strong>Command:</strong> {server.command} {server.args.join(' ')}
                                         </div>
                                         {server.env && Object.keys(server.env).length > 0 && (
                                             <div style={{ fontSize: '13px', opacity: 0.7 }}>
-                                                <strong>Env vars:</strong> {Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join(', ')}
+                                                <strong>Env vars:</strong> {Object.entries(server.env).map(([k, v]) => `${k}=${v.substring(0, 20)}...`).join(', ')}
                                             </div>
                                         )}
                                     </div>
@@ -1158,17 +1182,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         className="btn-secondary"
                                         onClick={() => {
                                             const newServer = {
-                                                name: 'filesystem',
+                                                name: 'brave-search',
                                                 command: 'npx',
-                                                args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
-                                                enabled: true,
+                                                args: ['-y', '@modelcontextprotocol/server-brave-search'],
+                                                enabled: false,
+                                                api_key_env_var: 'BRAVE_API_KEY',
+                                                api_key: '',
                                                 env: {}
                                             };
                                             const updatedServers = [...(localSettings.mcp_servers || []), newServer];
                                             setLocalSettings({ ...localSettings, mcp_servers: updatedServers });
                                         }}
                                     >
-                                        + Add Default Filesystem Server
+                                        + Add Brave Search
                                     </button>
                                 </div>
 
