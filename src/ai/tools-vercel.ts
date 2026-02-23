@@ -197,7 +197,7 @@ export function rejectApproval(id: string, reason: string) {
 /**
  * Get the terminal's current working directory
  */
-async function getTerminalCwd(terminalId: number): Promise<string> {
+export async function getTerminalCwd(terminalId: number): Promise<string> {
   try {
     const result = await executeInPty({
       terminalId,
@@ -1565,3 +1565,179 @@ Output shows:
     }),
   };
 }
+
+/**
+ * Create enhanced tools with MCP integration via Rust backend
+ *
+ * Combines core PTY-based tools with community MCP server tools.
+ * Core tools (execute_command, analyze_error, etc.) take precedence over MCP tools.
+ *
+ * MCP servers run in Rust backend via rmcp SDK, avoiding Node.js API limitations.
+ */
+
+interface MCPServerConfig {
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  env?: Record<string, string>;
+}
+
+interface MCPToolInfo {
+  name: string;
+  description?: string;
+  input_schema: any;
+}
+
+// Helper to detect if a tool requires approval
+function requiresApproval(toolName: string): boolean {
+  const approvalRequired = [
+    'write_file',
+    'append_file',
+    'replace_in_file',
+    'create_directory',
+    'write_to_file',
+    'edit_file',
+    'move_file',
+    'delete_file',
+    'git_commit',
+    'git_push',
+  ];
+  return approvalRequired.includes(toolName);
+}
+
+export async function createEnhancedTools(
+  requireApproval: boolean = true,
+  onPendingApproval?: (approval: PendingApproval) => void,
+  mcpServerConfigs?: MCPServerConfig[],
+  workingDirectory?: string
+): Promise<Record<string, any>> {
+  log.info('[MCP] Creating enhanced tools with MCP integration');
+
+  // 1. Get core tools (PTY-based, our unique value)
+  const coreTools = createTools(requireApproval, onPendingApproval);
+  log.info(`[MCP] Core tools loaded: ${Object.keys(coreTools).length} tools`);
+
+  try {
+    // 2. Get working directory
+    const terminalId = await invoke<number>("get_active_terminal");
+    const cwd = workingDirectory || (await getTerminalCwd(terminalId));
+
+    // 3. Initialize MCP servers in Rust backend
+    const configs = mcpServerConfigs || getDefaultMCPServers();
+    const initializedServers = await invoke<string[]>("init_mcp_servers", {
+      configs,
+      workingDirectory: cwd,
+    });
+
+    log.info(`[MCP] Initialized servers: ${initializedServers.join(", ")}`);
+
+    // 4. Get available MCP tools
+    const mcpToolInfos = await invoke<MCPToolInfo[]>("list_mcp_tools");
+    log.info(`[MCP] Discovered ${mcpToolInfos.length} MCP tools`);
+
+    // 5. Convert MCP tools to Vercel AI SDK format
+    const mcpTools: Record<string, any> = {};
+    for (const mcpTool of mcpToolInfos) {
+      // Skip if core tool has same name (core tools take precedence)
+      if (coreTools[mcpTool.name as keyof typeof coreTools]) {
+        log.debug(
+          `[MCP] Skipping tool ${mcpTool.name} (overridden by core tool)`
+        );
+        continue;
+      }
+
+      mcpTools[mcpTool.name] = tool({
+        description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
+        inputSchema: z.object({}).passthrough(), // Accept any parameters (JSON Schema conversion TBD)
+        execute: async (params: Record<string, unknown>) => {
+          try {
+            log.debug(`[MCP] Executing tool: ${mcpTool.name}`);
+
+            // Check if tool requires approval
+            if (requireApproval && requiresApproval(mcpTool.name)) {
+              log.debug(`[MCP] Tool ${mcpTool.name} requires approval`);
+
+              return new Promise<string>((resolve, reject) => {
+                const approvalId = `mcp_${Date.now()}_${Math.random()}`;
+
+                if (onPendingApproval) {
+                  onPendingApproval({
+                    id: approvalId,
+                    terminalId,
+                    command: `MCP: ${mcpTool.name}`,
+                    description: JSON.stringify(params, null, 2),
+                    cwd,
+                    timestamp: Date.now(),
+                    reason: "MCP tool approval",
+                    category: "mcp_tool",
+                    mcpToolName: mcpTool.name,
+                    mcpToolParams: params,
+                    onApprove: async () => {
+                      try {
+                        const result = await invoke<string>("call_mcp_tool", {
+                          toolName: mcpTool.name,
+                          params,
+                        });
+                        resolve(result);
+                      } catch (error) {
+                        reject(error);
+                      }
+                    },
+                    onReject: () => {
+                      reject(new Error("User denied approval"));
+                    },
+                  } as any); // Type will be extended in AIContext
+                } else {
+                  reject(new Error("Approval required but no handler provided"));
+                }
+              });
+            }
+
+            // Execute without approval
+            const result = await invoke<string>("call_mcp_tool", {
+              toolName: mcpTool.name,
+              params,
+            });
+            return result;
+          } catch (error) {
+            const errorMsg =
+              error instanceof Error ? error.message : String(error);
+            log.error(`[MCP] Tool ${mcpTool.name} failed:`, errorMsg);
+            return `Error calling MCP tool ${mcpTool.name}: ${errorMsg}`;
+          }
+        },
+      });
+    }
+
+    log.info(
+      `[MCP] Enhanced tools ready: ${Object.keys(coreTools).length} core + ${
+        Object.keys(mcpTools).length
+      } MCP`
+    );
+
+    // 6. Return merged tools (core tools override MCP if names conflict)
+    return {
+      ...mcpTools, // MCP tools first
+      ...coreTools, // Core tools override
+    };
+  } catch (error) {
+    log.error("[MCP] Failed to initialize MCP:", error);
+    // Fall back to core tools only
+    log.warn("[MCP] Falling back to core tools only (no MCP)");
+    return coreTools;
+  }
+}
+
+function getDefaultMCPServers(): MCPServerConfig[] {
+  return [
+    {
+      name: "filesystem",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      enabled: true,
+      env: {},
+    },
+  ];
+}
+

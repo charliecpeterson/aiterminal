@@ -11,7 +11,7 @@ import type { CoreMessage } from 'ai';
 import type { AiSettings } from '../context/SettingsContext';
 import type { ChatMessage, PendingApproval, ContextItem, ToolProgress } from '../context/AIContext';
 import type { RoutingDecision, PromptEnhancement } from '../types/routing';
-import { createTools } from './tools-vercel';
+import { createEnhancedTools } from './tools-vercel';
 import { buildEnhancedSystemPrompt, summarizeContext, addChainOfThought } from './prompts';
 import { rankContextByRelevance, deduplicateContext, formatRankedContext } from './contextRanker';
 import { extractRecentTopics } from './contextTracking';
@@ -476,8 +476,9 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
 
     // Create tools only when enabled (Agent mode)
     // Tools now query active terminal ID at runtime (no need to pass it)
+    // Uses enhanced tools with MCP integration (falls back to core tools if MCP fails)
     const tools = enableTools
-      ? createTools(
+      ? await createEnhancedTools(
           settingsAi.require_command_approval !== false,
           addPendingApproval
         )

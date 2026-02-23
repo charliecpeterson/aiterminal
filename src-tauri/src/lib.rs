@@ -10,6 +10,7 @@ mod context_index;
 mod health_check;
 mod history;
 mod keychain;
+mod mcp;
 mod models;
 mod preview;
 mod pty;
@@ -48,6 +49,7 @@ use keychain::{
     check_keychain_available, delete_api_key_from_keychain, get_api_key_from_keychain,
     save_api_key_to_keychain,
 };
+use mcp::{call_mcp_tool, init_mcp_servers, list_mcp_tools, shutdown_mcp_servers};
 pub use models::AppState;
 use preview::{get_preview_content, open_preview_window, read_preview_file, stop_preview_watcher};
 use pty::{check_pty_health, close_pty, focus_terminal, get_active_terminal, get_pty_cwd, get_pty_info, resize_pty, spawn_pty, write_to_pty};
@@ -334,6 +336,10 @@ pub fn run() {
             context_index_sync,
             context_index_query,
             context_index_clear,
+            init_mcp_servers,
+            list_mcp_tools,
+            call_mcp_tool,
+            shutdown_mcp_servers,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

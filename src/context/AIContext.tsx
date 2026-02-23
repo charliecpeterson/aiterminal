@@ -122,6 +122,11 @@ export interface PendingApproval {
   terminalId: number;
   cwd?: string;
   timestamp: number;
+  // MCP-specific fields
+  mcpToolName?: string;
+  mcpToolParams?: Record<string, unknown>;
+  onApprove?: () => Promise<void>;
+  onReject?: () => void;
 }
 
 interface AIState {

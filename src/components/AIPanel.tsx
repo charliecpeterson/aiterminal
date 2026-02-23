@@ -300,8 +300,19 @@ const AIPanel = ({
   const handleApprove = useCallback(async (id: string) => {
     const approval = pendingApprovals.find(a => a.id === id);
     if (!approval) return;
-    
+
     try {
+      // Check if this is an MCP tool approval (has onApprove callback)
+      if (approval.onApprove) {
+        log.debug('[MCP] Executing MCP tool approval callback');
+        await approval.onApprove();
+        // MCP tool callback handles its own promise resolution
+        // Just remove from pending
+        removePendingApproval(id);
+        return;
+      }
+
+      // Regular PTY command execution
       const timeoutMs = getCommandTimeout(approval.command);
       const result = await executeInPty({
         terminalId: approval.terminalId,
@@ -322,10 +333,10 @@ const AIPanel = ({
     } catch (error) {
       log.error('Failed to execute approved command', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
-      
+
       // Reject the promise
       rejectApproval(id, errorMsg);
-      
+
       // Remove from pending
       removePendingApproval(id);
     }
@@ -334,8 +345,18 @@ const AIPanel = ({
   const handleDeny = useCallback((id: string) => {
     const approval = pendingApprovals.find(a => a.id === id);
     if (!approval) return;
-    
-    // Reject the promise
+
+    // Check if this is an MCP tool approval (has onReject callback)
+    if (approval.onReject) {
+      log.debug('[MCP] Calling MCP tool rejection callback');
+      approval.onReject();
+      // MCP tool callback handles its own promise resolution
+      // Just remove from pending
+      removePendingApproval(id);
+      return;
+    }
+
+    // Regular approval rejection
     rejectApproval(id, 'User denied command execution');
 
     // Remove from pending

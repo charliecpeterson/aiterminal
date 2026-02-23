@@ -5,6 +5,7 @@ use std::io::Write;
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use tokio::sync::Mutex as TokioMutex;
 
 // PTY and buffering constants
 pub const PTY_BUFFER_SIZE: usize = 8192; // 8KB for PTY read buffer
@@ -106,6 +107,16 @@ impl Default for StreamingSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MCPServerConfig {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub enabled: bool,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AppSettings {
     pub appearance: AppearanceSettings,
     pub ai: AiSettings,
@@ -114,6 +125,8 @@ pub struct AppSettings {
     pub autocomplete: AutocompleteSettings,
     #[serde(default)]
     pub streaming: StreamingSettings,
+    #[serde(default)]
+    pub mcp_servers: Vec<MCPServerConfig>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -145,6 +158,7 @@ impl Default for AppSettings {
             },
             autocomplete: AutocompleteSettings::default(),
             streaming: StreamingSettings::default(),
+            mcp_servers: Vec::new(),
         }
     }
 }
@@ -226,6 +240,7 @@ pub struct AppState {
     pub file_backups: Mutex<Vec<FileBackup>>, // Stack of file backups for undo functionality
     pub pty_last_output: Arc<Mutex<HashMap<u32, u64>>>, // PTY ID -> last output timestamp (ms since epoch)
     pub active_terminal: AtomicU32, // Currently focused terminal ID (0 = none)
+    pub mcp_clients: Arc<TokioMutex<HashMap<String, crate::mcp::MCPClient>>>, // MCP server name -> client
 }
 
 impl AppState {
@@ -241,6 +256,7 @@ impl AppState {
             file_backups: Mutex::new(Vec::new()),
             pty_last_output: Arc::new(Mutex::new(HashMap::new())),
             active_terminal: AtomicU32::new(0),
+            mcp_clients: Arc::new(TokioMutex::new(HashMap::new())),
         }
     }
 }

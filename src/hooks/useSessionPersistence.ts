@@ -152,7 +152,7 @@ export function useSessionPersistence({
     // Set up auto-save
     autoSaveTimerRef.current = setInterval(() => {
       saveSession();
-    }, AUTO_SAVE_INTERVAL_MS);
+    }, AUTO_SAVE_INTERVAL_MS) as unknown as number;
 
     return () => {
       if (autoSaveTimerRef.current) {
