@@ -51,32 +51,41 @@ const FILE_SIZE_LARGE_THRESHOLD_BYTES = 1024 * 1024;
 
 // Tool result size limits (to prevent context bloat)
 const TOOL_RESULT_MAX_CHARS = 8000;      // ~2000 tokens max per tool result
-const TOOL_RESULT_TRUNCATE_CHARS = 3000; // Keep this much from start when truncating
 
 /**
  * Truncate large tool results to prevent context bloat.
- * Keeps the beginning (usually most relevant) and adds a note about truncation.
+ * Uses head+tail strategy: keeps beginning AND end of output.
+ * Critical for debugging where errors appear at the end of logs/build output.
  */
 function truncateToolResult(result: string, maxChars: number = TOOL_RESULT_MAX_CHARS): string {
   if (result.length <= maxChars) {
     return result;
   }
   
-  // Find the last newline before TOOL_RESULT_TRUNCATE_CHARS to avoid cutting mid-line
-  let truncateAt = TOOL_RESULT_TRUNCATE_CHARS;
-  const lastNewline = result.lastIndexOf('\n', TOOL_RESULT_TRUNCATE_CHARS);
-
-  // Use the newline boundary if found and it's not too far back (within 200 chars)
-  if (lastNewline > 0 && lastNewline > TOOL_RESULT_TRUNCATE_CHARS - 200) {
-    truncateAt = lastNewline;
-  }
-
-  const truncated = result.substring(0, truncateAt);
-  const remaining = result.length - truncateAt;
-  const lines = (result.match(/\n/g) || []).length;
-  const truncatedLines = (truncated.match(/\n/g) || []).length;
+  // Keep first half and last half of the budget
+  const headChars = Math.floor(maxChars / 2);
+  const tailChars = Math.floor(maxChars / 2);
   
-  return `${truncated}\n\n... [TRUNCATED: ${remaining} more characters, ~${lines - truncatedLines} more lines. Use file_sections to read specific line ranges, or tail_file for the end.]`;
+  // Find clean line breaks for head
+  let headCutoff = headChars;
+  const headNewline = result.lastIndexOf('\n', headChars);
+  if (headNewline > 0 && headNewline > headChars - 200) {
+    headCutoff = headNewline;
+  }
+  
+  // Find clean line breaks for tail
+  let tailStart = result.length - tailChars;
+  const tailNewline = result.indexOf('\n', tailStart);
+  if (tailNewline > 0 && tailNewline < tailStart + 200) {
+    tailStart = tailNewline + 1;
+  }
+  
+  const head = result.substring(0, headCutoff);
+  const tail = result.substring(tailStart);
+  const omittedChars = result.length - headCutoff - (result.length - tailStart);
+  const omittedLines = (result.substring(headCutoff, tailStart).match(/\n/g) || []).length;
+  
+  return `${head}\n\n... [TRUNCATED: ${omittedChars} characters, ~${omittedLines} lines omitted. Use file_sections to read specific line ranges.]\n\n${tail}`;
 }
 
 // Commands that typically run quickly
@@ -1563,6 +1572,77 @@ Output shows:
         }
       },
     }),
+
+    project_structure: tool({
+      description: `Get an overview of the project structure. Shows directory tree with files.
+
+This is useful when:
+- First time exploring a new codebase
+- User asks "what files are in this project?"
+- Need to understand the project layout before making changes
+- Looking for specific types of files (config, tests, source code)
+
+Returns a tree view of the project with smart filtering (excludes node_modules, .git, etc.)
+
+Examples:
+- Get structure: path="." (current directory)
+- Specific directory: path="src"
+- Deeper scan: max_depth=3`,
+      inputSchema: z.object({
+        path: z.string().optional().describe('Directory to scan (defaults to current)'),
+        max_depth: z.number().optional().describe('Maximum depth to scan (default: 2, max: 4)'),
+      }),
+      execute: async ({ path, max_depth }) => {
+        const terminalId = await getActiveTerminalId();
+        const searchPath = path || await getTerminalCwd(terminalId);
+        const depth = Math.min(max_depth || 2, 4);
+        
+        try {
+          // Use find with smart filtering - exclude common noise directories
+          const command = `find ${shellEscape(searchPath)} -maxdepth ${depth} \\
+            -not -path '*/node_modules/*' \\
+            -not -path '*/.git/*' \\
+            -not -path '*/dist/*' \\
+            -not -path '*/build/*' \\
+            -not -path '*/.next/*' \\
+            -not -path '*/target/*' \\
+            -not -path '*/__pycache__/*' \\
+            -not -path '*/.pytest_cache/*' \\
+            -not -path '*/.venv/*' \\
+            -not -path '*/venv/*' \\
+            -not -path '*/.idea/*' \\
+            -not -path '*/.vscode/*' \\
+            | head -500 \\
+            | sort`;
+          
+          const output = await executeCommand(command, terminalId);
+          
+          if (!output.trim() || output.includes('No such file')) {
+            return `Cannot access directory: ${searchPath}`;
+          }
+          
+          const lines = output.trim().split('\n');
+          const fileCount = lines.filter(l => !l.endsWith('/')).length;
+          const dirCount = lines.filter(l => l.endsWith('/')).length;
+          
+          // Format as tree-like structure
+          const formatted = lines.map(line => {
+            const relativePath = line.replace(searchPath, '.');
+            const depth = (relativePath.match(/\//g) || []).length;
+            const indent = '  '.repeat(depth - 1);
+            const name = relativePath.split('/').pop() || relativePath;
+            return `${indent}${name}`;
+          }).join('\n');
+          
+          const summary = `Project structure (${searchPath}):\n${fileCount} files, ${dirCount} directories (depth: ${depth}, filtered)\n\n${formatted}`;
+          
+          // Truncate if too large
+          return truncateToolResult(summary, TOOL_RESULT_MAX_CHARS * 2);
+        } catch (error) {
+          return `Error getting project structure: ${error}`;
+        }
+      },
+    }),
   };
 }
 
@@ -1731,13 +1811,19 @@ export async function createEnhancedTools(
 
 function getDefaultMCPServers(): MCPServerConfig[] {
   return [
+    // Brave Search - Web search for documentation, errors, and solutions
+    // Requires API key from https://brave.com/search/api/
     {
-      name: "filesystem",
+      name: "brave-search",
       command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
-      enabled: true,
-      env: {},
+      args: ["-y", "@modelcontextprotocol/server-brave-search"],
+      enabled: false,  // User must add API key in settings first
+      env: {
+        BRAVE_API_KEY: process.env.BRAVE_API_KEY || "",
+      },
     },
+    // Note: Filesystem operations use PTY tools (work over SSH/remote)
+    // Only add MCPs for external APIs (GitHub, Slack, databases, etc.)
   ];
 }
 

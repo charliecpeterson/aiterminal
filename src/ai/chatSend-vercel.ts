@@ -12,7 +12,7 @@ import type { AiSettings } from '../context/SettingsContext';
 import type { ChatMessage, PendingApproval, ContextItem, ToolProgress } from '../context/AIContext';
 import type { RoutingDecision, PromptEnhancement } from '../types/routing';
 import { createEnhancedTools } from './tools-vercel';
-import { buildEnhancedSystemPrompt, summarizeContext, addChainOfThought } from './prompts';
+import { buildEnhancedSystemPrompt, summarizeContext } from './prompts';
 import { rankContextByRelevance, deduplicateContext, formatRankedContext } from './contextRanker';
 import { extractRecentTopics } from './contextTracking';
 import { getCachedContext, setCachedContext } from './contextCache';
@@ -342,9 +342,9 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       log.debug('Auto-routing disabled, using manual model selection');
     }
 
-    // Enhance user prompt with chain-of-thought for complex queries only
-    // Pass complexity level so CoT is only added for moderate+ queries (saves ~30 tokens on simple queries)
-    const enhancedUserPrompt = addChainOfThought(enhancedPrompt, routingDecision?.complexity);
+    // Note: Chain-of-thought is now in system prompt for tier 3 queries
+    // This saves output tokens (model doesn't echo the instructions back)
+    const enhancedUserPrompt = enhancedPrompt;
 
     // Create OpenAI client with user's settings
     const openai = createOpenAI({
@@ -490,13 +490,23 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
       model,
     });
 
+    // Dynamic step limits based on query complexity
+    // Simple queries (tier 1): 5 steps - save tokens
+    // Moderate queries (tier 2): 15 steps - balanced
+    // Complex queries (tier 3): 25 steps - full debugging/multi-step tasks
+    const maxSteps = routingDecision?.tier === 'simple' 
+      ? 5 
+      : routingDecision?.tier === 'complex'
+        ? 25
+        : 15;
+    
     const result = await streamText({
       model: openai(model),  // Use routed model (may differ from settingsAi.model)
       messages: coreMessages,
       ...(enableTools
         ? {
             tools,
-            stopWhen: stepCountIs(15), // Allow up to 15 tool roundtrips for complex tasks
+            stopWhen: stepCountIs(maxSteps), // Dynamic based on complexity
           }
         : {}),
       abortSignal: abortController?.signal, // Enable cancellation

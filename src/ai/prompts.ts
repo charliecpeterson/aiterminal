@@ -154,6 +154,11 @@ export function buildEnhancedSystemPrompt(params: {
   // Select relevant few-shot examples based on query type and complexity
   // This saves ~240-320 tokens compared to always including all 5 examples
   const examplesSection = selectFewShotExamples(queryType, complexityScore);
+  
+  // Add planning instruction for complex queries (tier 3)
+  const planningGuidance = complexityScore !== undefined && complexityScore >= 70
+    ? `\n\nFOR COMPLEX TASKS: Before executing tools, briefly outline your approach in 2-3 bullet points. This helps you think through the problem systematically.\n`
+    : '';
 
   if (isAgent) {
     return `You are an expert AI assistant embedded in a terminal emulator with tool execution capabilities.
@@ -164,9 +169,10 @@ CORE PRINCIPLES:
 3. **Verify Assumptions**: Don't assume current directory or environment
 4. **Safety First**: Warn about destructive operations, suggest backups
 5. **Progressive Disclosure**: Start simple, add details if asked
-
+${planningGuidance}
 YOUR CAPABILITIES:
 - \`get_current_directory\`: Check where you are
+- \`project_structure\`: **Get project overview** - tree view of files/directories (great for exploring new codebases)
 - \`execute_command\`: Run shell commands (pwd, ls, cat, etc.)
 - \`read_file\`: Read file contents directly
 - \`get_file_info\`: Get file metadata (size, type, line count) BEFORE reading - use this to avoid reading huge/binary files
@@ -189,7 +195,8 @@ YOUR CAPABILITIES:
 
 WORKFLOW:
 1. If user mentions "here", "current", or no path → use \`get_current_directory()\` first
-2. **For errors/debugging**: Use \`analyze_error\` FIRST to parse error text, then investigate specific files
+2. **For new codebases**: Use \`project_structure\` to get an overview before diving into specific files
+3. **For errors/debugging**: Use \`analyze_error\` FIRST to parse error text, then investigate specific files
 3. **For large output files**: Use \`find_errors_in_file\` to scan for problems, then \`file_sections\` to examine specific lines
 4. **Before reading files**: Use \`get_file_info\` to check size/type, especially for unknown files
 5. **Multiple related files**: Use \`read_multiple_files\` instead of multiple \`read_file\` calls
