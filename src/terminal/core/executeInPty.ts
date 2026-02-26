@@ -14,11 +14,47 @@ interface ExecuteInPtyResult {
   exitCode: number;
 }
 
+// Per-terminal command queue for serialization
+const terminalQueues = new Map<number, Promise<any>>();
+
+/**
+ * Queue a command for execution on a terminal to prevent concurrent execution
+ * Concurrent commands would interleave output and markers, causing corruption
+ */
+function queueCommand<T>(terminalId: number, fn: () => Promise<T>): Promise<T> {
+  const currentQueue = terminalQueues.get(terminalId) || Promise.resolve();
+  
+  const newQueue = currentQueue
+    .then(() => fn())
+    .catch((error) => {
+      // Propagate error but don't break the queue
+      throw error;
+    })
+    .finally(() => {
+      // Clean up completed queue if it's still the current one
+      if (terminalQueues.get(terminalId) === newQueue) {
+        terminalQueues.delete(terminalId);
+      }
+    });
+  
+  terminalQueues.set(terminalId, newQueue);
+  return newQueue;
+}
+
 /**
  * Execute a command in the PTY and capture its output
  * This uses markers to identify command output in the PTY stream
+ * Commands are queued per-terminal to prevent output interleaving
  */
 export async function executeInPty(options: ExecuteInPtyOptions): Promise<ExecuteInPtyResult> {
+  // Queue the execution to prevent concurrent commands on same terminal
+  return queueCommand(options.terminalId, () => executeInPtyInternal(options));
+}
+
+/**
+ * Internal implementation of PTY execution (called via queue)
+ */
+async function executeInPtyInternal(options: ExecuteInPtyOptions): Promise<ExecuteInPtyResult> {
   const { terminalId, command, timeoutMs = 10000 } = options;
   
   // Generate unique markers
@@ -49,6 +85,7 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let resolveTimer: ReturnType<typeof setTimeout> | null = null;
     let capturedExitCode = 0;
+    let settled = false; // Prevent double resolve/reject
     
     const cleanup = () => {
       if (unlisten) {
@@ -67,6 +104,8 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
     
     // Set up timeout
     timeoutId = setTimeout(() => {
+      if (settled) return; // Already resolved/rejected
+      settled = true;
       cleanup();
       reject(new Error(`Command timeout after ${timeoutMs}ms`));
     }, timeoutMs);
@@ -74,10 +113,13 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
     // Listen for PTY output
     try {
       unlisten = await listen<string>(`pty-data:${terminalId}`, (event) => {
+        if (settled) return; // Ignore events after settlement
+        
         const data = event.payload;
 
         // Guard against runaway output consuming memory and freezing the UI
         if (outputBuffer.length + data.length > MAX_OUTPUT_BYTES) {
+          settled = true;
           cleanup();
           resolve({
             output: outputBuffer.slice(0, MAX_OUTPUT_BYTES) + '\n[output truncated: exceeded 2MB limit]',
@@ -123,6 +165,9 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
           
           // Wait a tiny bit to ensure we got all the data
           resolveTimer = setTimeout(() => {
+            if (settled) return; // Already resolved/rejected
+            settled = true;
+            
             // Join captured output and clean it up
             let finalOutput = capturedOutput.join('');
 
@@ -174,8 +219,11 @@ export async function executeInPty(options: ExecuteInPtyOptions): Promise<Execut
       });
       
     } catch (error) {
-      cleanup();
-      reject(error);
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(error);
+      }
     }
   });
 }

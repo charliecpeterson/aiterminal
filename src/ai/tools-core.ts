@@ -16,33 +16,14 @@ import { getTerminalCwd } from './tools-vercel';
 import { isCommandSafe } from './commandSafety';
 import type { PendingApproval } from '../context/AIContext';
 import { createLogger } from '../utils/logger';
+import {
+  shellEscape,
+  truncateToolResult,
+  COMMAND_TIMEOUT_QUICK_MS,
+  COMMAND_TIMEOUT_DEFAULT_MS,
+} from './pty/securedPtyTools';
 
 const log = createLogger('CoreTools');
-
-const COMMAND_TIMEOUT_QUICK_MS = 10_000;
-const COMMAND_TIMEOUT_DEFAULT_MS = 30_000;
-
-// Helper to shell-escape arguments
-function shellEscape(str: string): string {
-  if (!str) return "''";
-  return `'${str.replace(/'/g, "'\\''")}'`;
-}
-
-// Helper to truncate large results
-function truncateToolResult(result: string, maxChars: number = 8000): string {
-  if (result.length <= maxChars) {
-    return result;
-  }
-
-  const truncateAt = 3000;
-  const lastNewline = result.lastIndexOf('\n', truncateAt);
-  const cutPoint = lastNewline > 0 && lastNewline > truncateAt - 200 ? lastNewline : truncateAt;
-
-  const truncated = result.substring(0, cutPoint);
-  const remaining = result.length - cutPoint;
-
-  return `${truncated}\n\n... [TRUNCATED: ${remaining} more characters. Use file_sections for specific line ranges.]`;
-}
 
 // Helper to execute command in PTY
 async function executeCommand(command: string, terminalId: number): Promise<string> {

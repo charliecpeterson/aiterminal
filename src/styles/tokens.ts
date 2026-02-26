@@ -17,17 +17,17 @@ export const colors = {
   white: '#ffffff',
   black: '#000000',
   
-  // Background colors (dark theme)
+  // Background colors (dark theme — 3-tier system: base, surface, elevated)
   bg: {
-    primary: '#1e1e1e',      // Main background
-    secondary: '#0d0e12',    // Darker panels (tabs, modals)
-    tertiary: '#14151a',     // Active states
-    elevated: '#16171d',     // AI panel background
-    workbench: '#1b1c21',    // Workbench area
-    input: '#3c3c3c',        // Input fields
-    card: '#252526',         // Card background
-    modal: 'rgba(30, 30, 40, 0.98)', // Modal/overlay backgrounds
-    header: '#2d2d2d',       // Header/toolbar backgrounds
+    primary: '#1a1b20',      // Base: main background
+    secondary: '#111217',    // Deepest: tab bar, modal backgrounds
+    tertiary: '#1e1f25',     // Surface: active states, cards
+    elevated: '#1e1f25',     // Elevated: AI panel, floating panels
+    workbench: '#1a1b20',    // Workbench: same as base
+    input: '#2a2b32',        // Input fields
+    card: '#222328',         // Card background
+    modal: 'rgba(17, 18, 23, 0.98)', // Modal overlay
+    header: '#2a2b32',       // Header/toolbar backgrounds
   },
   
   // Text colors
@@ -88,12 +88,12 @@ export const colors = {
   
   // Overlay colors (for transparency effects)
   overlay: {
-    subtle: 'rgba(255, 255, 255, 0.02)',
-    light: 'rgba(255, 255, 255, 0.03)',
-    default: 'rgba(255, 255, 255, 0.05)',
-    medium: 'rgba(255, 255, 255, 0.06)',
-    strong: 'rgba(255, 255, 255, 0.08)',
-    stronger: 'rgba(255, 255, 255, 0.1)',
+    subtle: 'rgba(255, 255, 255, 0.03)',
+    light: 'rgba(255, 255, 255, 0.05)',
+    default: 'rgba(255, 255, 255, 0.07)',
+    medium: 'rgba(255, 255, 255, 0.10)',
+    strong: 'rgba(255, 255, 255, 0.13)',
+    stronger: 'rgba(255, 255, 255, 0.18)',
     card: 'rgba(255, 255, 255, 0.04)',
     input: 'rgba(0, 0, 0, 0.4)',
     dark: 'rgba(0, 0, 0, 0.25)',
@@ -312,21 +312,22 @@ export const zIndex = {
  * Tab component tokens
  */
 export const tab = {
-  height: '34px',
-  padding: '5px 12px',
+  height: '38px',
+  padding: '6px 14px',
   fontSize: fontSize.base,
   fontWeight: fontWeight.medium,
-  borderRadius: '6px 6px 0 0',
+  borderRadius: '0',
   bg: {
-    default: colors.overlay.light,
-    hover: colors.overlay.medium,
-    active: colors.bg.tertiary,
+    default: 'transparent',
+    hover: colors.overlay.light,
+    active: 'transparent',
   },
   text: {
-    default: 'rgba(255, 255, 255, 0.5)',
-    hover: 'rgba(255, 255, 255, 0.7)',
+    default: colors.text.hint,
+    hover: colors.text.muted,
     active: colors.text.secondary,
   },
+  accentBorder: colors.accent.primary,
 } as const;
 
 /**

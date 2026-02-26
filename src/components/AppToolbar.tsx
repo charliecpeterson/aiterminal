@@ -3,6 +3,7 @@
  * Renders a minimal top toolbar with essential actions.
  * Additional actions are available via Command Palette (Cmd/Ctrl+Shift+P)
  */
+import { Server, BrainCircuit, Command } from "lucide-react";
 
 interface AppToolbarProps {
   onSSHClick: () => void;
@@ -15,27 +16,29 @@ export function AppToolbar(props: AppToolbarProps) {
 
   return (
     <div className="top-segmented" role="group" aria-label="Top actions">
-      <div
+      <button
         className="segmented-button"
         onClick={onSSHClick}
         title="SSH Sessions (Cmd/Ctrl+Shift+O)"
       >
-        SSH
-      </div>
-      <div
+        <Server size={14} />
+        <span className="segmented-label">SSH</span>
+      </button>
+      <button
         className="segmented-button"
         onClick={onAIPanelClick}
         title="Open AI Panel (Cmd/Ctrl+B)"
       >
-        AI Panel
-      </div>
-      <div
+        <BrainCircuit size={14} />
+        <span className="segmented-label">AI</span>
+      </button>
+      <button
         className="segmented-button segmented-button-subtle"
         onClick={onCommandPaletteClick}
         title="Command Palette (Cmd/Ctrl+Shift+P)"
       >
-        ⌘P
-      </div>
+        <Command size={13} />
+      </button>
     </div>
   );
 }

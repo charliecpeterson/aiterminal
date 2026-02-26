@@ -125,9 +125,10 @@ export async function getSmartContextForPrompt(params: {
   const alwaysIncluded = buildAlwaysIncludedContext(contextItems, globalSmartMode);
 
   // Sync index (upsert + remove) then query.
+  // NOTE: apiKey is passed to Rust backend but never logged (verified in context_index.rs)
   await invoke('context_index_sync', {
     provider: ai.provider,
-    apiKey: ai.api_key,
+    apiKey: ai.api_key, // Security: Not logged by backend
     url: ai.url || null,
     embeddingModel,
     chunks,
@@ -135,7 +136,7 @@ export async function getSmartContextForPrompt(params: {
 
   const retrieved = await invoke<RetrievedChunk[]>('context_index_query', {
     provider: ai.provider,
-    apiKey: ai.api_key,
+    apiKey: ai.api_key, // Security: Not logged by backend
     url: ai.url || null,
     embeddingModel,
     query,

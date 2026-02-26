@@ -16,8 +16,10 @@ const DANGEROUS_PATTERNS = {
     /\brm\b/,               // rm
     /\bmv\b.*>/,            // mv with redirect
     /\bdd\b/,               // dd
-    />>/,                   // append redirect
-    />/,                    // redirect (overwrite)
+    /\s>>\s/,               // append redirect (with spacing)
+    /[\w">]>>/,             // append redirect without preceding space (cat>>file, ">>file)
+    /\s>\s/,                // redirect (with spacing to avoid ->, =>)
+    /[\w">]>/,              // redirect without preceding space (cat>file, echo>file, ">file)
     /\|\s*sh\b/,            // pipe to sh
     /\|\s*bash\b/,          // pipe to bash
     /\|\s*zsh\b/,           // pipe to zsh
@@ -29,6 +31,17 @@ const DANGEROUS_PATTERNS = {
     /\beval\b/,             // eval (executes arbitrary string as code)
     /\btruncate\b/,         // truncate
     /\bshred\b/,            // shred
+    /\bsource\b/,           // source (executes file)
+    /\b\.\s+\S+\.sh\b/,     // . script.sh (executes file)
+    /\bsh\s+\S+\.sh\b/,     // sh script.sh
+    /\bbash\s+\S+\.sh\b/,   // bash script.sh
+    /;/,                    // command chaining with semicolon
+    /&&/,                   // conditional chaining (and)
+    /\|\|/,                 // conditional chaining (or)
+    /\$\(/,                 // command substitution $()
+    /`/,                    // backtick command substitution
+    /<<-?\s*\w+/,           // here-document (<<EOF or <<-EOF)
+    /<<</,                  // here-string (<<<)
   ],
   systemChange: [
     /\bsudo\b/,             // sudo
@@ -63,13 +76,19 @@ const SAFE_COMMANDS = [
   'pwd', 'ls', 'cat', 'less', 'more', 'head', 'tail',
   'grep', 'find', 'which', 'where', 'type',
   'echo', 'printf',
-  'date', 'whoami', 'hostname',
-  'git status', 'git log', 'git diff', 'git branch',
-  'node --version', 'npm --version', 'python --version',
-  'ps', 'top', 'htop',
+  'date', 'whoami', 'hostname', 'uname',
+  'git status', 'git log', 'git diff', 'git branch', 'git show',
+  'node --version', 'npm --version', 'python --version', 'cargo --version',
+  'ps', 'top', 'htop', 'pgrep',
   'env', 'printenv',
-  'df', 'du',
-  'wc', 'sort', 'uniq',
+  'df', 'du', 'free',
+  'wc', 'sort', 'uniq', 'awk', 'sed',
+  'file', 'stat', 'id', 'groups',
+  'history', 'jobs', 'fg', 'bg',
+  'cd', // Safe: only changes directory, doesn't modify files
+  'diff', 'comm', // Safe: compare files
+  'tr', 'cut', 'paste', // Safe: text processing
+  'tee --help', // Safe: just help text
 ];
 
 /**
@@ -112,5 +131,10 @@ export function isCommandSafe(command: string): CommandSafetyResult {
     }
   }
 
-  return { isSafe: true };
+  // Default-deny: Unknown commands require approval for safety
+  // This prevents accidental execution of commands that might be dangerous
+  return { 
+    isSafe: false,
+    reason: 'Unknown command - requires approval',
+  };
 }

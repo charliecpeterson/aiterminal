@@ -12,83 +12,23 @@ import { isCommandSafe } from './commandSafety';
 import { executeInPty } from '../terminal/core/executeInPty';
 import type { PendingApproval } from '../context/AIContext';
 import { createLogger } from '../utils/logger';
+import {
+  ptyTools,
+  shellEscape,
+  createFileWriteCommand,
+  truncateToolResult,
+  COMMAND_TIMEOUT_QUICK_MS,
+  COMMAND_TIMEOUT_DEFAULT_MS,
+  COMMAND_TIMEOUT_LONG_MS,
+} from './pty/securedPtyTools';
 
 const log = createLogger('AITools');
 
-/**
- * Escape shell arguments for safe command execution.
- * Uses single quotes and escapes embedded single quotes.
- */
-function shellEscape(str: string): string {
-  if (!str) return "''";
-  return `'${str.replace(/'/g, "'\\''")}'`;
-}
-
-/**
- * Create a shell command to write content to a file using base64 encoding.
- * Base64 is used because heredocs don't work reliably with PTY execution
- * (multi-line commands get interpreted interactively line-by-line).
- *
- * @param path - File path (will be shell-escaped)
- * @param content - Content to write
- * @param append - If true, append instead of overwrite (>> vs >)
- * @returns Shell command string
- */
-function createFileWriteCommand(path: string, content: string, append: boolean = false): string {
-  const escapedPath = shellEscape(path);
-  const redirect = append ? '>>' : '>';
-
-  // Use base64 encoding - works reliably with PTY since it's a single-line command
-  const base64Content = btoa(unescape(encodeURIComponent(content)));
-  return `echo '${base64Content}' | base64 -d ${redirect} ${escapedPath}`;
-}
-
-const COMMAND_TIMEOUT_QUICK_MS = 10_000;
-const COMMAND_TIMEOUT_DEFAULT_MS = 30_000;
-const COMMAND_TIMEOUT_LONG_MS = 120_000;
 const FILE_SIZE_WARNING_THRESHOLD_BYTES = 100 * 1024;
 const FILE_SIZE_LARGE_THRESHOLD_BYTES = 1024 * 1024;
+const TOOL_RESULT_MAX_CHARS = 8000; // Re-export for compatibility
 
-// Tool result size limits (to prevent context bloat)
-const TOOL_RESULT_MAX_CHARS = 8000;      // ~2000 tokens max per tool result
-
-/**
- * Truncate large tool results to prevent context bloat.
- * Uses head+tail strategy: keeps beginning AND end of output.
- * Critical for debugging where errors appear at the end of logs/build output.
- */
-function truncateToolResult(result: string, maxChars: number = TOOL_RESULT_MAX_CHARS): string {
-  if (result.length <= maxChars) {
-    return result;
-  }
-  
-  // Keep first half and last half of the budget
-  const headChars = Math.floor(maxChars / 2);
-  const tailChars = Math.floor(maxChars / 2);
-  
-  // Find clean line breaks for head
-  let headCutoff = headChars;
-  const headNewline = result.lastIndexOf('\n', headChars);
-  if (headNewline > 0 && headNewline > headChars - 200) {
-    headCutoff = headNewline;
-  }
-  
-  // Find clean line breaks for tail
-  let tailStart = result.length - tailChars;
-  const tailNewline = result.indexOf('\n', tailStart);
-  if (tailNewline > 0 && tailNewline < tailStart + 200) {
-    tailStart = tailNewline + 1;
-  }
-  
-  const head = result.substring(0, headCutoff);
-  const tail = result.substring(tailStart);
-  const omittedChars = result.length - headCutoff - (result.length - tailStart);
-  const omittedLines = (result.substring(headCutoff, tailStart).match(/\n/g) || []).length;
-  
-  return `${head}\n\n... [TRUNCATED: ${omittedChars} characters, ~${omittedLines} lines omitted. Use file_sections to read specific line ranges.]\n\n${tail}`;
-}
-
-// Commands that typically run quickly
+// Quick commands for timeout optimization
 const QUICK_COMMANDS = [
   /^ls(\s|$)/, /^pwd$/, /^cat\s/, /^head\s/, /^tail\s/, /^echo\s/,
   /^which\s/, /^type\s/, /^whoami$/, /^date$/, /^hostname$/,
@@ -475,54 +415,10 @@ Examples:
         max_bytes: z.number().optional().describe('Maximum bytes to read (default: 50000)'),
       }),
       execute: async ({ path, max_bytes }) => {
-        const terminalId = await getActiveTerminalId();
-        const cwd = await getTerminalCwd(terminalId);
-        
-        // Check cache first (only for default max_bytes to ensure consistency)
-        if (!max_bytes || max_bytes === 50000) {
-          const cached = fileCache.get(path, cwd);
-          if (cached !== null) {
-            return cached;
-          }
-        }
-        
         try {
-          // Use head to limit bytes read for large files
-          const maxBytes = max_bytes || 50000;
-          const command = `head -c ${maxBytes} ${shellEscape(path)} 2>&1`;
-          
-          const result = await executeInPty({
-            terminalId,
-            command,
-            timeoutMs: COMMAND_TIMEOUT_QUICK_MS,
-          });
-          
-          // Check for common error patterns
-          if (result.exitCode !== 0) {
-            const output = result.output.toLowerCase();
-            if (output.includes('no such file') || output.includes('cannot find')) {
-              return `Error: File not found: ${path}`;
-            }
-            if (output.includes('permission denied')) {
-              return `Error: Permission denied: ${path}`;
-            }
-            if (output.includes('is a directory')) {
-              return `Error: Path is a directory, not a file: ${path}`;
-            }
-            return `Error reading file: ${result.output}`;
-          }
-          
-          // Truncate large results to prevent context bloat
-          const truncated = truncateToolResult(result.output);
-          
-          // Cache the result (only for default max_bytes)
-          if (!max_bytes || max_bytes === 50000) {
-            fileCache.set(path, cwd, truncated);
-          }
-          
-          return truncated;
+          return await ptyTools.readFile(path, max_bytes);
         } catch (error) {
-          return `Error reading file: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -639,7 +535,7 @@ Examples:
 - Check package files: paths=["package.json", "package-lock.json", "tsconfig.json"]`,
       inputSchema: z.object({
         paths: z.array(z.string()).describe('Array of file paths (max 20)'),
-        max_bytes_per_file: z.number().optional().describe('Max bytes per file (default: 50000)'),
+        max_bytes_per_file: z.number().max(500000).optional().describe('Max bytes per file (default: 50000, max: 500000)'),
       }),
       execute: async ({ paths, max_bytes_per_file }) => {
         const terminalId = await getActiveTerminalId();
@@ -683,58 +579,6 @@ Examples:
       },
     }),
 
-    grep_in_files: tool({
-      description: `Search for a pattern within specific files. Fast grep/search operation.
-
-Use this when:
-- Looking for specific error messages in logs
-- Finding where a variable/function is used
-- Searching for TODO/FIXME comments
-- Checking for specific patterns in code
-
-Returns matching lines with line numbers.
-
-Examples:
-- Find error in logs: pattern="ConnectionError", paths=["app.log", "error.log"]
-- Search for function: pattern="handleRequest", paths=["src/server.ts", "src/routes.ts"]
-- Case-insensitive: pattern="todo", case_sensitive=false`,
-      inputSchema: z.object({
-        pattern: z.string().describe('Text pattern to search for'),
-        paths: z.array(z.string()).describe('Array of file paths to search (max 50)'),
-        case_sensitive: z.boolean().optional().describe('Case-sensitive search (default: false)'),
-      }),
-      execute: async ({ pattern, paths, case_sensitive }) => {
-        const terminalId = await getActiveTerminalId();
-        try {
-          // Limit to 50 files for performance
-          const filePaths = paths.slice(0, 50);
-          
-          // Build grep command
-          const caseFlag = case_sensitive ? '' : '-i';
-          const escapedPattern = shellEscape(pattern);
-          const escapedPaths = filePaths.map(p => shellEscape(p)).join(' ');
-          
-          const command = `grep -n ${caseFlag} ${escapedPattern} ${escapedPaths} 2>/dev/null || echo "No matches found"`;
-          const output = await executeCommand(command, terminalId);
-          
-          if (output.includes('No matches found') || !output.trim()) {
-            return `No matches found for "${pattern}" in ${filePaths.length} file(s)`;
-          }
-          
-          // Count matches
-          const lines = output.trim().split('\n');
-          const matchCount = lines.length;
-          
-          // Truncate large results
-          const truncated = truncateToolResult(output);
-          
-          return `Found ${matchCount} matches for "${pattern}":\n\n${truncated}`;
-        } catch (error) {
-          return `Error searching files: ${error}`;
-        }
-      },
-    }),
-
     analyze_error: tool({
       description: `Intelligently analyze error output or stack traces. Automatically extracts:
 - File paths and line numbers
@@ -772,144 +616,126 @@ Examples:
     }),
 
     list_directory: tool({
-      description: `List contents of a directory. Shows files and subdirectories.
-
-IMPORTANT: When user says "my current directory" or "here":
-1. Use execute_command("pwd") to get the actual path
-2. Then use that path with list_directory
+      description: `List files and directories in a path. Shows file sizes and permissions.
 
 Examples:
-- List home directory: path="/Users/john"
-- List project: path="/Users/john/projects/myapp"`,
+- List current: path="."
+- List specific: path="/var/log"
+- List subdirectory: path="src/components"`,
       inputSchema: z.object({
-        path: z.string().describe('Absolute path to the directory to list'),
+        path: z.string().optional().describe('Path to list (default: current directory)'),
       }),
       execute: async ({ path }) => {
-        const terminalId = await getActiveTerminalId();
         try {
-          // Use ls -la for detailed directory listing
-          const command = `ls -la ${shellEscape(path)}`;
-          const output = await executeCommand(command, terminalId);
-          
-          // Parse the output to count directories and files
-          const lines = output.split('\n').filter(line => line.trim());
-          const entries = lines.slice(1); // Skip header line
-          
-          const directories = entries.filter(line => line.startsWith('d')).length;
-          const files = entries.filter(line => !line.startsWith('d') && !line.startsWith('total')).length;
-          
-          return `Contents of ${path}:\n${output}\n\nTotal: ${directories} directories, ${files} files`;
+          return await ptyTools.listDirectory(path || '.');
         } catch (error) {
-          return `Error listing directory: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
 
     search_files: tool({
-      description: `Search for files by name pattern. Use for finding files by name.
+      description: `Search for files by name or pattern. Fast file system search.
 
 Examples:
-- Find all Python files: pattern="*.py"
-- Find TypeScript files: pattern="*.ts"
-- Find config files: pattern="*config*"`,
+- Find all JS files: path=".", pattern="*.js"
+- Find config: path=".", pattern="*config*"
+- Specific dir: path="src", pattern="*.tsx"`,
       inputSchema: z.object({
-        pattern: z.string().describe('File name pattern to search for'),
-        path: z.string().optional().describe('Directory to search in (defaults to current)'),
+        path: z.string().optional().describe('Directory to search (default: current)'),
+        pattern: z.string().describe('File name pattern (supports wildcards: *, ?)'),
       }),
-      execute: async ({ pattern, path }) => {
-        const terminalId = await getActiveTerminalId();
-        const searchPath = path || await getTerminalCwd(terminalId);
-        
+      execute: async ({ path, pattern }) => {
         try {
-          // Use ls for simple pattern matching (works with shell wildcards)
-          // For exact filename search, use both ls and find as fallback
-          const isWildcard = pattern.includes('*') || pattern.includes('?');
+          const result = await ptyTools.findFiles(path || '.', pattern);
           
-          let command: string;
-          if (isWildcard) {
-            // Use ls with wildcards
-            command = `cd ${shellEscape(searchPath)} && ls -1 ${pattern} 2>/dev/null || echo ""`;
-          } else {
-            // Search for exact filename recursively with find
-            command = `find ${shellEscape(searchPath)} -name ${shellEscape(pattern)} -type f 2>&1 | grep -v 'Permission denied' | head -100`;
+          if (!result.trim()) {
+            return `No files found matching pattern "${pattern}"`;
           }
           
-          const output = await executeCommand(command, terminalId);
-          
-          if (!output || output.trim() === '' || output.includes('(no output)')) {
-            return `No files found matching "${pattern}" in ${searchPath}`;
-          }
-          
-          const matches = output.trim().split('\n').filter(line => line.trim());
-          const count = matches.length;
-          const displayMatches = matches.slice(0, 50); // Limit display to first 50
-          
-          const result = [
-            `Found ${count} file(s) matching "${pattern}" in ${searchPath}:`,
-            '',
-            ...displayMatches.map(m => `  ${m}`),
-          ];
-          
-          if (count > 50) {
-            result.push('', `... and ${count - 50} more files (showing first 50)`);
-          }
-          
-          return result.join('\n');
+          return result;
         } catch (error) {
-          return `Error searching files: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
+        }
+      },
+    }),
+
+    grep_in_files: tool({
+      description: `Search for a pattern within specific files. Fast grep/search operation.
+
+Use this when:
+- Looking for specific error messages in logs
+- Finding where a variable/function is used
+- Searching for TODO/FIXME comments
+
+Examples:
+- Find error: pattern="ConnectionError", paths=["app.log"]
+- Search function: pattern="handleRequest", paths=["src/server.ts"]`,
+      inputSchema: z.object({
+        pattern: z.string().describe('Text pattern to search for'),
+        paths: z.array(z.string()).describe('Array of file paths to search (max 50)'),
+        case_sensitive: z.boolean().optional().describe('Case-sensitive search (default: false)'),
+        context: z.number().optional().describe('Lines of context (default: 0)'),
+      }),
+      execute: async ({ pattern, paths, case_sensitive, context }) => {
+        try {
+          const results: string[] = [];
+          
+          for (const path of paths.slice(0, 50)) {
+            try {
+              const result = await ptyTools.grep(pattern, path, {
+                caseInsensitive: !case_sensitive,
+                context: context || 0,
+                maxHits: 50,
+              });
+              
+              if (result.trim()) {
+                results.push(`=== ${path} ===\n${result}`);
+              }
+            } catch {
+              // Skip files that can't be read
+            }
+          }
+          
+          if (results.length === 0) {
+            return `Pattern "${pattern}" not found in any files`;
+          }
+          
+          return results.join('\n\n');
+        } catch (error) {
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
 
     rg_search: tool({
-      description: `Fast text search using ripgrep (rg). Falls back to grep if rg is not available.
-
-Use this when:
-- Searching across a repo or large directory
-- Finding symbols, errors, or config keys
-- You want context lines around matches
+      description: `Fast recursive text search using ripgrep. Searches entire directory trees.
 
 Examples:
-- Find symbol: pattern="executeInPty", path="src"
-- Search with glob: pattern="TODO", path=".", glob="**/*.ts"
-- Case-sensitive: pattern="ErrorCode", path="src", case_sensitive=true
-- Add context: pattern="panic", path="src-tauri", context_lines=2`,
+- Find TODO: pattern="TODO", path="src"
+- Find import: pattern="import.*React", path="."`,
       inputSchema: z.object({
-        pattern: z.string().describe('Text pattern to search for'),
-        path: z.string().optional().describe('Directory to search in (defaults to current)'),
-        glob: z.string().optional().describe('File glob to include (e.g., "**/*.ts")'),
-        case_sensitive: z.boolean().optional().describe('Case-sensitive search (default: false)'),
-        context_lines: z.number().optional().describe('Lines of context before/after (default: 0)'),
-        max_matches: z.number().optional().describe('Maximum matches to return (default: 200, max: 1000)'),
+        pattern: z.string().describe('Search pattern (supports regex)'),
+        path: z.string().optional().describe('Directory to search (default: current)'),
+        case_sensitive: z.boolean().optional().describe('Case-sensitive (default: true)'),
+        context: z.number().optional().describe('Lines of context (default: 0)'),
+        max_hits: z.number().optional().describe('Max results (default: 50)'),
       }),
-      execute: async ({ pattern, path, glob, case_sensitive, context_lines, max_matches }) => {
-        const terminalId = await getActiveTerminalId();
-        const searchPath = path || await getTerminalCwd(terminalId);
-        
+      execute: async ({ pattern, path, case_sensitive, context, max_hits }) => {
         try {
-          const maxHits = Math.min(max_matches || 200, 1000);
-          const context = Math.max(0, Math.min(context_lines || 0, 10));
-          const caseFlag = case_sensitive ? '-s' : '-i';
+          const result = await ptyTools.grep(pattern, path || '.', {
+            caseInsensitive: !case_sensitive,
+            context: context || 0,
+            maxHits: max_hits || 50,
+          });
           
-          const globPart = glob ? `--glob ${shellEscape(glob)}` : '';
-          const contextPart = context > 0 ? `-C ${context}` : '';
-          
-          // Prefer rg, fall back to grep if rg isn't available
-          const command = [
-            `rg --line-number --max-count ${maxHits} ${caseFlag} ${contextPart} ${globPart} ${shellEscape(pattern)} ${shellEscape(searchPath)}`,
-            `||`,
-            `grep -R -n ${case_sensitive ? '' : '-i'} ${context > 0 ? `-C ${context}` : ''} ${shellEscape(pattern)} ${shellEscape(searchPath)} | head -n ${maxHits}`,
-          ].join(' ');
-          
-          const output = await executeCommand(command, terminalId);
-          
-          if (!output.trim() || output.includes('No matches') || output.includes('not found')) {
-            return `No matches found for "${pattern}" in ${searchPath}`;
+          if (!result.trim()) {
+            return `No matches found for "${pattern}"`;
           }
           
-          return truncateToolResult(output, TOOL_RESULT_MAX_CHARS * 2);
+          return result;
         } catch (error) {
-          return `Error searching with rg: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -1142,26 +968,42 @@ Examples:
 Use this to understand the state of the git repository before making suggestions.`,
       inputSchema: z.object({}),
       execute: async () => {
-        const terminalId = await getActiveTerminalId();
         try {
-          const command = `git status --short`;
-          const output = await executeCommand(command, terminalId);
+          const status = await ptyTools.gitStatus();
           
-          if (output.includes('not a git repository')) {
+          if (status.includes('not a git repository')) {
             return 'Not a git repository';
           }
           
-          if (!output.trim()) {
+          if (!status.trim()) {
             return 'Git repository is clean (no changes)';
           }
           
-          // Get branch name too
-          const branchCmd = `git branch --show-current`;
-          const branch = await executeCommand(branchCmd, terminalId);
-          
-          return `Branch: ${branch.trim()}\n\nStatus:\n${output}`;
+          return status;
         } catch (error) {
-          return `Error getting git status: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
+        }
+      },
+    }),
+
+    get_git_diff: tool({
+      description: `Get uncommitted changes in the git repository. Shows what has been modified but not yet committed.`,
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const diff = await ptyTools.gitDiff(false);
+          
+          if (diff.includes('not a git repository')) {
+            return 'Not a git repository';
+          }
+          
+          if (!diff.trim()) {
+            return 'No uncommitted changes';
+          }
+          
+          return truncateToolResult(diff, TOOL_RESULT_MAX_CHARS * 2);
+        } catch (error) {
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -1177,20 +1019,10 @@ Examples:
         pattern: z.string().describe('Search pattern for process name'),
       }),
       execute: async ({ pattern }) => {
-        const terminalId = await getActiveTerminalId();
         try {
-          const escapedPattern = shellEscape(pattern);
-          const command = `ps aux | grep ${escapedPattern} | grep -v grep`;
-          const output = await executeCommand(command, terminalId);
-          
-          if (!output.trim()) {
-            return `No processes found matching "${pattern}"`;
-          }
-          
-          const lines = output.trim().split('\n');
-          return `Found ${lines.length} process(es) matching "${pattern}":\n\n${output}`;
+          return await ptyTools.findProcess(pattern);
         } catch (error) {
-          return `Error finding process: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -1205,19 +1037,10 @@ Examples:
         port: z.number().int().min(1).max(65535).describe('Port number to check (e.g., 8080, 3000)'),
       }),
       execute: async ({ port }) => {
-        const terminalId = await getActiveTerminalId();
         try {
-          // Try lsof first (works on macOS/Linux), fallback to netstat
-          const command = `lsof -i :${port} 2>/dev/null || netstat -an | grep ${port} 2>/dev/null || echo "Port ${port} is not in use"`;
-          const output = await executeCommand(command, terminalId);
-          
-          if (output.includes('not in use')) {
-            return `Port ${port} is not in use`;
-          }
-          
-          return `Port ${port} status:\n${output}`;
+          return await ptyTools.checkPort(port);
         } catch (error) {
-          return `Error checking port: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -1226,14 +1049,10 @@ Examples:
       description: `Get system information including OS, architecture, and disk space. Useful for debugging environment issues.`,
       inputSchema: z.object({}),
       execute: async () => {
-        const terminalId = await getActiveTerminalId();
         try {
-          const command = `uname -a && echo "---" && df -h / && echo "---" && free -h 2>/dev/null || vm_stat`;
-          const output = await executeCommand(command, terminalId);
-          
-          return `System Information:\n\n${output}`;
+          return await ptyTools.getSystemInfo();
         } catch (error) {
-          return `Error getting system info: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -1311,30 +1130,7 @@ Examples:
       },
     }),
 
-    get_git_diff: tool({
-      description: `Get uncommitted changes in the git repository. Shows what has been modified but not yet committed.`,
-      inputSchema: z.object({}),
-      execute: async () => {
-        const terminalId = await getActiveTerminalId();
-        try {
-          const command = `git diff`;
-          const output = await executeCommand(command, terminalId);
-          
-          if (output.includes('not a git repository')) {
-            return 'Not a git repository';
-          }
-          
-          if (!output.trim()) {
-            return 'No uncommitted changes';
-          }
-          
-          // Truncate large diffs
-          return truncateToolResult(output, TOOL_RESULT_MAX_CHARS * 2);
-        } catch (error) {
-          return `Error getting git diff: ${error}`;
-        }
-      },
-    }),
+
 
     calculate: tool({
       description: `Evaluate a mathematical expression. Supports basic arithmetic and advanced math functions.
@@ -1382,34 +1178,15 @@ Use this when the user asks about external documentation or errors that might ne
 
 Examples:
 - Recent commands: count=20
-- Find git commands: filter="git", count=50`,
+- More history: count=100`,
       inputSchema: z.object({
-        count: z.number().optional().describe('Number of commands to retrieve (default: 50, max: 500)'),
-        filter: z.string().optional().describe('Filter commands containing this text (case-insensitive)'),
+        count: z.number().optional().describe('Number of commands to retrieve (default: 50, max: 200)'),
       }),
-      execute: async ({ count, filter }) => {
-        const terminalId = await getActiveTerminalId();
+      execute: async ({ count }) => {
         try {
-          const lineCount = Math.min(count || 50, 500);
-          
-          // Try both bash and zsh history files
-          let command = `tail -n ${lineCount} ~/.bash_history 2>/dev/null || tail -n ${lineCount} ~/.zsh_history 2>/dev/null || echo "No history file found"`;
-          
-          if (filter) {
-            const escapedFilter = shellEscape(filter);
-            command = `(tail -n ${lineCount * 2} ~/.bash_history 2>/dev/null || tail -n ${lineCount * 2} ~/.zsh_history 2>/dev/null) | grep -i ${escapedFilter} | tail -n ${lineCount}`;
-          }
-          
-          const output = await executeCommand(command, terminalId);
-          
-          if (output.includes('No history file found') || !output.trim()) {
-            return 'No shell history found';
-          }
-          
-          const lines = output.trim().split('\n');
-          return `Shell history (${lines.length} commands${filter ? ` matching "${filter}"` : ''}):\n\n${output}`;
+          return await ptyTools.getShellHistory(count || 50);
         } catch (error) {
-          return `Error reading shell history: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -1442,18 +1219,16 @@ Examples:
 - Limit matches: path="huge.log", max_matches=20`,
       inputSchema: z.object({
         path: z.string().describe('Path to the file (absolute or relative to terminal directory)'),
-        context_lines: z.number().optional().describe('Lines of context before/after each match (default: 2)'),
+        context_lines: z.number().max(20).optional().describe('Lines of context before/after each match (default: 2, max: 20)'),
         max_matches: z.number().optional().describe('Maximum matches to return (default: 50, max: 200)'),
         custom_patterns: z.array(z.string()).optional().describe('Additional patterns to search for'),
       }),
       execute: async ({ path, context_lines, max_matches, custom_patterns }) => {
-        const terminalId = await getActiveTerminalId();
         try {
-          const escapedPath = shellEscape(path);
           const context = context_lines || 2;
           const maxHits = Math.min(max_matches || 50, 200);
           
-          // Build grep pattern - common error keywords
+          // Build error pattern (regex alternation)
           const errorPatterns = [
             'error', 'Error', 'ERROR',
             'fatal', 'Fatal', 'FATAL',
@@ -1462,27 +1237,28 @@ Examples:
             'failed', 'Failed', 'FAILED',
             'crash', 'Crash', 'CRASH',
             'killed', 'Killed', 'KILLED',
-            'timeout', 'Timeout', 'TIMEOUT'
+            'timeout', 'Timeout', 'TIMEOUT',
           ];
           
           if (custom_patterns) {
             errorPatterns.push(...custom_patterns);
           }
           
-          // Use grep with extended regex and context
           const pattern = errorPatterns.join('|');
-          const contextFlag = context > 0 ? `-C ${context}` : '';
-          const command = `grep -E -n ${contextFlag} '${pattern}' ${escapedPath} 2>/dev/null | head -n ${maxHits * (context * 2 + 1)}`;
           
-          const output = await executeCommand(command, terminalId);
+          const result = await ptyTools.grep(pattern, path, {
+            caseInsensitive: false,
+            context,
+            maxHits,
+          });
           
-          if (!output.trim()) {
+          if (!result.trim()) {
             return `No error patterns found in ${path}`;
           }
           
-          return `Found errors in ${path} (showing up to ${maxHits} matches with ${context} lines context):\n\n${output}`;
+          return `Found errors in ${path} (showing up to ${maxHits} matches with ${context} lines context):\n\n${result}`;
         } catch (error) {
-          return `Error scanning file for errors: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),
@@ -1549,26 +1325,20 @@ Output shows:
         file2: z.string().describe('Second file path'),
       }),
       execute: async ({ file1, file2 }) => {
-        const terminalId = await getActiveTerminalId();
         try {
-          const escapedFile1 = shellEscape(file1);
-          const escapedFile2 = shellEscape(file2);
+          const result = await ptyTools.diffFiles(file1, file2);
           
-          const command = `diff -u ${escapedFile1} ${escapedFile2} || true`;
-          const output = await executeCommand(command, terminalId);
-          
-          if (!output.trim()) {
+          if (!result.trim()) {
             return `Files are identical: ${file1} and ${file2}`;
           }
           
-          if (output.includes('No such file')) {
+          if (result.includes('No such file')) {
             return `Error: One or both files not found`;
           }
           
-          // Truncate large diffs
-          return truncateToolResult(output, TOOL_RESULT_MAX_CHARS * 2);
+          return truncateToolResult(result, TOOL_RESULT_MAX_CHARS * 2);
         } catch (error) {
-          return `Error comparing files: ${error}`;
+          return `Error: ${error instanceof Error ? error.message : error}`;
         }
       },
     }),

@@ -13,6 +13,22 @@ export interface PromptConfig {
 }
 
 /**
+ * Sanitize user-controlled content before including in prompts
+ * Prevents prompt injection by escaping special characters
+ */
+function sanitizeForPrompt(text: string): string {
+  if (!text) return '';
+  
+  // Replace newlines with escaped versions to prevent breaking prompt structure
+  // Also escape backticks and other markdown that could interfere
+  return text
+    .replace(/\n/g, '\\n')  // Escape newlines
+    .replace(/`/g, '\\`')    // Escape backticks
+    .replace(/\$/g, '\\$')   // Escape dollar signs (template literals)
+    .trim();
+}
+
+/**
  * Detect the current platform from browser/Tauri environment
  */
 export function detectPlatform(): PromptConfig['platform'] {
@@ -220,7 +236,7 @@ ${platformHints}
 
 CONTEXT AWARENESS:
 Terminal ID: ${terminalId}
-${contextSummary ? `\nRECENT CONTEXT SUMMARY:\n${contextSummary}\n` : ''}
+${contextSummary ? `\nRECENT CONTEXT SUMMARY:\n${sanitizeForPrompt(contextSummary)}\n` : ''}
 ${examplesSection}
 RESPONSE FORMAT:
 - Use tools proactively without asking permission
@@ -248,7 +264,7 @@ ${platformHints}
 
 CONTEXT AWARENESS:
 Terminal ID: ${terminalId}
-${contextSummary ? `\nRECENT CONTEXT SUMMARY:\n${contextSummary}\n` : ''}
+${contextSummary ? `\nRECENT CONTEXT SUMMARY:\n${sanitizeForPrompt(contextSummary)}\n` : ''}
 ${examplesSection}
 RESPONSE FORMAT:
 - Put all commands in \`\`\`bash code blocks

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { executeInPty } from '../terminal/core/executeInPty';
+import { shellEscape } from './pty/securedPtyTools';
 
 /**
  * SMART FILE CAPTURE SYSTEM
@@ -18,15 +19,6 @@ export async function requestCaptureLast(count: number): Promise<void> {
     event: 'ai-context:capture-last', 
     payload: { count: safeCount } 
   });
-}
-
-/**
- * Intelligently capture file content without dumping to terminal.
- * - Local files: Uses direct Tauri filesystem access
- * - SSH files: Uses silent command execution (no terminal output)
- */
-function shellEscape(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 export async function captureFileContent(params: {

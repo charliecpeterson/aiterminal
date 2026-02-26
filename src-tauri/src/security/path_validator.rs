@@ -131,6 +131,7 @@ pub fn validate_path(path: &Path) -> Result<PathBuf, String> {
 
 /// Sensitive path patterns that should be denied for write operations.
 /// These are relative to the user's home directory.
+#[allow(dead_code)]
 const SENSITIVE_PATHS: &[&str] = &[
     ".ssh/authorized_keys",
     ".ssh/authorized_keys2",
@@ -166,6 +167,7 @@ const SENSITIVE_PATHS: &[&str] = &[
 
 /// Sensitive directory prefixes that should be denied for write operations.
 /// Any file within these directories (relative to home) is blocked.
+#[allow(dead_code)]
 const SENSITIVE_DIR_PREFIXES: &[&str] = &[
     ".ssh/",
     ".gnupg/",
@@ -175,6 +177,7 @@ const SENSITIVE_DIR_PREFIXES: &[&str] = &[
 
 /// Check if a validated path points to a sensitive file that should not be written to.
 /// Call this AFTER validate_path() succeeds, for write/append/replace operations only.
+#[allow(dead_code)]
 pub fn is_sensitive_path(path: &Path) -> bool {
     let home = match env::var("HOME").map(PathBuf::from) {
         Ok(h) => fs::canonicalize(&h).unwrap_or(h),
@@ -211,6 +214,7 @@ pub fn is_sensitive_path(path: &Path) -> bool {
 
 /// Validate a path for write operations. Combines path traversal validation
 /// with sensitive file protection.
+#[allow(dead_code)]
 pub fn validate_path_for_write(path: &Path) -> Result<PathBuf, String> {
     let safe_path = validate_path(path)?;
 

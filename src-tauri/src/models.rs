@@ -14,8 +14,6 @@ pub const MAX_STREAM_BUFFER_SIZE: usize = 1024 * 1024; // 1MB limit for SSE stre
 // Network and timeout constants
 pub const HTTP_TIMEOUT_SECS: u64 = 120;
 pub const DEFAULT_MAX_TOKENS: u32 = 4096;
-pub const MIN_MAX_TOKENS: u32 = 256;
-pub const MAX_MAX_TOKENS: u32 = 128000;
 pub const DEFAULT_MAX_MARKERS: u16 = 500;
 pub const MAX_TERMINAL_DIMENSION: u16 = 10000;
 
@@ -223,11 +221,6 @@ pub struct FileBackup {
     pub content: String,
     pub timestamp: u64,
 }
-
-/// Maximum number of file backups to keep per file path
-pub const MAX_BACKUPS_PER_FILE: usize = 5;
-/// Maximum total backups across all files
-pub const MAX_TOTAL_BACKUPS: usize = 50;
 
 pub struct AppState {
     pub ptys: Mutex<HashMap<u32, PtySession>>,

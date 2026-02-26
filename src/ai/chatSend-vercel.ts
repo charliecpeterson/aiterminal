@@ -273,6 +273,8 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
   let assistantMessageAdded = false;
   let streamedText = false;
   let streamError: Error | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null; // Request timeout
+  
   try {
     // Prepare conversation history with sliding window and summarization
     const conversationWindow = await prepareConversationHistory(messages, settingsAi);
@@ -500,6 +502,15 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
         ? 25
         : 15;
     
+    // Set up request-level timeout (10 minutes max)
+    const REQUEST_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+    timeoutId = setTimeout(() => {
+      if (abortController) {
+        console.warn('[chatSend] Request timeout after 10 minutes, aborting');
+        abortController.abort();
+      }
+    }, REQUEST_TIMEOUT_MS);
+    
     const result = await streamText({
       model: openai(model),  // Use routed model (may differ from settingsAi.model)
       messages: coreMessages,
@@ -662,6 +673,11 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     }
     
     setIsSending(false);
+    
+    // Clear request timeout
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
 
   } catch (error) {
     log.error('AI request failed', error);
@@ -692,5 +708,10 @@ export async function sendChatMessage(deps: ChatSendDeps): Promise<void> {
     }
     
     setIsSending(false);
+    
+    // Clear request timeout
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }

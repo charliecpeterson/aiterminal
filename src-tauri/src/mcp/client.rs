@@ -11,7 +11,7 @@ use tokio::process::Command;
 
 /// Simple client handler for MCP connections
 #[derive(Clone, Debug, Default)]
-struct SimpleClientHandler {
+pub(crate) struct SimpleClientHandler {
     info: ClientInfo,
 }
 
@@ -31,7 +31,7 @@ impl ClientHandler for SimpleClientHandler {
 
 pub struct MCPClient {
     pub server_name: String,
-    pub service: RunningService<RoleClient, SimpleClientHandler>,
+    pub(crate) service: RunningService<RoleClient, SimpleClientHandler>,
     pub tools: Vec<MCPToolInfo>,
     pub enabled: bool,
 }
@@ -178,8 +178,7 @@ impl MCPClient {
 
     /// Shutdown the MCP server
     pub async fn shutdown(self) -> Result<(), MCPError> {
-        // Cancel the service, which will close the transport and shut down the server
-        self.service.cancel();
+        let _ = self.service.cancel().await;
         Ok(())
     }
 }

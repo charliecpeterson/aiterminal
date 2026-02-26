@@ -392,11 +392,20 @@ function filterByTokenBudget(
     const formatted = formatRankedContext([item])[0] || '';
     const estimatedItemTokens = estimateTokens(formatted);
     
+    // Don't add if it would exceed budget (even for first item)
     if (tokenCount + estimatedItemTokens > maxTokens) {
-      // Try to include at least one item
-      if (result.length === 0) {
-        // Truncate this item to fit
-        result.push(item);
+      // Only include first item if budget allows at least partial content
+      if (result.length === 0 && maxTokens > 100) {
+        // Truncate first item to fit within budget
+        const allowedTokens = Math.floor(maxTokens * 0.9); // Use 90% of budget
+        const truncatedContent = item.item.content.slice(0, allowedTokens * 4); // Rough char estimate
+        result.push({
+          ...item,
+          item: {
+            ...item.item,
+            content: truncatedContent + '\n... (truncated to fit context budget)',
+          },
+        });
       }
       break;
     }

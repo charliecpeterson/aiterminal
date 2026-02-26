@@ -15,8 +15,8 @@ export function getDefaultMCPServers(): MCPServerConfig[] {
       name: 'filesystem',
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
-      enabled: true,
-      description: 'File operations (read, write, list, search)',
+      enabled: false,  // DISABLED: Duplicate of PTY-based file tools which work in SSH/remote sessions
+      description: 'File operations (read, write, list, search) - DISABLED: Use PTY tools instead',
     },
     // Git server not yet published to npm
     // {

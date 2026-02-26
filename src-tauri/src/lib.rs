@@ -40,10 +40,10 @@ use autocomplete::{
     get_llm_completions, get_llm_inline_completion, get_path_commands, init_llm,
     is_command_in_path, list_dir_entries, llm_health_check, stop_llm, LLMEngine,
 };
-use chat::{ai_chat, ai_chat_stream, test_ai_connection};
+use chat::{test_ai_connection};
 use context_index::{ContextChunkInput, ContextIndexSyncStats, RetrievedChunk};
-// NOTE: history::get_shell_history is superseded by tools::get_shell_history_tool (PTY-based)
-#[allow(unused_imports)]
+// NOTE: history::get_shell_history is used by autocomplete UI (local history file reading)
+// The PTY-based tool (get_shell_history AI tool) is for SSH-aware history access
 use history::get_shell_history;
 use keychain::{
     check_keychain_available, delete_api_key_from_keychain, get_api_key_from_keychain,
@@ -60,13 +60,7 @@ use settings::{delete_api_key, get_api_key, load_settings, save_api_key, save_se
 use ssh::{get_ssh_config_hosts, load_ssh_profiles, save_ssh_profiles};
 use tauri::Emitter;
 use tools::{
-    analyze_error_tool, append_to_file_tool, calculate_tool, check_port_tool, diff_files_tool,
-    file_sections_tool, find_errors_in_file_tool, find_process_tool,
-    get_current_directory_tool, get_env_var_tool, get_file_info_tool, get_git_branch_tool,
-    get_git_diff_tool, get_shell_history_tool, get_system_info_tool, git_status_tool,
-    grep_in_files_tool, list_directory_tool, list_file_backups_tool, make_directory_tool,
-    read_file_tool, read_multiple_files_tool, replace_in_file_tool, search_files_tool,
-    tail_file_tool, undo_file_change_tool, web_search_tool, write_file_tool,
+    analyze_error_tool, calculate_tool, web_search_tool,
 };
 #[tauri::command]
 async fn context_index_sync(
@@ -294,36 +288,9 @@ pub fn run() {
             read_preview_file,
             stop_preview_watcher,
             test_ai_connection,
-            ai_chat,
-            ai_chat_stream,
-            read_file_tool,
-            get_file_info_tool,
-            read_multiple_files_tool,
-            grep_in_files_tool,
             analyze_error_tool,
-            list_directory_tool,
-            search_files_tool,
-            get_current_directory_tool,
-            get_env_var_tool,
-            write_file_tool,
-            append_to_file_tool,
-            replace_in_file_tool,
-            git_status_tool,
-            get_git_branch_tool,
-            find_process_tool,
-            check_port_tool,
-            get_system_info_tool,
-            tail_file_tool,
-            make_directory_tool,
-            get_git_diff_tool,
-            get_shell_history_tool,
-            find_errors_in_file_tool,
-            file_sections_tool,
             calculate_tool,
             web_search_tool,
-            undo_file_change_tool,
-            list_file_backups_tool,
-            diff_files_tool,
             init_llm,
             stop_llm,
             get_llm_completions,
